@@ -1273,7 +1273,25 @@ class FilterSettingDialogue(QDialog):
         self.wiener_check.setChecked(apply_wf)
         
         self.wiener_group = QGroupBox()
-        self.wiener_group.setLayout(self.create_form_layout(["WF Delta", "WF Bw-order", "WF Bw-cutoff"], default_values, self.parameters))
+        form_layout = QFormLayout()
+        delta = QLabel('WF Delta')
+        delta.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        delta_input = QLineEdit()
+        delta_input.setText(default_values['WF Delta'])
+        form_layout.addRow(delta, delta_input)
+        order = QLabel('WF Bw-order')
+        order.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        order_input = QLineEdit()
+        order_input.setText(default_values['WF Bw-order'])
+        form_layout.addRow(order, order_input)
+        cutoff = QLabel('WF Bw-cutoff')
+        cutoff.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        cutoff_input = QLineEdit()
+        cutoff_input.setText(default_values['WF Bw-cutoff'])
+        form_layout.addRow(cutoff, cutoff_input)
+        self.wiener_group.setLayout(form_layout)
+        
+        #self.wiener_group.setLayout(self.create_form_layout(["WF Delta", "WF Bw-order", "WF Bw-cutoff"], default_values, self.parameters))
         self.wiener_group.setEnabled(True)
         #self.wiener_check.stateChanged.connect(lambda: self.wiener_group.setEnabled(self.wiener_check.isChecked()))
         layout.addWidget(self.wiener_check)
@@ -1283,7 +1301,24 @@ class FilterSettingDialogue(QDialog):
         self.absf_check = QCheckBox("Apply ABS Filter")
         self.absf_check.setChecked(apply_absf)
         self.absf_group = QGroupBox()
-        self.absf_group.setLayout(self.create_form_layout(["ABSF Delta", "ABSF Bw-order", "ABSF Bw-cutoff"], default_values, self.parameters))
+        form_layout = QFormLayout()
+        delta = QLabel('ABSF Delta')
+        delta.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        delta_input = QLineEdit()
+        delta_input.setText(default_values['ABSF Delta'])
+        form_layout.addRow(delta, delta_input)
+        order = QLabel('ABSF Bw-order')
+        order.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        order_input = QLineEdit()
+        order_input.setText(default_values['ABSF Bw-order'])
+        form_layout.addRow(order, order_input)
+        cutoff = QLabel('ABSF Bw-cutoff')
+        cutoff.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        cutoff_input = QLineEdit()
+        cutoff_input.setText(default_values['ABSF Bw-cutoff'])
+        form_layout.addRow(cutoff, cutoff_input)
+        self.absf_group.setLayout(form_layout)
+        #self.absf_group.setLayout(self.create_form_layout(["ABSF Delta", "ABSF Bw-order", "ABSF Bw-cutoff"], default_values, self.parameters))
         self.absf_group.setEnabled(True)
         #self.absf_check.stateChanged.connect(lambda: self.absf_group.setEnabled(self.absf_check.isChecked()))
         layout.addWidget(self.absf_check)
@@ -1293,7 +1328,29 @@ class FilterSettingDialogue(QDialog):
         self.nl_check = QCheckBox("Apply Non-Linear Filter")
         self.nl_check.setChecked(apply_nl)
         self.nl_group = QGroupBox()
-        self.nl_group.setLayout(self.create_form_layout(["NL Cycles", "NL Delta", "NL Bw-order", "NL Bw-cutoff"], default_values, self.parameters))
+        form_layout = QFormLayout()
+        N = QLabel('NL Cycles')
+        N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
+        N_input = QLineEdit()
+        N_input.setText(default_values['NL Cycles'])
+        form_layout.addRow(N, N_input)
+        delta = QLabel('NL Delta')
+        delta.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
+        delta_input = QLineEdit()
+        delta_input.setText(default_values['NL Delta'])
+        form_layout.addRow(delta, delta_input)
+        order = QLabel('NL Bw-order')
+        order.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        order_input = QLineEdit()
+        order_input.setText(default_values['NL Bw-order'])
+        form_layout.addRow(order, order_input)
+        cutoff = QLabel('NL Bw-cutoff')
+        cutoff.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        cutoff_input = QLineEdit()
+        cutoff_input.setText(default_values['NL Bw-cutoff'])
+        form_layout.addRow(cutoff, cutoff_input)
+        self.nl_group.setLayout(form_layout)
+        #self.nl_group.setLayout(self.create_form_layout(["NL Cycles", "NL Delta", "NL Bw-order", "NL Bw-cutoff"], default_values, self.parameters))
         self.nl_group.setEnabled(True)
         #self.nl_check.stateChanged.connect(lambda: self.nl_group.setEnabled(self.nl_check.isChecked()))
         layout.addWidget(self.nl_check)
@@ -1321,15 +1378,15 @@ class FilterSettingDialogue(QDialog):
         
         self.accept()
 
-    def create_form_layout(self, labels, default_values, inputs_dict):
-        form_layout = QFormLayout()
-        for label in labels:
-            line_edit = QLineEdit()
-            if label in default_values:
-                line_edit.setText(default_values[label])
-            form_layout.addRow(QLabel(label), line_edit)
-            inputs_dict[label] = line_edit
-        return form_layout
+    # def create_form_layout(self, labels, default_values, inputs_dict):
+    #     form_layout = QFormLayout()
+    #     for label in labels:
+    #         line_edit = QLineEdit()
+    #         if label in default_values:
+    #             line_edit.setText(default_values[label])
+    #         form_layout.addRow(QLabel(label), line_edit)
+    #         inputs_dict[label] = line_edit
+    #     return form_layout
         
     
 #=========== Rotate image dialogue ==================================
@@ -1830,7 +1887,7 @@ def calculate_angle_from_3_points(A, B, C):
 
 
 #====Application entry==================================
-
+QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 
 def main():
     
@@ -1846,6 +1903,6 @@ def main():
 
 if __name__ == "__main__":
     
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    
     
     main()

@@ -1,17 +1,27 @@
-# emd-converter
-EMD Converter is a convenient and lightweight tool to convert the FEI Velox emd files to the common image formats including tiff, jpg, png, and bmp. The tool was written by Dr. Tao Ma. For questions and suggestions, please send a message to taoma@umich.edu.
+# TemCompanion
+TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). Three filter functions, including Wiener, averaging background subtraction (ABS), and non-linear filters, are made available for filtering high-resolution TEM images. 
+
+TemCompanion was written by Dr. Tao Ma. For questions, suggestions, bug reports, feature requests, etc, please send a message to matao1984@gmail.com.
 
 ## 1. Installation
 The tool requires Python 3 environment. I recommend to install Anaconda which is the most straightforward way. Download and install the Python 3 version of Anaconda from here: https://www.anaconda.com/.
 
-After the Anaconda is installed, open the Anaconda prompt console. First, install the [Hyperspy](https://hyperspy.org/):  ``conda install hyperspy -c conda-forge``. Then, simply navigate to the ``EMD Converter\`` folder with ``cd [PATH]`` and run ``pip install ./``. The pip should install the package automatically. 
+After the Anaconda is installed, open the Anaconda prompt console. Download the ``temcompanion`` folder from this page or using the ``git`` tool via: ``git clone https://github.com/matao1984/temcompanion``. Then, navigate to the ``temcompanion`` folder with ``cd [PATH]`` and install with pip:
+
+``conda create -n temcompanion python=3.12``
+
+``conda activate temcompanion``
+
+``pip install ./``
+
+The ``pip`` should prepare all the dependencies and install the tool automatically.
 
 ## 2. Usage
-Simply type ``emd-con`` in the Anaconda prompt console. A GUI will pop up. Just load the emd files, set the output directory, select the output format, and click "Let's go!". 
+Simply type ``temcom`` in the Anaconda prompt console. A GUI will pop up. Load the data through the "Open Files" button, view the images with the "Preview" button. All the processing and analysis functions are available in the preview window. Each preview window can be individually saved and converted to the common image formats. The tool will still work for batch convertion as ``EMD Converter`` does.
 
 ## 3. Formats
 ### 3.1 Input formats
-The main purpose of this app is to convert FEI Velox emd files. However, due to the power of Hyperspy, it takes all formats that are supported by Hyperspy. A complete list of supported formats can be found [here](http://hyperspy.org/hyperspy-doc/current/user_guide/io.html). Tested formats are: __Velox emd, TIA ser, and GMS dm3 & dm4__.
+Currently, TemCompanion is programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here: ](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
 ### 3.2 Output formats
 When selecting '.tif' format, the software converts the images into 16-bit tif files containing the pixel resolution. The "Scale bar" option is ignored for this format. For DigitalMicrograph users, you can simply drag the converted tif files into GMS, which should be able to read the data including the pixel size losslessly. This is the most convenient way to convert emd files into GMS I have found so far.

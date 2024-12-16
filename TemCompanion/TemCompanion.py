@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider)
-from PyQt5.QtCore import QStringListModel
+from PyQt5.QtCore import Qt, QStringListModel
 import sys
 import os
 #from datetime import date
@@ -668,7 +668,7 @@ class PlotCanvas(QMainWindow):
         preview_name = self.canvas.canvas_name + '_NL'
         title = self.windowTitle()
         self.preview_dict[preview_name] = PlotCanvas(img_nl)
-        
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         self.preview_dict[preview_name].setWindowTitle(title + ' NL Filtered')
         self.preview_dict[preview_name].show()
@@ -1833,7 +1833,11 @@ def calculate_angle_from_3_points(A, B, C):
 
 
 def main():
+    
+   
     app = QApplication(sys.argv)
+    
+    
     
     temcom = UI_TemCompanion()
     temcom.show()
@@ -1841,4 +1845,7 @@ def main():
 
 
 if __name__ == "__main__":
+    
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    
     main()

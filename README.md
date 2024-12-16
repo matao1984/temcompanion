@@ -21,25 +21,35 @@ Simply type ``temcom`` in the Anaconda prompt console. A GUI will pop up. Load t
 
 ## 3. Formats
 ### 3.1 Input formats
-Currently, TemCompanion is programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here: ](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
+Currently, TemCompanion is programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
+
+### 3.2 List of available functions
+Currently available functions include:
+* Preview any image type signals. If the input file contains multiple image frames, a slider bar is added on the image to navigate.
+* Rotate image: positive angles would rotate the image counterclockwise and vice versa. The image will expand upon rotation.
+* Crop image: crop to any size with a GUI rectangle selection.
+* Adjust vmin/vmax (in percentile) for display.
+* Apply a color map to images.
+* Compute an fast Fourier transform directly or with a Hann window applied.
+* View and set the pixel scale.
+* Measure by drawing a line on images.
+* Measure d-spacing from FFT spots. The center of FFT peaks is fitted with a center of mass function. The angle from horizontal direction is also measured.
+* Apply Wiener, ABS, and non-linear filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
+* View the metadata of the TEM data file.
+* The processing history by TemCompanion is saved in the metadata tree under "process" entry.
+
 
 ### 3.2 Output formats
-When selecting '.tif' format, the software converts the images into 16-bit tif files containing the pixel resolution. The "Scale bar" option is ignored for this format. For DigitalMicrograph users, you can simply drag the converted tif files into GMS, which should be able to read the data including the pixel size losslessly. This is the most convenient way to convert emd files into GMS I have found so far.
+When selecting '.tiff' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images will be saved as 32-bit float to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ. 
 
-All other formats are lossy conversion, which convert the original data into unsigned 8-bit int. These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be added if the "Scale bar" option is checked. 
+Other image formats including png and jpg, both gray scale and color, are lossy conversion, which means the original data are manipulated (e.g., data are normalized and rescaled to 8-bit gray scale). These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be burnt on if the "Scale bar" option is checked.  
+
 
 ## 4. About the emd format
-Velox saves all types of data, including simple images, image stacks, SI data, DPC, etc, into a single emd format. While these files share the same format, the data structures are quite different. This converter has been tested for simple images, image stacks, DPC images, and EDS mapping data. For simple images, the converter just makes the conversion in the selected output directory. For image stacks and DPC images, the converter first makes a folder with the file name and converts all the image frames into that folder. For EDS mapping data, the converter converts all the image data, e.g., maps for each element, and ignores the spectra data.
+Velox saves all types of data, including simple images, image stacks, SI data, DPC, etc, into a single emd format. While these files share the same format, the data structures are quite different. TemCompanion has been tested for simple images, image stacks, DPC images, and EDS mapping data. For EDS mapping data, it will only read the image type signals, e.g., STEM images and quantification maps, and ignore the spectra data. For DPC data, it will read all the quadrant signals, computed signals (e.g., A-C, B-D, iDPC, dDPC, etc.), but currently will not work on the composite DPC images, which combines the DPCx and DPCy signals into complex data. Future release may fix this problem.
+
 
 ## 5. Change history
-### v0.3
-- Improved UI.
-
-### v0.2
-- Improved font settings in MacOS.
-- Now only DCFI type and EDS map files will be saved in a separate folder.
-- Add "tif + png" option that converts to both tif (16 bit) and png formats.
-- If conversion fails on one file, e.g., the file is locked by Velox, it skips the file and continue to the next one.
 
 ### v0.1
 - First version!

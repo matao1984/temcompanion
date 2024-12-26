@@ -60,6 +60,7 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 - First version!
 
 ## 7. Wish list
+- Export metadata
 - Angle measurement in measure mode
 - Improve FFT peak measurement accuracy
 - Extract line profile

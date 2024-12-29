@@ -72,10 +72,10 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 - First version!
 
 ## 7. Wish list
-<del>- Export metadata</del>
+<del> - Export metadata
 - Angle measurement in measure mode
 - Improve FFT peak measurement accuracy
-- Extract line profile
+- Extract line profile </del>
 - Image registration
 - Mask in FFT and iFFT
 - Better color maps for EDS maps

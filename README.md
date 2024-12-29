@@ -56,6 +56,18 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v0.2
+- New feature: Extract line profile from an image. 
+  - The line width can be defined.
+  - Customize the plot apperance, e.g., color, xlim, ylim.
+  - Measure the line profile both horizontally and vertically with mouse drag
+- Added status bar at the bottom of the figure window with prompt
+- Improved FFT measurement to be more robust and accurate
+- Move FFT measurement function to FFT image only
+- Added "Cancel" button to the crop function
+- Added export metadata to json and pkl
+- Added angle measurement for distance measurement
+
 ### v0.1
 - First version!
 

@@ -93,6 +93,7 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 <del> - Extract line profile 
 
-- Image registration
+<del> - Image registration
 - Mask in FFT and iFFT
+- Live FFT with interactive area selection
 - Better color maps for EDS maps

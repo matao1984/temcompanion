@@ -12,6 +12,12 @@
 # Added "Cancel" button to the crop function
 # Added export metadata to json and pkl
 # Added angle measurement for distance measurement
+# 2025- v0.3
+# Fixed filter parameters cannot be set
+# Added two low-pass filters: Butterworth and Gaussian
+# Remove filter menu on FFT images
+# Added operations on image stacks, including cropping, rotating, alignment (cross correlation and optical flow), and integration
+# Improved font and color for the frame slider for image stacks
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -20,7 +26,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
-                             QSlider, QStatusBar)
+                             QSlider, QStatusBar, QMenu, QRadioButton)
 from PyQt5.QtCore import Qt, QStringListModel
 import sys
 import os
@@ -48,12 +54,15 @@ from hrtem_filter import filters
 from scipy.fft import fft2, fftshift
 from skimage.filters import window
 from skimage.measure import profile_line
+from scipy.ndimage import rotate, shift
+from skimage.registration import phase_cross_correlation, optical_flow_ilk
+from skimage.transform import warp
 
 
 
-ver = '0.2'
+ver = '0.3'
 #rdate = date.today().strftime('%Y-%m-%d')
-rdate = '2024-12-29'
+rdate = '2025-01-10'
 
 
 
@@ -79,10 +88,12 @@ class UI_TemCompanion(QMainWindow):
 
         
     # Define filter parameters as class variables        
-    apply_wf, apply_absf, apply_nl = False, False, False
+    apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian = False, False, False, False, False
     filter_parameters_default = {"WF Delta": "5", "WF Bw-order": "4", "WF Bw-cutoff": "0.3",
                                  "ABSF Delta": "5", "ABSF Bw-order": "4", "ABSF Bw-cutoff": "0.3",
-                                 "NL Cycles": "10", "NL Delta": "10", "NL Bw-order": "4", "NL Bw-cutoff": "0.3"}
+                                 "NL Cycles": "10", "NL Delta": "10", "NL Bw-order": "4", "NL Bw-cutoff": "0.3",
+                                 "Bw-order": "4", "Bw-cutoff": "0.3",
+                                 "GS-cutoff": "0.3"}
 
     filter_parameters = filter_parameters_default.copy()
     scale_bar = False
@@ -250,30 +261,41 @@ class UI_TemCompanion(QMainWindow):
             cutoff_absf = float(self.filter_parameters['ABSF Bw-cutoff'])
             delta_nl = int(self.filter_parameters['NL Delta'])
             order_nl = int(self.filter_parameters['NL Bw-order'])
-            cutoff_nl = float(self.filter_parameters['NL Bw-cutoff'])
             N = int(self.filter_parameters['NL Cycles'])
+            cutoff_nl = float(self.filter_parameters['NL Bw-cutoff'])
+            order_bw = int(self.filter_parameters['Bw-order'])
+            cutoff_bw = float(self.filter_parameters['Bw-cutoff'])
+            cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
+            
             
             
             
             for file in self.files:  
                 # convert_file(file,output_dir,f_type)
                 msg = "Converting '{}.{}'".format(getFileName(file),getFileType(file))
+                print(msg)
                 self.refresh_output(msg)
                 try:                
                     convert_file(file,self.output_dir,self.f_type, scalebar = UI_TemCompanion.scale_bar,
                                  apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
-                                 apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,)
+                                 apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
+                                 apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
+                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian
+                                 )
                     
                     msg = "'{}.{}' has been converted".format(getFileName(file),getFileType(file))
+                    print(msg)
                     self.refresh_output(msg)
     
     
                 except:
                     msg = "'{}.{}' has been skipped".format(getFileName(file),getFileType(file))
+                    print(msg)
                     self.refresh_output(msg)
     
-            self.refresh_output("Convertion finished!")       
+            self.refresh_output("Convertion finished!") 
+            print('Convertion finished!')
             
         
 
@@ -327,6 +349,8 @@ class UI_TemCompanion(QMainWindow):
     
                 elif img['data'].ndim == 3:
                     # Modify the axes to be aligned with the save functions
+                    # Backup the original axes
+                    img['original_axes'] = copy.deepcopy(img['axes'])
                     img['axes'].pop(0)
                     img['axes'][0]['index_in_array'] = 0
                     img['axes'][1]['index_in_array'] = 1
@@ -344,13 +368,16 @@ class UI_TemCompanion(QMainWindow):
     @classmethod
     def filter_settings(cls):
      
-        filtersettingdialog = FilterSettingDialogue(cls.apply_wf, cls.apply_absf, cls.apply_nl, cls.filter_parameters)
+        filtersettingdialog = FilterSettingDialogue(cls.apply_wf, cls.apply_absf, cls.apply_nl, 
+                                                    cls.apply_bw, cls.apply_gaussian, cls.filter_parameters)
         result = filtersettingdialog.exec_()
         if result == QDialog.Accepted:
             cls.filter_parameters = filtersettingdialog.parameters
             cls.apply_wf = filtersettingdialog.apply_wf
             cls.apply_absf = filtersettingdialog.apply_absf
             cls.apply_nl = filtersettingdialog.apply_nl
+            cls.apply_bw = filtersettingdialog.apply_bw
+            cls.apply_gaussian = filtersettingdialog.apply_gaussian
             
                
 #=====================================================================        
@@ -526,6 +553,12 @@ class PlotCanvas(QMainWindow):
         non_linear_action = QAction('Apply Non-Linear', self)
         non_linear_action.triggered.connect(self.non_linear_filter)
         filter_menu.addAction(non_linear_action)
+        bw_action = QAction('Apply Butterworth low pass', self)
+        bw_action.triggered.connect(self.bw_filter)
+        filter_menu.addAction(bw_action)
+        gaussian_action = QAction('Apply Gaussian low pass', self)
+        gaussian_action.triggered.connect(self.gaussion_filter)
+        filter_menu.addAction(gaussian_action)
 
         # Info menu
         info_menu = menubar.addMenu('Info')
@@ -646,9 +679,8 @@ class PlotCanvas(QMainWindow):
         
             # Process the rotation
             img = self.get_img_dict_from_canvas()
-            img_to_rotate = Image.fromarray(img['data'])
-            img_rotated = img_to_rotate.rotate(ang, expand=True)
-            rotated_array = np.array(img_rotated)
+            img_to_rotate = img['data']
+            rotated_array = rotate(img_to_rotate,ang)
             img['data'] = rotated_array
             
             # Create a new PlotCanvs to display        
@@ -725,7 +757,46 @@ class PlotCanvas(QMainWindow):
         # Keep the history
         self.preview_dict[preview_name].process['process'].append('Nonlinear filter applied with N= {}, delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(N,delta_nl,order_nl,cutoff_nl))
         self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
         
+    def bw_filter(self):
+        filter_parameters = UI_TemCompanion.filter_parameters        
+        order_bw = int(filter_parameters['Bw-order'])
+        cutoff_bw = float(filter_parameters['Bw-cutoff'])
+        img_bw = self.get_img_dict_from_canvas()
+        bw = apply_filter(img_bw['data'], 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
+        img_bw['data'] = bw
+        preview_name = self.canvas.canvas_name + '_Bw'
+        title = self.windowTitle()
+        self.preview_dict[preview_name] = PlotCanvas(img_bw)
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        
+        self.preview_dict[preview_name].setWindowTitle(title + ' Butterworth Filtered')
+        self.preview_dict[preview_name].show()
+        
+        # Keep the history
+        self.preview_dict[preview_name].process['process'].append('Butterworth filter applied with Bw-order = {}, Bw-cutoff = {}'.format(order_bw,cutoff_bw))
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
+    def gaussion_filter(self):
+        filter_parameters = UI_TemCompanion.filter_parameters        
+        cutoff_gaussian = float(filter_parameters['GS-cutoff'])
+        img_gaussian = self.get_img_dict_from_canvas()
+        gaussian = apply_filter(img_gaussian['data'], 'Gaussian', cutoff_ratio=cutoff_gaussian)
+        img_gaussian['data'] = gaussian
+        preview_name = self.canvas.canvas_name + '_GS'
+        title = self.windowTitle()
+        self.preview_dict[preview_name] = PlotCanvas(img_gaussian)
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        
+        self.preview_dict[preview_name].setWindowTitle(title + ' Gaussian Filtered')
+        self.preview_dict[preview_name].show()
+        
+        # Keep the history
+        self.preview_dict[preview_name].process['process'].append('Gaussian filter applied with cutoff = {}'.format(cutoff_gaussian))
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
+    
     def create_img(self):
         self.im = self.axes.imshow(self.canvas.data['data'],cmap='gray')
         self.axes.set_axis_off()
@@ -895,80 +966,6 @@ class PlotCanvas(QMainWindow):
             self.measure_dialog.show()
             self.start_distance_measurement()
         
-# #======== Measure FFT function ==============================================
-#     def start_fft_measurement(self):
-#         self.marker = None
-#         if not self.measurement_active:
-#             self.measurement_active = True
-#             self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-            
-#     def on_click(self, event):
-#         if event.inaxes != self.axes:
-#             return
-#         # Clear previous results
-#         self.cleanup_fft()
-#         image_data = self.canvas.data['data']
-#         image_size = image_data.shape
-#         x_click, y_click = int(event.xdata), int(event.ydata)
-#         # Define a window size around the clicked point to calculate the center of mass
-#         window_size = self.measure_fft_dialog.windowsize
-#         x_min = max(x_click - window_size, 0)
-#         x_max = min(x_click + window_size, image_size[0])
-#         y_min = max(y_click - window_size, 0)
-#         y_max = min(y_click + window_size, image_size[1])
-        
-#         window = image_data[y_min:y_max, x_min:x_max]
-
-#         # Calculate the center of mass within the window
-#         cy, cx = center_of_mass(window)
-#         cx += x_min
-#         cy += y_min
-        
-#         # Add marker to plot
-#         self.marker,  = self.axes.plot(cx, cy, 'r+', markersize=10)
-#         self.fig.canvas.draw_idle()
-        
-#         # Calculate the d-spacing
-#         x0 = image_size[0] // 2
-#         y0 = image_size[1] // 2
-#         distance_px = np.sqrt((cx - x0)**2 + (cy-y0)**2)
-#         self.distance_fft = 1/(distance_px * self.scale)
-        
-#         # Calculate the angle from horizontal
-#         self.ang = calculate_angle_from_3_points((cx, cy), (x0,y0), (x0 - 100,y0))
-        
-#         # display results in the dialog
-#         self.measure_fft_dialog.update_measurement(self.distance_fft, self.ang)
-        
-        
-#     def cleanup_fft(self):
-#         if self.marker:
-#             self.marker.remove()
-#             self.marker = None
-#         self.fig.canvas.draw_idle()
-        
-#     def stop_fft_measurement(self):
-#         if self.measurement_active:
-#             self.measurement_active = False
-#             self.cleanup_fft()  # Cleanup any existing measurements
-#             self.fig.canvas.mpl_disconnect(self.button_press_cid)
-#             self.button_press_cid = None
-#             self.fig.canvas.draw_idle()
-        
-                
-    
-#     def measure_fft(self):
-#         real_units = None
-#         if self.units == '1/nm':
-#             real_units = 'nm'
-#         elif self.units == '1/um':
-#             real_units = 'um'
-#         if real_units is not None:
-#             self.measure_fft_dialog = MeasureFFTDialog(0, 0, real_units, self)
-#             self.measure_fft_dialog.show()
-#             self.start_fft_measurement()
-#         else:
-#             QMessageBox.warning(self, 'Measure FFT', 'Only available for FFT!')
 
 #================= FFT ======================================================        
         
@@ -1030,6 +1027,30 @@ class PlotCanvas(QMainWindow):
 class PlotCanvas3d(PlotCanvas):
     def __init__(self, img):
         super().__init__(img)
+        stack_menu = QMenu('Stack', self) 
+        self.menubar.insertMenu(self.menubar.children()[5].children()[0],stack_menu)
+        crop_stack = QAction('Crop Stack', self)
+        crop_stack.triggered.connect(self.crop_stack)
+        stack_menu.addAction(crop_stack)
+        rotate_stack = QAction('Rotate Stack', self)
+        rotate_stack.triggered.connect(self.rotate_stack)
+        stack_menu.addAction(rotate_stack)
+        align_stack_cc = QAction('Align Stack with Cross-Correlation', self)
+        align_stack_cc.triggered.connect(self.align_stack_cc)
+        stack_menu.addAction(align_stack_cc)
+        align_stack_of = QAction('Align Stack with Optical Flow', self)
+        align_stack_of.triggered.connect(self.align_stack_of)
+        stack_menu.addAction(align_stack_of)
+        integrate_stack = QAction('Integrate Stack', self)
+        integrate_stack.triggered.connect(self.integrate_stack)  
+        stack_menu.addAction(integrate_stack)
+        export_stack = QAction('Export as tiff stack', self)
+        export_stack.triggered.connect(self.export_stack)
+        stack_menu.addAction(export_stack)
+        export_series = QAction('Save as series', self)
+        export_series.triggered.connect(self.export_series)
+        stack_menu.addAction(export_series)
+        
         
     def create_img(self):
         self.canvas.img_idx = 0
@@ -1053,12 +1074,14 @@ class PlotCanvas3d(PlotCanvas):
         self.fig.tight_layout(pad=0)
         # Create a slider for stacks
         self.slider_ax = self.fig.add_axes([0.2, 0.9, 0.7, 0.03], facecolor='lightgoldenrodyellow')
-        self.fontsize = int(self.canvas.data['data'].shape[1] / 100)
+        self.fontsize = 10
         self.slider = Slider(self.slider_ax, 'Frame', 0, self.canvas.data['data'].shape[0] - 1, 
                              valinit=self.canvas.img_idx, valstep=1,handle_style={'size': self.fontsize})
         self.slider_ax.tick_params(labelsize=self.fontsize)  # Smaller font size for ticks
         self.slider.label.set_size(self.fontsize)     # Smaller font size for label
+        self.slider.label.set_color('yellow')
         self.slider.valtext.set_size(self.fontsize)
+        self.slider.valtext.set_color('yellow')
         self.slider.on_changed(self.update_frame)
         
     # Update function for the slider
@@ -1066,6 +1089,265 @@ class PlotCanvas3d(PlotCanvas):
         self.canvas.img_idx = int(self.slider.val)
         self.im.set_data(self.canvas.data['data'][self.canvas.img_idx])
         self.canvas.draw_idle()
+        
+    def crop_stack(self):
+        self.crop()
+    
+    def confirm_crop(self):
+        if self.selector is not None and self.selector.active:
+            x0, x1, y0, y1 = self.selector.extents
+            if abs(x1 - x0) > 1 and abs(y1 - y0) >1: 
+                # Valid area is selected               
+                img = copy.deepcopy(self.canvas.data)
+                cropped_img = img['data'][:,int(y0):int(y1), int(x0):int(x1)]                
+                img['data'] = cropped_img.astype('int16')
+                
+                
+                # Create a new PlotCanvas to display
+                title = self.windowTitle()
+                preview_name = self.canvas.canvas_name + '_cropped'
+                self.preview_dict[preview_name] = PlotCanvas3d(img)
+                self.preview_dict[preview_name].setWindowTitle(title + '_cropped')
+                self.preview_dict[preview_name].canvas.canvas_name = preview_name
+                self.preview_dict[preview_name].show()
+                
+                # Write process history in the original_metadata
+                self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(y0),int(y1),int(x0),int(x1)))
+                self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+                
+            self.selector.set_active(False)
+            self.selector.set_visible(False)
+            self.selector.disconnect_events()  # Disconnect event handling
+            self.selector = None            
+            self.ok_button.hide()
+            self.cancel_button.hide()
+            # Display a message in the status bar
+            self.statusBar.showMessage("Ready")
+            self.fig.canvas.draw_idle()
+    
+    def rotate_stack(self):
+        # Open a dialog to take the rotation angle
+        dialog = RotateImageDialog(parent=self)
+        # Display a message in the status bar
+        if dialog.exec_() == QDialog.Accepted:
+            ang = dialog.rotate_ang
+            try:
+                ang = float(ang)
+            except ValueError:
+                QMessageBox.critical(self, 'Input Error', 'Please enter a valid angle.')
+                return
+        
+            # Process the rotation
+            img = copy.deepcopy(self.canvas.data)
+            img_to_rotate = img['data']
+            rotated_array = rotate(img_to_rotate,ang,(2,1))
+            img['data'] = rotated_array.astype('int16')
+            
+            # Create a new PlotCanvs to display        
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
+            self.preview_dict[preview_name] = PlotCanvas3d(img)
+            self.preview_dict[preview_name].setWindowTitle(title + ' rotated by {} deg'.format(ang))
+            self.preview_dict[preview_name].canvas.canvas_name = preview_name
+            self.preview_dict[preview_name].show()
+            
+            # Keep the history
+            self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
+            self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
+    def align_stack_cc(self):        
+        aligned_img = copy.deepcopy(self.canvas.data)
+        img = aligned_img['data']
+        
+        # Open a dialog to take parameters
+        dialog = AlignStackDialog(parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            apply_window = dialog.apply_window
+            crop_img = dialog.crop_img
+            crop_to_square = dialog.crop_to_square
+                        
+            img_n, img_x, img_y = img.shape
+            drift_stack = []
+            
+            
+            # Calculate the drift with sub pixel precision
+            upsampling = 100
+            print('Calculate drifts using phase cross-correlation...')
+            for n in range(img_n -1):            
+                fixed = img[n]
+                moving = img[n+1]
+                # Apply a Hann window to suppress periodic features
+                if apply_window:
+                    w = window('hann', fixed.shape)
+                    fixed = fixed * w
+                    moving = moving * w
+                drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling, normalization=None)
+                drift_stack.append(drift)
+            # Shift the images to align the stack
+            drift = np.array([0,0])
+            drift_all = []
+            for n in range(img_n-1):
+                drift = drift + drift_stack[n]
+                img_to_shift = img[n+1]
+                print(f'Shifting slice {n+1} by {drift}')
+                img[n+1,:,:] = shift(img_to_shift,drift)
+                drift_all.append(drift)
+                
+            if crop_img:
+                # Crop the stack to the biggest common region
+                drift_x = [i[0] for i in drift_all]
+                drift_y = [i[1] for i in drift_all]
+                drift_x_min, drift_x_max = min(drift_x), max(drift_x)
+                drift_y_min, drift_y_max = min(drift_y), max(drift_y)
+                x_min = max(int(drift_x_max) + 1, 0)
+                x_max = min(img_x - 1, int(img_x + drift_x_min) - 1)
+                y_min = max(int(drift_y_max) + 1,0)
+                y_max = min(img_y - 1, int(img_y + drift_y_min) - 1)
+                
+                img_crop = img[:,x_min:x_max,y_min:y_max]
+                
+                if crop_to_square:
+                    x, y = img_crop[0].shape
+                    if x > y:
+                        new_start = int((x - y) / 2)
+                        new_end = new_start + y 
+                        img_crop = img_crop[:,new_start:new_end,:]
+                    else:
+                        new_start = int((y - x) / 2)
+                        new_end = new_start + x 
+                        img_crop = img_crop[:,:,new_start:new_end]
+                    
+                aligned_img['data'] = img_crop
+                aligned_img['data'] = aligned_img['data'].astype('int16')
+            print('Stack alignment finished!')
+                    
+            # Create a new PlotCanvas to display
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + '_aligned'
+            self.preview_dict[preview_name] = PlotCanvas3d(aligned_img)
+            self.preview_dict[preview_name].setWindowTitle(title + '_aligned by Cross Correlation')
+            self.preview_dict[preview_name].canvas.canvas_name = preview_name
+            self.preview_dict[preview_name].show()
+            
+            # Write process history in the original_metadata
+            self.preview_dict[preview_name].process['process'].append('Aligned by Phase Cross-Correlation')
+            self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
+
+    def align_stack_of(self):
+        aligned_img = copy.deepcopy(self.canvas.data)
+        img = aligned_img['data']
+        # Open a dialog to take parameters
+        # dialog = AlignStackOFDialog(parent=self)
+        # if dialog.exec_() == QDialog.Accepted:
+        #     algorithm = dialog.algorithm
+        #     apply_window = dialog.apply_window
+            
+        print('Calculate drifts using Optical Flow iLK...')
+        img_n, nr, nc = img.shape
+        drift_stack = []
+        for n in range(img_n -1):            
+            fixed = img[n]
+            moving = img[n+1]
+            
+            print(f'Calculate the drift of slice {n+1} using Optical Flow iLK...')
+            
+            u, v = optical_flow_ilk(fixed, moving)
+            drift_stack.append((u, v))
+        
+        # Apply the correction
+        print('Applying drift correction...')
+        row_coords, col_coords = np.meshgrid(np.arange(nr), np.arange(nc), indexing='ij')
+        drift = np.array([np.zeros((nr,nc)),np.zeros((nr,nc))])
+        for n in range(img_n-1):
+            drift = drift + np.array(drift_stack[n])
+            vector_field = np.array([row_coords + drift[0], col_coords + drift[1]])
+            img_to_shift = img[n+1]
+            
+            img[n+1,:,:] = warp(img_to_shift, vector_field, mode='constant') 
+        
+            aligned_img['data'] = img.astype('int16')
+        print('Stack alignment finished!')
+                
+        # Create a new PlotCanvas to display
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_aligned'
+        self.preview_dict[preview_name] = PlotCanvas3d(aligned_img)
+        self.preview_dict[preview_name].setWindowTitle(title + '_aligned by Optical Flow')
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
+        
+        # Write process history in the original_metadata
+        self.preview_dict[preview_name].process['process'].append('Aligned by Optical Flow iLK')
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+            
+    
+    def integrate_stack(self):
+        data = np.mean(self.canvas.data['data'], axis=0)
+        integrated_img = {'data': data.astype('int16'), 'axes': self.canvas.data['axes'], 'metadata': self.canvas.data['metadata'],
+                          'original_metadata': self.canvas.data['original_metadata']}
+        # Create a new PlotCanvs to display        
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_integrated'
+        self.preview_dict[preview_name] = PlotCanvas(integrated_img)
+        self.preview_dict[preview_name].setWindowTitle(title + ' integrated')
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
+        
+        # Keep the history
+        # self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
+        # self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
+    def export_stack(self):
+        data = self.canvas.data
+        img_data = data['data'].astype('int16')
+
+        data_to_export = {'data': img_data, 'metadata': data['metadata'], 'axes': data['original_axes']}
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getSaveFileName(self.parent(), 
+                                                   "Save as tiff stack", 
+                                                   "", 
+                                                   "TIFF Files (*.tiff)", 
+                                                   options=options)
+        if file_path:
+           tif_writer(file_path, data_to_export) 
+
+        
+    
+    def export_series(self):
+        data = self.canvas.data
+        options = QFileDialog.Options()
+        file_path, selected_type = QFileDialog.getSaveFileName(self.parent(), 
+                                                   "Save Figure", 
+                                                   "", 
+                                                   "TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg)", 
+                                                   options=options)
+        if file_path:
+            # Implement custom save logic here
+           
+            # Extract the chosen file format            
+            file_type = getFileType(file_path)
+            f_name = getFileName(file_path)
+            output_dir = getDirectory(file_path,s='/')
+            output_dir = output_dir + f_name + '/'
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            img_to_save = {}
+            for key in ['data', 'axes', 'metadata']:
+                if key in data.keys():
+                    img_to_save[key] = data[key]
+                else:
+                    print('Invalid image data')
+                    return
+            if file_type == 'tiff':
+                for i in range(img_to_save['data'].shape[0]):
+                    img = {'data': img_to_save['data'][i].astype('int16'), 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
+                    save_as_tif16(img, f_name + f'_{i}', output_dir)
+                    
+            elif selected_type in ['Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
+                for i in range(img_to_save['data'].shape[0]):
+                    img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
+                    save_with_pil(img, f_name + f'_{i}', output_dir, file_type, scalebar=UI_TemCompanion.scale_bar) 
 
 
 #========== PlotCanvas for FFT ================================================
@@ -1078,6 +1360,10 @@ class PlotCanvasFFT(PlotCanvas):
         measure_fft_action = QAction('Measure FFT', self)
         measure_fft_action.triggered.connect(self.measure_fft)        
         analyze_menu.addAction(measure_fft_action)
+        
+        # Remove the filter menu
+        filter_menu = self.menubar.children()[4]
+        self.menubar.removeAction(filter_menu.menuAction())
         
         # global menu
         # menu = self.menubar.children()        
@@ -1676,7 +1962,7 @@ class select_img_for_preview(QDialog):
 
 #============ Define a dialogue for filter settings ===========================
 class FilterSettingDialogue(QDialog):
-    def __init__(self, apply_wf, apply_absf, apply_nl, parameters):
+    def __init__(self, apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian, parameters):
         super().__init__()
         self.setWindowTitle("Filter Settings")        
         layout = QVBoxLayout()
@@ -1690,26 +1976,23 @@ class FilterSettingDialogue(QDialog):
         
         self.wiener_group = QGroupBox()
         form_layout = QFormLayout()
-        delta = QLabel('WF Delta')
-        delta.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
-        delta_input = QLineEdit()
-        delta_input.setText(default_values['WF Delta'])
-        form_layout.addRow(delta, delta_input)
-        order = QLabel('WF Bw-order')
-        order.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
-        order_input = QLineEdit()
-        order_input.setText(default_values['WF Bw-order'])
-        form_layout.addRow(order, order_input)
-        cutoff = QLabel('WF Bw-cutoff')
-        cutoff.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
-        cutoff_input = QLineEdit()
-        cutoff_input.setText(default_values['WF Bw-cutoff'])
-        form_layout.addRow(cutoff, cutoff_input)
+        self.delta_wf = QLabel('WF Delta')
+        self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        self.delta_wf_input = QLineEdit()
+        self.delta_wf_input.setText(default_values['WF Delta'])
+        form_layout.addRow(self.delta_wf, self.delta_wf_input)
+        self.order_wf = QLabel('WF Bw-order')
+        self.order_wf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_wf_input = QLineEdit()
+        self.order_wf_input.setText(default_values['WF Bw-order'])
+        form_layout.addRow(self.order_wf, self.order_wf_input)
+        self.cutoff_wf = QLabel('WF Bw-cutoff')
+        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_wf_input = QLineEdit()
+        self.cutoff_wf_input.setText(default_values['WF Bw-cutoff'])
+        form_layout.addRow(self.cutoff_wf, self.cutoff_wf_input)
         self.wiener_group.setLayout(form_layout)
-        
-        #self.wiener_group.setLayout(self.create_form_layout(["WF Delta", "WF Bw-order", "WF Bw-cutoff"], default_values, self.parameters))
         self.wiener_group.setEnabled(True)
-        #self.wiener_check.stateChanged.connect(lambda: self.wiener_group.setEnabled(self.wiener_check.isChecked()))
         layout.addWidget(self.wiener_check)
         layout.addWidget(self.wiener_group)
 
@@ -1718,21 +2001,21 @@ class FilterSettingDialogue(QDialog):
         self.absf_check.setChecked(apply_absf)
         self.absf_group = QGroupBox()
         form_layout = QFormLayout()
-        delta = QLabel('ABSF Delta')
-        delta.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
-        delta_input = QLineEdit()
-        delta_input.setText(default_values['ABSF Delta'])
-        form_layout.addRow(delta, delta_input)
-        order = QLabel('ABSF Bw-order')
-        order.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
-        order_input = QLineEdit()
-        order_input.setText(default_values['ABSF Bw-order'])
-        form_layout.addRow(order, order_input)
-        cutoff = QLabel('ABSF Bw-cutoff')
-        cutoff.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
-        cutoff_input = QLineEdit()
-        cutoff_input.setText(default_values['ABSF Bw-cutoff'])
-        form_layout.addRow(cutoff, cutoff_input)
+        self.delta_absf = QLabel('ABSF Delta')
+        self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        self.delta_absf_input = QLineEdit()
+        self.delta_absf_input.setText(default_values['ABSF Delta'])
+        form_layout.addRow(self.delta_absf, self.delta_absf_input)
+        self.order_absf = QLabel('ABSF Bw-order')
+        self.order_absf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_absf_input = QLineEdit()
+        self.order_absf_input.setText(default_values['ABSF Bw-order'])
+        form_layout.addRow(self.order_absf, self.order_absf_input)
+        self.cutoff_absf = QLabel('ABSF Bw-cutoff')
+        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_absf_input = QLineEdit()
+        self.cutoff_absf_input.setText(default_values['ABSF Bw-cutoff'])
+        form_layout.addRow(self.cutoff_absf, self.cutoff_absf_input)
         self.absf_group.setLayout(form_layout)
         #self.absf_group.setLayout(self.create_form_layout(["ABSF Delta", "ABSF Bw-order", "ABSF Bw-cutoff"], default_values, self.parameters))
         self.absf_group.setEnabled(True)
@@ -1745,32 +2028,67 @@ class FilterSettingDialogue(QDialog):
         self.nl_check.setChecked(apply_nl)
         self.nl_group = QGroupBox()
         form_layout = QFormLayout()
-        N = QLabel('NL Cycles')
-        N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
-        N_input = QLineEdit()
-        N_input.setText(default_values['NL Cycles'])
-        form_layout.addRow(N, N_input)
-        delta = QLabel('NL Delta')
-        delta.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
-        delta_input = QLineEdit()
-        delta_input.setText(default_values['NL Delta'])
-        form_layout.addRow(delta, delta_input)
-        order = QLabel('NL Bw-order')
-        order.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
-        order_input = QLineEdit()
-        order_input.setText(default_values['NL Bw-order'])
-        form_layout.addRow(order, order_input)
-        cutoff = QLabel('NL Bw-cutoff')
-        cutoff.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
-        cutoff_input = QLineEdit()
-        cutoff_input.setText(default_values['NL Bw-cutoff'])
-        form_layout.addRow(cutoff, cutoff_input)
+        self.N = QLabel('NL Cycles')
+        self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
+        self.N_input = QLineEdit()
+        self.N_input.setText(default_values['NL Cycles'])
+        form_layout.addRow(self.N, self.N_input)
+        self.delta_nl = QLabel('NL Delta')
+        self.delta_nl.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
+        self.delta_nl_input = QLineEdit()
+        self.delta_nl_input.setText(default_values['NL Delta'])
+        form_layout.addRow(self.delta_nl, self.delta_nl_input)
+        self.order_nl = QLabel('NL Bw-order')
+        self.order_nl.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_nl_input = QLineEdit()
+        self.order_nl_input.setText(default_values['NL Bw-order'])
+        form_layout.addRow(self.order_nl, self.order_nl_input)
+        self.cutoff_nl = QLabel('NL Bw-cutoff')
+        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_nl_input = QLineEdit()
+        self.cutoff_nl_input.setText(default_values['NL Bw-cutoff'])
+        form_layout.addRow(self.cutoff_nl, self.cutoff_nl_input)
         self.nl_group.setLayout(form_layout)
         #self.nl_group.setLayout(self.create_form_layout(["NL Cycles", "NL Delta", "NL Bw-order", "NL Bw-cutoff"], default_values, self.parameters))
         self.nl_group.setEnabled(True)
         #self.nl_check.stateChanged.connect(lambda: self.nl_group.setEnabled(self.nl_check.isChecked()))
         layout.addWidget(self.nl_check)
         layout.addWidget(self.nl_group)
+        
+        # Butterworth filter 
+        self.bw_check = QCheckBox("Apply Buttwrworth Filter")
+        self.bw_check.setChecked(apply_bw)
+        self.bw_group = QGroupBox()
+        form_layout = QFormLayout()
+        self.order_bw = QLabel('Bw-order')
+        self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_bw_input = QLineEdit()
+        self.order_bw_input.setText(default_values['Bw-order'])
+        form_layout.addRow(self.order_bw, self.order_bw_input)
+        self.cutoff_bw = QLabel('Bw-cutoff')
+        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_bw_input = QLineEdit()
+        self.cutoff_bw_input.setText(default_values['Bw-cutoff'])
+        form_layout.addRow(self.cutoff_bw, self.cutoff_bw_input)
+        self.bw_group.setLayout(form_layout)
+        self.bw_group.setEnabled(True)
+        layout.addWidget(self.bw_check)
+        layout.addWidget(self.bw_group)
+        
+        # Gaussian filter 
+        self.gaussian_check = QCheckBox("Apply Gaussian Filter")
+        self.gaussian_check.setChecked(apply_gaussian)
+        self.gaussian_group = QGroupBox()
+        form_layout = QFormLayout()
+        self.cutoff_gaussian = QLabel('Gaussian cutoff')
+        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_gaussian_input = QLineEdit()
+        self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
+        form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
+        self.gaussian_group.setLayout(form_layout)
+        self.gaussian_group.setEnabled(True)
+        layout.addWidget(self.gaussian_check)
+        layout.addWidget(self.gaussian_group)
 
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1786,23 +2104,27 @@ class FilterSettingDialogue(QDialog):
         self.apply_wf = self.wiener_check.isChecked()
         self.apply_absf = self.absf_check.isChecked()
         self.apply_nl = self.nl_check.isChecked()
-        parameters = {label: edit.text() for label, edit in self.parameters.items()}
+        self.apply_bw = self.bw_check.isChecked()
+        self.apply_gaussian = self.gaussian_check.isChecked()
+        parameters = {'WF Delta': self.delta_wf_input.text(),
+                      'WF Bw-order': self.order_wf_input.text(),
+                      'WF Bw-cutoff': self.cutoff_wf_input.text(),
+                      'ABSF Delta': self.delta_absf_input.text(),
+                      'ABSF Bw-order': self.order_absf_input.text(),
+                      'ABSF Bw-cutoff': self.cutoff_absf_input.text(),
+                      'NL Cycles': self.N_input.text(),
+                      'NL Delta': self.delta_nl_input.text(),
+                      'NL Bw-order': self.order_nl_input.text(),
+                      'NL Bw-cutoff': self.cutoff_nl_input.text(),
+                      'Bw-order': self.order_bw_input.text(),
+                      'Bw-cutoff': self.cutoff_bw_input.text(),
+                      'GS-cutoff': self.cutoff_gaussian_input.text()
+            }
         
-        self.parameters = parameters
-        # print(self.parameters)
-        
+        self.parameters = parameters        
         
         self.accept()
 
-    # def create_form_layout(self, labels, default_values, inputs_dict):
-    #     form_layout = QFormLayout()
-    #     for label in labels:
-    #         line_edit = QLineEdit()
-    #         if label in default_values:
-    #             line_edit.setText(default_values[label])
-    #         form_layout.addRow(QLabel(label), line_edit)
-    #         inputs_dict[label] = line_edit
-    #     return form_layout
         
     
 #=========== Rotate image dialogue ==================================
@@ -1855,6 +2177,107 @@ class SetScaleDialog(QDialog):
         self.scale = self.scale_input.text()
         self.units = self.unit_input.text()
         self.accept()
+        
+
+#================= Align Stack dialogue =====================================
+class AlignStackDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setWindowTitle('Align stack parameters')
+        layout = QVBoxLayout()
+        # algorithm = QLabel('Alignment algorithm')
+        # self.cc = QRadioButton('Phase Cross-Correlation')
+        # self.cc.setChecked(True)
+        # self.of_ilk = QRadioButton('Optical Flow (iterative Lucas-Kanade)')
+        # self.of_tvl1 = QRadioButton('Optical Flow (TV-L1)')
+        # layout.addWidget(algorithm)
+        # layout.addWidget(self.cc)
+        # layout.addWidget(self.of_ilk)
+        # layout.addWidget(self.of_tvl1)
+        self.apply_window_check = QCheckBox('Apply a Hann window filter')
+        self.apply_window_check.setChecked(True)
+        self.crop_img_check = QCheckBox('Crop to common area')
+        self.crop_img_check.setChecked(True)
+        self.crop_to_square_check = QCheckBox('Crop to the biggest square')
+        self.crop_to_square_check.setEnabled(True)
+        self.crop_img_check.stateChanged.connect(self.crop_to_square_change)
+        self.crop_to_square_check.setChecked(False)
+        layout.addWidget(self.apply_window_check)
+        layout.addWidget(self.crop_img_check)
+        layout.addWidget(self.crop_to_square_check)
+        
+        # Dialog Buttons (OK and Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+        
+    def crop_to_square_change(self):
+        enable = not self.crop_to_square_check.isEnabled()
+        self.crop_to_square_check.setEnabled(enable)
+        if not enable:
+            self.crop_to_square_check.setChecked(False)
+            
+    # def get_algorithm(self):
+    #     if self.cc.isChecked():
+    #         self.algorithm = "Phase Cross-Correlation"
+    #     elif self.of_ilk.isChecked():
+    #         self.algorithm = "Optical Flow iLK"
+    #     elif self.of_tvl1.isChecked():
+    #         self.algorithm = "Optical Flow TV-L1"
+        
+    def handle_ok(self):
+        #self.get_algorithm()
+        self.crop_to_square = False
+        self.apply_window = self.apply_window_check.isChecked()
+        self.crop_img = self.crop_img_check.isChecked()
+        if self.crop_img:
+            self.crop_to_square = self.crop_to_square_check.isChecked()
+            
+        self.accept()
+        
+        
+#================= Align Stack with Optical Flow dialogue =====================================
+# class AlignStackOFDialog(QDialog):
+#     def __init__(self, parent=None):
+#         super().__init__(parent)
+#         self.algorithm = None
+#         self.setWindowTitle('Align stack parameters')
+#         layout = QVBoxLayout()
+#         algorithm = QLabel('Alignment algorithm')
+#         self.of_ilk = QRadioButton('Optical Flow (iterative Lucas-Kanade)')
+#         self.of_ilk.setChecked(True)
+#         self.of_tvl1 = QRadioButton('Optical Flow (TV-L1)')
+#         layout.addWidget(algorithm)
+#         layout.addWidget(self.of_ilk)
+#         layout.addWidget(self.of_tvl1)
+#         self.apply_window_check = QCheckBox('Apply a Hann window filter')
+#         self.apply_window_check.setChecked(False)
+#         layout.addWidget(self.apply_window_check)
+        
+        
+#         # Dialog Buttons (OK and Cancel)
+#         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+#         buttons.accepted.connect(self.handle_ok)
+#         buttons.rejected.connect(self.reject)
+#         layout.addWidget(buttons)
+        
+#         self.setLayout(layout)
+        
+        
+#     def handle_ok(self):
+#         if self.of_ilk.isChecked():
+#             self.algorithm = "Optical Flow iLK"
+#         elif self.of_tvl1.isChecked():
+#             self.algorithm = "Optical Flow TV-L1"
+        
+#         self.apply_window = self.apply_window_check.isChecked()
+            
+#         self.accept()
+                
 
 
 #=============== Display metadata window ===========================
@@ -2197,17 +2620,23 @@ def norm_img(data):
 def apply_filter(img, filter_type, **kwargs):
     filter_dict = {'Wiener': filters.wiener_filter,
                    'ABS': filters.abs_filter,
-                   'NL': filters.nlfilter}
+                   'NL': filters.nlfilter,
+                   'BW': filters.bw_lowpass,
+                   'Gaussian': filters.gaussian_lowpass
+                   }
     
     
     if filter_type in filter_dict.keys():
         img = filters.crop_to_square(img)
-        img_filtered, _  = filter_dict[filter_type](img, **kwargs)
-        return img_filtered
+        result = filter_dict[filter_type](img, **kwargs)
+        if filter_type in ['Wiener', 'ABS', 'NL']:
+            return result[0]
+        elif filter_type in ['BW', 'Gaussian']:
+            return result
 
 
 def save_as_tif16(input_file, f_name, output_dir, 
-                  apply_wf=False, apply_absf=False, apply_nl=False):
+                  apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False):
     img = copy.deepcopy(input_file)
     # Check if the image data is compatible with 16-bit int
     if all(i.is_integer() for i in img['data'].flat):
@@ -2232,12 +2661,20 @@ def save_as_tif16(input_file, f_name, output_dir,
         img['data'] = input_file['nl']
         save_as_tif16(img, f_name + '_NL', output_dir)
         
+    if apply_bw:
+        img['data'] = input_file['bw']
+        save_as_tif16(img, f_name + '_BW', output_dir)
+        
+    if apply_gaussian:
+        img['data'] = input_file['gaussian']
+        save_as_tif16(img, f_name + '_Gaussian', output_dir)
+        
        
     
     
 
 def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True, 
-                  apply_wf=False, apply_absf=False, apply_nl=False):
+                  apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False):
     im_data = norm_img(input_file['data']) * 255
     im = Image.fromarray(im_data.astype('int16'))
     im = im.convert('L')
@@ -2261,6 +2698,14 @@ def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True,
     if apply_nl:
         nl = {'data': input_file['nl'], 'axes': input_file['axes'], 'metadata': input_file['metadata']}
         save_with_pil(nl, f_name + '_NL', output_dir, f_type, scalebar=scalebar)
+        
+    if apply_bw:
+        bw = {'data': input_file['bw'], 'axes': input_file['axes'], 'metadata': input_file['metadata']}
+        save_with_pil(bw, f_name + '_BW', output_dir, f_type, scalebar=scalebar)
+        
+    if apply_gaussian:
+        gaussian = {'data': input_file['gaussian'], 'axes': input_file['axes'], 'metadata': input_file['metadata']}
+        save_with_pil(gaussian, f_name + '_Gaussian', output_dir, f_type, scalebar=scalebar)
     
 
 def add_scalebar_to_pil(im, scale, unit):
@@ -2334,6 +2779,11 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
     order_nl = kwargs['order_nl']
     cutoff_nl = kwargs['cutoff_nl'] 
     N = kwargs['N']
+    apply_bw = kwargs['apply_bw']
+    order_bw = kwargs['order_bw']
+    cutoff_bw = kwargs['cutoff_bw']
+    apply_gaussian = kwargs['apply_gaussian']
+    cutoff_gaussian = kwargs['cutoff_gaussian']    
     scale_bar = kwargs['scalebar']
     #Save images
 
@@ -2342,28 +2792,39 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
         os.makedirs(output_dir)
         
     if apply_wf:
+        print(f'Applying Wiener filter to {f_name}...')
         input_file['wf'] = apply_filter(input_file['data'], 'Wiener', 
                                 delta=delta_wf, lowpass_order=order_wf, lowpass_cutoff=cutoff_wf)
         
     if apply_absf:
+        print(f'Applying ABS filter to {f_name}...')
         input_file['absf'] = apply_filter(input_file['data'], 'ABS',
                                           delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
         
     if apply_nl:
+        print(f'Applying Non-Linear filter to {f_name}...')
         input_file['nl'] = apply_filter(input_file['data'], 'NL', 
                                         N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
-    
+    if apply_bw:
+        print(f'Applying Butterworth low-pass filter to {f_name}...')
+        input_file['bw'] = apply_filter(input_file['data'], 'BW',
+                                        order = order_bw, cutoff_ratio = cutoff_bw)
+        
+    if apply_gaussian:
+        print(f'Applying Gaussian low-pass filter to {f_name}...')
+        input_file['gaussian'] = apply_filter(input_file['data'], 'Gaussian',
+                                              cutoff_ratio = cutoff_gaussian)
     if f_type == 'tiff':
         # For tiff format, save directly as 16-bit with calibration, no scalebar
         # No manipulation of data but just set to int16
-        save_as_tif16(input_file, f_name, output_dir, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl)
+        save_as_tif16(input_file, f_name, output_dir, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
 
     else:
         if f_type == 'tiff + png':
-            save_as_tif16(input_file, f_name, output_dir, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl)
+            save_as_tif16(input_file, f_name, output_dir, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
             f_type = 'png'
             
-        save_with_pil(input_file, f_name, output_dir, f_type, scalebar=scale_bar, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl)
+        save_with_pil(input_file, f_name, output_dir, f_type, scalebar=scale_bar, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
         
         
         
@@ -2533,7 +2994,19 @@ def main():
 
 
 if __name__ == "__main__":
-    
+    print('='*50)
+    print('''
+          TemCompanion 
+          --- a convenient tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg.
+              
+          This app was designed by Dr. Tao Ma. 
+          Address your questions and suggestions to matao1984@gmail.com.
+          Please see the "About" before use!
+          Hope you get good results and publications from it!
+          ''')
+                
+    print('          Version: ' + ver + ' Released: ' + rdate)
+    print('='*50)
     
     
     main()

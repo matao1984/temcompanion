@@ -56,6 +56,19 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v0.3
+- New feature: "Stack" menu for image stacks
+  - Crop stack
+  - Rotate stack
+  - Export stack or series
+  - Align stack with phase cross-coreelation (rigid) or optical flow iLK (non-rigid)
+  - Integrate stack
+  - Improved font and color for the frame slider for image stacks
+- Fixed filter parameters cannot be set
+- Added two low-pass filters: Butterworth and Gaussian
+- Remove filter menu on FFT images
+
+
 ### v0.2
 - New feature: Extract line profile from an image. 
   - The line width can be defined.

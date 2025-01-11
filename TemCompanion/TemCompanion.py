@@ -697,15 +697,18 @@ class PlotCanvas(QMainWindow):
 
 
     def wiener_filter(self):
+        
         filter_parameters = UI_TemCompanion.filter_parameters        
         delta_wf = int(filter_parameters['WF Delta'])
         order_wf = int(filter_parameters['WF Bw-order'])
         cutoff_wf = float(filter_parameters['WF Bw-cutoff'])
         img_wf = self.get_img_dict_from_canvas()
+        title = self.windowTitle()
+        print(f'Applying Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}...')
         wf = apply_filter(img_wf['data'], 'Wiener', delta=delta_wf, lowpass_order=order_wf, lowpass_cutoff=cutoff_wf)
         img_wf['data'] = wf
         preview_name = self.canvas.canvas_name + '_WF'
-        title = self.windowTitle()
+        
         self.preview_dict[preview_name] = PlotCanvas(img_wf)
         self.preview_dict[preview_name].setWindowTitle(title + ' Wiener Filtered')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
@@ -722,10 +725,11 @@ class PlotCanvas(QMainWindow):
         order_absf = int(filter_parameters['ABSF Bw-order'])
         cutoff_absf = float(filter_parameters['ABSF Bw-cutoff'])
         img_absf = self.get_img_dict_from_canvas()
+        title = self.windowTitle()
+        print(f'Applying ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}...')
         absf = apply_filter(img_absf['data'], 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
         img_absf['data'] = absf
         preview_name = self.canvas.canvas_name + '_ABSF'
-        title = self.windowTitle()
         self.preview_dict[preview_name] = PlotCanvas(img_absf)
                
         self.preview_dict[preview_name].setWindowTitle(title + ' ABS Filtered')
@@ -744,10 +748,11 @@ class PlotCanvas(QMainWindow):
         cutoff_nl = float(filter_parameters['NL Bw-cutoff'])
         N = int(filter_parameters['NL Cycles'])
         img_nl = self.get_img_dict_from_canvas()
+        title = self.windowTitle()
+        print(f'Applying Non-Linear filter to {title} with delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}...')
         nl = apply_filter(img_nl['data'], 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
         img_nl['data'] = nl
         preview_name = self.canvas.canvas_name + '_NL'
-        title = self.windowTitle()
         self.preview_dict[preview_name] = PlotCanvas(img_nl)
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
@@ -764,10 +769,11 @@ class PlotCanvas(QMainWindow):
         order_bw = int(filter_parameters['Bw-order'])
         cutoff_bw = float(filter_parameters['Bw-cutoff'])
         img_bw = self.get_img_dict_from_canvas()
+        title = self.windowTitle()
+        print(f'Applying Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}...')
         bw = apply_filter(img_bw['data'], 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
         img_bw['data'] = bw
         preview_name = self.canvas.canvas_name + '_Bw'
-        title = self.windowTitle()
         self.preview_dict[preview_name] = PlotCanvas(img_bw)
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
@@ -782,10 +788,11 @@ class PlotCanvas(QMainWindow):
         filter_parameters = UI_TemCompanion.filter_parameters        
         cutoff_gaussian = float(filter_parameters['GS-cutoff'])
         img_gaussian = self.get_img_dict_from_canvas()
+        title = self.windowTitle()
+        print(f'Applying Gaussian filter to {title} with cutoff = {cutoff_gaussian}...')
         gaussian = apply_filter(img_gaussian['data'], 'Gaussian', cutoff_ratio=cutoff_gaussian)
         img_gaussian['data'] = gaussian
         preview_name = self.canvas.canvas_name + '_GS'
-        title = self.windowTitle()
         self.preview_dict[preview_name] = PlotCanvas(img_gaussian)
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
@@ -2980,6 +2987,20 @@ def line(p1, p2):
 
 #====Application entry==================================
 QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+print('='*50)
+print('''
+      TemCompanion 
+      --- a convenient tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg.
+          
+      This app was designed by Dr. Tao Ma. 
+      Address your questions and suggestions to matao1984@gmail.com.
+      Please see the "About" before use!
+      Hope you get good results and publications from it!
+      ''')
+            
+print('          Version: ' + ver + ' Released: ' + rdate)
+print('='*50)
+    
 
 def main():
     
@@ -2994,19 +3015,6 @@ def main():
 
 
 if __name__ == "__main__":
-    print('='*50)
-    print('''
-          TemCompanion 
-          --- a convenient tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg.
-              
-          This app was designed by Dr. Tao Ma. 
-          Address your questions and suggestions to matao1984@gmail.com.
-          Please see the "About" before use!
-          Hope you get good results and publications from it!
-          ''')
-                
-    print('          Version: ' + ver + ' Released: ' + rdate)
-    print('='*50)
-    
+
     
     main()

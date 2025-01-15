@@ -12,12 +12,18 @@
 # Added "Cancel" button to the crop function
 # Added export metadata to json and pkl
 # Added angle measurement for distance measurement
-# 2025- v0.3
+# 2025-01-10 v0.3
 # Fixed filter parameters cannot be set
 # Added two low-pass filters: Butterworth and Gaussian
 # Remove filter menu on FFT images
 # Added operations on image stacks, including cropping, rotating, alignment (cross correlation and optical flow), and integration
 # Improved font and color for the frame slider for image stacks
+# 2025-01-15 v0.4
+# New feature: Live FFT with resizable window
+# Added axes viewer to view image size, scale, etc.
+# Hold shift key to crop a square
+# Import image formats like tif, png, jpg, etc, both rgb and grayscale
+
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -60,9 +66,9 @@ from skimage.transform import warp
 
 
 
-ver = '0.3'
+ver = '0.4'
 #rdate = date.today().strftime('%Y-%m-%d')
-rdate = '2025-01-10'
+rdate = '2025-01-15'
 
 
 
@@ -212,7 +218,7 @@ class UI_TemCompanion(QMainWindow):
 
     def openfile(self):
         self.files, _ = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Pickle Dictionary Files (*.pkl)")
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
         if self.files:
             self.output_dir = getDirectory(self.files[0],s='/')
             self.outputdirbox.setText(self.output_dir)
@@ -433,11 +439,18 @@ class PlotCanvas(QMainWindow):
         self.axes.title.set_visible(False)
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setParent(self.main_frame)
+        
+        
+        # Set the click to focus to receive key press event
+        self.canvas.setFocusPolicy( QtCore.Qt.ClickFocus )
+        self.canvas.setFocus()
+
         # Attach the image dict to canvas
         self.canvas.data = copy.deepcopy(img)
         self.canvas.img_idx = None  
         self.preview_dict = {}
         self.selector = None
+        
         
         # Variables for the measure function
         self.line = None
@@ -450,6 +463,8 @@ class PlotCanvas(QMainWindow):
         self.button_press_cid = None
         self.button_release_cid = None
         self.motion_notify_cid = None
+        
+        
         
         self.distance_fft = 0
         self.ang = 0
@@ -482,13 +497,15 @@ class PlotCanvas(QMainWindow):
 
         # Display a message in the status bar
         self.statusBar.showMessage("Ready")
+        
+        
     
-    def closeEvent(self, event):
-        # Close all window
-        if self.preview_dict:
-            for plot in self.preview_dict.keys():
-                self.preview_dict[plot].close()
-        event.accept()
+    # def closeEvent(self, event):
+    #     # Close all window
+    #     if self.preview_dict:
+    #         for plot in self.preview_dict.keys():
+    #             self.preview_dict[plot].close()
+    #     event.accept()
         
         
         
@@ -521,6 +538,9 @@ class PlotCanvas(QMainWindow):
         windowedfft_action = QAction('Windowed FFT', self)
         windowedfft_action.triggered.connect(self.windowedfft)
         edit_menu.addAction(windowedfft_action)
+        livefft_action = QAction('Live FFT', self)
+        livefft_action.triggered.connect(self.live_fft)
+        edit_menu.addAction(livefft_action)
         
         # Analyze menu and actions
         analyze_menu = menubar.addMenu('Analyze')
@@ -562,7 +582,10 @@ class PlotCanvas(QMainWindow):
 
         # Info menu
         info_menu = menubar.addMenu('Info')
-        info_action = QAction('Image Info', self)
+        axes_action = QAction('Image Axes', self)
+        axes_action.triggered.connect(self.show_axes)
+        info_menu.addAction(axes_action)
+        info_action = QAction('View Metadata', self)
         info_action.triggered.connect(self.show_info)
         info_menu.addAction(info_action)
         about_action = QAction('About', self)
@@ -586,13 +609,14 @@ class PlotCanvas(QMainWindow):
     def crop(self):
         ax = self.canvas.figure.get_axes()[0]
         # Display a message in the status bar
-        self.statusBar.showMessage("Drag a rectangle to crop")
+        self.statusBar.showMessage("Drag a rectangle to crop. Hold Shift to draw a square.")
+        
 
         
         if self.selector is None:
             self.selector = RectangleSelector(ax, onselect=self.on_select, interactive=True, useblit=True,
-                                              drag_from_anywhere=True,
-                                              button=[1],
+                                              drag_from_anywhere=True, use_data_coordinates=True,
+                                              button=[1]
                                               )
             
             # Crop button
@@ -612,8 +636,8 @@ class PlotCanvas(QMainWindow):
 
     def on_select(self, eclick, erelease):
         pass  # handle the crop in the confirm_crop function
-        
-        
+
+
 
 
     def confirm_crop(self):
@@ -629,7 +653,7 @@ class PlotCanvas(QMainWindow):
                 # Create a new PlotCanvas to display
                 title = self.windowTitle()
                 preview_name = self.canvas.canvas_name + '_cropped'
-                self.preview_dict[preview_name] = PlotCanvas(img)
+                self.preview_dict[preview_name] = PlotCanvas(img, parent=self)
                 self.preview_dict[preview_name].setWindowTitle(title + '_cropped')
                 self.preview_dict[preview_name].canvas.canvas_name = preview_name
                 self.preview_dict[preview_name].show()
@@ -644,6 +668,7 @@ class PlotCanvas(QMainWindow):
             self.selector = None            
             self.ok_button.hide()
             self.cancel_button.hide()
+            
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
             self.fig.canvas.draw_idle()
@@ -686,7 +711,7 @@ class PlotCanvas(QMainWindow):
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
-            self.preview_dict[preview_name] = PlotCanvas(img)
+            self.preview_dict[preview_name] = PlotCanvas(img, parent=self)
             self.preview_dict[preview_name].setWindowTitle(title + ' rotated by {} deg'.format(ang))
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
@@ -709,7 +734,7 @@ class PlotCanvas(QMainWindow):
         img_wf['data'] = wf
         preview_name = self.canvas.canvas_name + '_WF'
         
-        self.preview_dict[preview_name] = PlotCanvas(img_wf)
+        self.preview_dict[preview_name] = PlotCanvas(img_wf, parent=self)
         self.preview_dict[preview_name].setWindowTitle(title + ' Wiener Filtered')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         self.preview_dict[preview_name].show()
@@ -730,7 +755,7 @@ class PlotCanvas(QMainWindow):
         absf = apply_filter(img_absf['data'], 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
         img_absf['data'] = absf
         preview_name = self.canvas.canvas_name + '_ABSF'
-        self.preview_dict[preview_name] = PlotCanvas(img_absf)
+        self.preview_dict[preview_name] = PlotCanvas(img_absf, parent=self)
                
         self.preview_dict[preview_name].setWindowTitle(title + ' ABS Filtered')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
@@ -753,7 +778,7 @@ class PlotCanvas(QMainWindow):
         nl = apply_filter(img_nl['data'], 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
         img_nl['data'] = nl
         preview_name = self.canvas.canvas_name + '_NL'
-        self.preview_dict[preview_name] = PlotCanvas(img_nl)
+        self.preview_dict[preview_name] = PlotCanvas(img_nl, parent=self)
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         self.preview_dict[preview_name].setWindowTitle(title + ' NL Filtered')
@@ -774,7 +799,7 @@ class PlotCanvas(QMainWindow):
         bw = apply_filter(img_bw['data'], 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
         img_bw['data'] = bw
         preview_name = self.canvas.canvas_name + '_Bw'
-        self.preview_dict[preview_name] = PlotCanvas(img_bw)
+        self.preview_dict[preview_name] = PlotCanvas(img_bw, parent=self)
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         self.preview_dict[preview_name].setWindowTitle(title + ' Butterworth Filtered')
@@ -793,7 +818,7 @@ class PlotCanvas(QMainWindow):
         gaussian = apply_filter(img_gaussian['data'], 'Gaussian', cutoff_ratio=cutoff_gaussian)
         img_gaussian['data'] = gaussian
         preview_name = self.canvas.canvas_name + '_GS'
-        self.preview_dict[preview_name] = PlotCanvas(img_gaussian)
+        self.preview_dict[preview_name] = PlotCanvas(img_gaussian,parent=self)
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         self.preview_dict[preview_name].setWindowTitle(title + ' Gaussian Filtered')
@@ -815,7 +840,7 @@ class PlotCanvas(QMainWindow):
         elif self.units in ['1/um', '1/µm', '1/nm', '1/pm']:
             dimension = 'si-length-reciprocal' # Diffraction
         else: # Cannot parse the unit correctly, reset to pixel scale
-            self.units = ''
+            self.units = 'px'
             self.scale = 1
             dimension = 'pixel-length'
         self.scalebar = ScaleBar(self.scale, self.units, location="lower left",
@@ -829,13 +854,25 @@ class PlotCanvas(QMainWindow):
         # Show image infomation function here
         img_dict = self.get_img_dict_from_canvas()
         metadata = img_dict['metadata']
+        
         try: 
             extra_metadata = img_dict['original_metadata']
             metadata.update(extra_metadata)
         except:
             pass
-        self.metadata_viewer = MetadataViewer(metadata)
+        self.metadata_viewer = MetadataViewer(metadata, parent=self)
         self.metadata_viewer.show()
+        
+    def show_axes(self):
+        # Show image axes including size, scale, etc.
+        axes = self.get_img_dict_from_canvas()['axes']
+        axes_dict = {}
+        for ax in axes:
+            axes_dict[ax['name']] = ax
+            
+        self.axes_viewer = DictionaryTreeWidget(axes_dict, parent=self)
+        self.axes_viewer.show()
+        
         
     def setscale(self):
         # Open a dialog to take the scale
@@ -993,7 +1030,7 @@ class PlotCanvas(QMainWindow):
             preview_name = self.canvas.canvas_name + '_FFT'
             
             title = self.windowTitle()
-            self.preview_dict[preview_name] = PlotCanvasFFT(img_dict)
+            self.preview_dict[preview_name] = PlotCanvasFFT(img_dict, parent=self)
             self.preview_dict[preview_name].setWindowTitle('FFT of ' + title)
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
@@ -1014,10 +1051,77 @@ class PlotCanvas(QMainWindow):
             
             preview_name = self.canvas.canvas_name + '_Windowed FFT'
             title = self.windowTitle()
-            self.preview_dict[preview_name] = PlotCanvasFFT(img_dict)
+            self.preview_dict[preview_name] = PlotCanvasFFT(img_dict, parent=self)
             self.preview_dict[preview_name].setWindowTitle('Windowed FFT of ' + title)
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
+            
+    def live_fft(self):
+        ax = self.canvas.figure.get_axes()[0]
+        # Display a message in the status bar
+        self.statusBar.showMessage("Drag the square to ROI compute FFT. Resize if needed.")
+        
+
+        
+        if self.selector is None:
+            self.selector = RectangleSelector(ax, onselect=self.fft_select, interactive=True, useblit=True,
+                                              drag_from_anywhere=True, use_data_coordinates=True,
+                                              button=[1],ignore_event_outside=True
+                                              )
+            self.current_data = self.get_current_img_from_canvas()
+            im_x, im_y = self.current_data.shape
+            fft_size = min(int(im_x/2), int(im_y/2))
+            x_min = int(im_x/4)
+            x_max = x_min + fft_size
+            y_min = int(im_y/4)
+            y_max = y_min + fft_size
+            
+            self.selector.extents = (x_min, x_max, y_min, y_max)
+            
+            self.selector.set_active(True)
+            self.fig.canvas.draw_idle()
+            
+            preview_name = 'Live FFT'
+            title = self.windowTitle()
+            self.live_img = copy.deepcopy(self.canvas.data)
+            self.live_img['data'] = self.current_data[x_min:x_max, y_min:y_max]
+            self.preview_dict[preview_name] = PlotCanvasFFT(self.live_img, parent=self)
+            self.preview_dict[preview_name].setWindowTitle('Live FFT of ' + title)
+            self.preview_dict[preview_name].canvas.canvas_name = preview_name
+            self.preview_dict[preview_name].show()
+        
+    def fft_select(self, eclick, erelease):
+        # Keep the box square
+        x_min, x_max, y_min, y_max = eclick.xdata, erelease.xdata, eclick.ydata, erelease.ydata
+        x_min = int(x_min)
+        x_max = int(x_max)
+        y_min = int(y_min)
+        y_max = int(y_max)
+        dx = x_max - x_min
+        dy = y_max - y_min
+        if dx != dy:
+            d = min(dx, dy)
+            x_max = x_min + d
+            y_max = y_min + d
+            self.selector.extents = (x_min, x_max, y_min, y_max)
+        self.live_img['data'] = self.current_data[y_min:y_max,x_min:x_max]
+        # fft_size = self.live_img['data'].shape[0]
+        # fft_scale = 1 / self.scale / fft_size
+        # Update the FFT 
+        self.preview_dict['Live FFT'].update_img(self.live_img['data'])
+        
+        print(f"Displaying FFT from {y_min}:{y_max}, {x_min}:{x_max}")
+    
+    def stop_live_fft(self):
+        if self.selector is not None:
+            self.selector.set_active(False)
+            self.selector.set_visible(False)
+            self.selector = None
+            # Display a message in the status bar
+            self.statusBar.showMessage("Ready")
+            self.canvas.draw_idle()
+        
+        
             
 
 #============ Line profile function ==========================================
@@ -1032,8 +1136,8 @@ class PlotCanvas(QMainWindow):
         
 #======= Canvas to show image stacks==========================================
 class PlotCanvas3d(PlotCanvas):
-    def __init__(self, img):
-        super().__init__(img)
+    def __init__(self, img, parent=None):
+        super().__init__(img, parent)
         stack_menu = QMenu('Stack', self) 
         self.menubar.insertMenu(self.menubar.children()[5].children()[0],stack_menu)
         crop_stack = QAction('Crop Stack', self)
@@ -1113,7 +1217,7 @@ class PlotCanvas3d(PlotCanvas):
                 # Create a new PlotCanvas to display
                 title = self.windowTitle()
                 preview_name = self.canvas.canvas_name + '_cropped'
-                self.preview_dict[preview_name] = PlotCanvas3d(img)
+                self.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
                 self.preview_dict[preview_name].setWindowTitle(title + '_cropped')
                 self.preview_dict[preview_name].canvas.canvas_name = preview_name
                 self.preview_dict[preview_name].show()
@@ -1153,7 +1257,7 @@ class PlotCanvas3d(PlotCanvas):
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
-            self.preview_dict[preview_name] = PlotCanvas3d(img)
+            self.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
             self.preview_dict[preview_name].setWindowTitle(title + ' rotated by {} deg'.format(ang))
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
@@ -1231,7 +1335,7 @@ class PlotCanvas3d(PlotCanvas):
             # Create a new PlotCanvas to display
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_aligned'
-            self.preview_dict[preview_name] = PlotCanvas3d(aligned_img)
+            self.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self)
             self.preview_dict[preview_name].setWindowTitle(title + '_aligned by Cross Correlation')
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
@@ -1279,7 +1383,7 @@ class PlotCanvas3d(PlotCanvas):
         # Create a new PlotCanvas to display
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_aligned'
-        self.preview_dict[preview_name] = PlotCanvas3d(aligned_img)
+        self.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self)
         self.preview_dict[preview_name].setWindowTitle(title + '_aligned by Optical Flow')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         self.preview_dict[preview_name].show()
@@ -1296,7 +1400,7 @@ class PlotCanvas3d(PlotCanvas):
         # Create a new PlotCanvs to display        
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_integrated'
-        self.preview_dict[preview_name] = PlotCanvas(integrated_img)
+        self.preview_dict[preview_name] = PlotCanvas(integrated_img, parent=self)
         self.preview_dict[preview_name].setWindowTitle(title + ' integrated')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         self.preview_dict[preview_name].show()
@@ -1359,9 +1463,9 @@ class PlotCanvas3d(PlotCanvas):
 
 #========== PlotCanvas for FFT ================================================
 class PlotCanvasFFT(PlotCanvas):
-    def __init__(self, img):
+    def __init__(self, img, parent=None):
         # img is the image dictionary, NOT FFT. FFT will be calculated in create_img()
-        super().__init__(img)
+        super().__init__(img, parent)
         
         analyze_menu = self.menubar.children()[3] #Analyze is at #3
         measure_fft_action = QAction('Measure FFT', self)
@@ -1411,6 +1515,43 @@ class PlotCanvasFFT(PlotCanvas):
                                  color='yellow')
         self.axes.add_artist(self.scalebar)
         self.fig.tight_layout(pad=0)
+        
+    def update_img(self, real_data):
+        # Compute fft from real_data and update the display and scale
+        fft_data = np.abs(fftshift(fft2(real_data)))
+        imsize = fft_data.shape[0]
+        im_scale = self.parent().scale
+        fft_scale = 1 / im_scale / imsize
+        # update the scale
+        self.scale = fft_scale
+        self.canvas.data['data'] = fft_data
+        # update the image canvas
+        self.axes.clear()
+        
+        vmin, vmax = np.percentile(fft_data, (30,99.9))
+        
+        self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
+        self.axes.set_axis_off()
+        #Scale bar with inverse unit        
+        self.scalebar = ScaleBar(self.scale, self.units, dimension='si-length-reciprocal', 
+                                 location="lower left", scale_loc="top", frameon=False, sep=2, 
+                                 color='yellow')
+        self.axes.add_artist(self.scalebar)
+        self.fig.tight_layout(pad=0)
+        
+        
+        # # Update the new size and scale to the image dict
+        self.canvas.data['axes'][0]['scale'] = self.scale
+        self.canvas.data['axes'][1]['scale'] = self.scale 
+        self.canvas.data['axes'][0]['size'] = imsize
+        self.canvas.data['axes'][1]['size'] = imsize
+       
+        self.canvas.draw_idle()
+        
+    def closeEvent(self, event):
+        self.parent().stop_live_fft()
+        
+        
         
 #======== Measure FFT function ==============================================
     def start_fft_measurement(self):
@@ -2289,8 +2430,8 @@ class AlignStackDialog(QDialog):
 
 #=============== Display metadata window ===========================
 class MetadataViewer(QMainWindow):
-    def __init__(self, metadata):
-        super().__init__()
+    def __init__(self, metadata, parent=None):
+        super().__init__(parent)
         self.setWindowTitle('Metadata Viewer')
         self.setGeometry(100, 100, 800, 600)
 
@@ -2348,6 +2489,52 @@ class MetadataViewer(QMainWindow):
             if self.selected_type == 'Pickle Dictionary Files (*.pkl)':
                 with open(self.file_path, 'wb') as f:
                     pickle.dump(self.metadata, f)
+                    
+                    
+# ================== Axes Viewer =================================
+class DictionaryTreeWidget(QMainWindow):
+    def __init__(self, axes_dict, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Axes Information')
+        self.setGeometry(100, 100, 400, 350)
+
+        # Create a QTreeWidget
+        self.tree = QTreeWidget(self)
+        self.setCentralWidget(self.tree)
+
+        # Set Up Columns
+        self.tree.setColumnCount(2)
+        self.tree.setHeaderLabels(['Item', 'Value'])
+        
+        # Set default column widths
+        self.tree.setColumnWidth(0, 150)  # Width for the 'Key' column
+        self.tree.setColumnWidth(1, 250)  # Width for the 'Value' column
+
+
+        # Fill the tree with dictionary data
+        self.populate_tree(axes_dict)
+        
+        # Expand all items by default
+        self.tree.expandAll()
+
+
+    def populate_tree(self, dictionary, parent_item=None):
+        for key, value in dictionary.items():
+            # Create a QTreeWidgetItem for this key-value pair
+            if parent_item is None:
+                item = QTreeWidgetItem(self.tree)
+            else:
+                item = QTreeWidgetItem(parent_item)
+
+            item.setText(0, str(key))
+
+            if isinstance(value, dict):
+                item.setText(1, '')
+                # Recursive call to populate children
+                self.populate_tree(value, item)
+            else:
+                item.setText(1, str(value))
 
 # ================== Line Width setting dialog ===================
 class LineProfileSettingDialog(QDialog):
@@ -2539,6 +2726,10 @@ class MeasurementDialog(QDialog):
     def ok_pressed(self):
         self.parent().stop_distance_measurement()
         self.accept()
+    
+    def closeEvent(self, event):
+        self.parent().stop_distance_measurement()
+        
         
 
 # #==================== Measure FFT results window ===================
@@ -2586,6 +2777,9 @@ class MeasureFFTDialog(QDialog):
     def ok_pressed(self):
         self.parent().stop_fft_measurement()
         self.accept()
+        
+    def closeEvent(self, event):
+         self.parent().stop_fft_measurement()
 
                  
 
@@ -2595,7 +2789,9 @@ class MeasureFFTDialog(QDialog):
 from rsciio.emd import file_reader as emd_reader
 from rsciio.digitalmicrograph import file_reader as dm_reader
 from rsciio.tia import file_reader as tia_reader
+from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
+from rsciio.image import file_reader as im_reader
 #from rsciio.image import file_writer as im_writer
 import math
 
@@ -2651,6 +2847,7 @@ def save_as_tif16(input_file, f_name, output_dir,
         
     else:
         img['data'] = img['data'].astype('float32')
+        
 
     # Save unfiltered    
     tif_writer(output_dir + f_name + '.tiff', img)
@@ -2850,6 +3047,23 @@ def load_file(file):
     elif input_type == 'ser':
         f = tia_reader(file)
         
+    #Load tif formats
+    elif input_type in ['tif', 'tiff']:
+        f = tif_reader(file)
+        
+    #Load image formats
+    elif input_type in ['png', 'jpg', 'jpeg', 'bmp']:
+        f = im_reader(file)
+        for img in f:
+            # Only for 2d images
+            for ax in img['axes']:
+                ax['navigate'] = 'False'
+        # If RGB or RGBA image, convert to grayscale
+            if np.array(img['data'][0,0].item()).size != 1:
+                img['data'] = rgb2gray(img['data'])
+                
+        
+        
     #Load pickle dictionary
     elif input_type == 'pkl':
         with open(file, 'rb') as file:
@@ -2879,6 +3093,18 @@ def load_file(file):
         
     return f_valid
 
+def rgb2gray(im):
+    # Convert numpy array "im" with RGB type to gray. A channel is ignored.
+    im_x, im_y = im.shape
+    gray = np.zeros((im_x, im_y), dtype='int16')
+    for i in range(im_x):
+        for j in range(im_y):
+            r = im[i,j][0]
+            g = im[i,j][1]
+            b = im[i,j][2]
+            intensity = r * 0.2125 + g * 0.7154 + b * 0.0721
+            gray[i,j] = intensity.astype('int16')
+    return gray
 
 
 def convert_file(file, output_dir, f_type, **kwargs):

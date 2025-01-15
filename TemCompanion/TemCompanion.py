@@ -1528,6 +1528,10 @@ class PlotCanvasFFT(PlotCanvas):
         # update the image canvas
         self.axes.clear()
         
+        # Reset the measurement marker if exists
+        if self.marker is not None:
+            self.marker = None
+        
         vmin, vmax = np.percentile(fft_data, (30,99.9))
         
         self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')

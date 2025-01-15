@@ -1476,8 +1476,7 @@ class PlotCanvasFFT(PlotCanvas):
         filter_menu = self.menubar.children()[4]
         self.menubar.removeAction(filter_menu.menuAction())
         
-        # global menu
-        # menu = self.menubar.children()        
+        self.marker = None        
         
     def create_img(self):
         img_dict = self.canvas.data  

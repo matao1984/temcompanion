@@ -100,6 +100,9 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 <del> - Extract line profile 
 
 <del> - Image registration
+
+<del> - Live FFT with interactive area selection
+
 - Mask in FFT and iFFT
-- Live FFT with interactive area selection
+
 - Better color maps for EDS maps

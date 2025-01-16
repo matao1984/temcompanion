@@ -1071,9 +1071,9 @@ class PlotCanvas(QMainWindow):
             self.current_data = self.get_current_img_from_canvas()
             im_x, im_y = self.current_data.shape
             fft_size = min(int(im_x/2), int(im_y/2))
-            x_min = int(im_x/4)
+            x_min = int(im_y/4)
             x_max = x_min + fft_size
-            y_min = int(im_y/4)
+            y_min = int(im_x/4)
             y_max = y_min + fft_size
             
             self.selector.extents = (x_min, x_max, y_min, y_max)
@@ -1084,7 +1084,7 @@ class PlotCanvas(QMainWindow):
             preview_name = 'Live FFT'
             title = self.windowTitle()
             self.live_img = copy.deepcopy(self.canvas.data)
-            self.live_img['data'] = self.current_data[x_min:x_max, y_min:y_max]
+            self.live_img['data'] = self.current_data[y_min:y_max, x_min:x_max]
             self.preview_dict[preview_name] = PlotCanvasFFT(self.live_img, parent=self)
             self.preview_dict[preview_name].setWindowTitle('Live FFT of ' + title)
             self.preview_dict[preview_name].canvas.canvas_name = preview_name

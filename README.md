@@ -56,6 +56,12 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v0.4
+- New feature: Live FFT with resizable window
+- Added axes viewer to view image size, scale, etc.
+- Hold shift key to crop a square
+- Import image formats like tif, png, jpg, etc, both rgb and grayscale
+
 ### v0.3
 - New feature: "Stack" menu for image stacks
   - Crop stack

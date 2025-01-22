@@ -56,6 +56,11 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v0.5
+- The line in measuurement and lineprofile modes can be dragged and resized interactively.
+- Added scalebar customization: turn on/off, color, location, etc.
+- Copy image directly to the clipboard and paste in Power Point, etc.
+
 ### v0.4
 - New feature: Live FFT with resizable window
 - Added axes viewer to view image size, scale, etc.

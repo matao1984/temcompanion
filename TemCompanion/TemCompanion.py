@@ -1788,7 +1788,10 @@ class PlotCanvasLineProfile(QMainWindow):
 
         def plot_lineprofile(self, p1, p2, linewidth=1):  
             self.img_data = self.parent().get_current_img_from_canvas()
+            if self.text is not None:
+                self.text = None
             self.axes.clear()
+            
             self.start_point = p1
             self.stop_point = p2
             lineprofile = profile_line(self.img_data, (p1[1], p1[0]), (p2[1], p2[0]), linewidth=linewidth, reduce_func=np.mean)
@@ -1829,7 +1832,7 @@ class PlotCanvasLineProfile(QMainWindow):
 
         def on_select_h(self, xmin, xmax):
             distance = xmax - xmin
-            if self.text:
+            if self.text is not None:
                 self.text.remove()
             self.text = self.axes.text(0.05, 0.9, f'{distance:.4f} ({self.parent().units})',
                                        transform=self.axes.transAxes, color='red')
@@ -1837,7 +1840,7 @@ class PlotCanvasLineProfile(QMainWindow):
             
         def on_select_v(self,ymin,ymax):
             distance = ymax - ymin
-            if self.text:
+            if self.text is not None:
                 self.text.remove()
             self.text = self.axes.text(0.05, 0.9, f'{distance:.0f} (Counts)',
                                        transform=self.axes.transAxes, color='red')

@@ -474,6 +474,7 @@ class PlotCanvas(QMainWindow):
         self.inactive_point = None
         self.measurement_active = False
         self.line_profile_mode = False
+        self.linewidth = 1 # Default linewidth for line profile
 
         # Connect event handlers
         self.button_press_cid = None
@@ -961,11 +962,14 @@ class PlotCanvas(QMainWindow):
         # Display a message in the status bar
         self.statusBar.showMessage("Draw a line with mouse to measure. Drag with mouse if needed.")
         
-        preview_name = "Line Profile"
-        self.preview_dict[preview_name] = PlotCanvasLineProfile(parent=self)
-        self.preview_dict[preview_name].plot_name = preview_name            
-        self.preview_dict[preview_name].setWindowTitle(preview_name)
-        self.preview_dict[preview_name].show()
+        # For line profile mode
+        if self.line_profile_mode:
+            preview_name = "Line Profile"
+            
+            self.preview_dict[preview_name] = PlotCanvasLineProfile(parent=self)
+            self.preview_dict[preview_name].plot_name = preview_name            
+            self.preview_dict[preview_name].setWindowTitle(preview_name)
+            self.preview_dict[preview_name].show()
             
 
     def stop_distance_measurement(self):
@@ -1059,7 +1063,7 @@ class PlotCanvas(QMainWindow):
             # Define a line with two points and display the line profile
             p0 = round(self.start_point[0]), round(self.start_point[1])
             p1 = round(self.end_point[0]), round(self.end_point[1])
-            self.preview_dict['Line Profile'].plot_lineprofile(p0, p1)
+            self.preview_dict['Line Profile'].plot_lineprofile(p0, p1,self.linewidth)
             # self.fig.canvas.mpl_disconnect(self.button_press_cid)
             # self.fig.canvas.mpl_disconnect(self.button_release_cid)
 
@@ -1074,6 +1078,7 @@ class PlotCanvas(QMainWindow):
         
     def update_line_width(self, width):
         if self.line:
+            self.linewidth = width
             self.line.set_linewidth(width)
             self.fig.canvas.draw_idle()
             
@@ -1204,6 +1209,7 @@ class PlotCanvas(QMainWindow):
     def lineprofile(self):
         if not self.line_profile_mode:
             self.line_profile_mode = True
+            self.linewidth = 1
         self.start_distance_measurement()
         
             
@@ -1731,7 +1737,7 @@ class PlotCanvasLineProfile(QMainWindow):
             self.setCentralWidget(self.main_frame)
             self.create_menubar()
             
-            self.linewidth = 1 # Default line width set to 1
+            self.linewidth = 1
             
         def create_menubar(self):
             menubar = self.menuBar()

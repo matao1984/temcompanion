@@ -23,6 +23,10 @@
 # Added axes viewer to view image size, scale, etc.
 # Hold shift key to crop a square
 # Import image formats like tif, png, jpg, etc, both rgb and grayscale
+# 2025-01-22 v0.5
+# The line in measuurement and lineprofile modes can be dragged and resized interactively.
+# Added scalebar customization: turn on/off, color, location, etc.
+# Copy image directly to the clipboard and paste in Power Point, etc.
 
 
 from PyQt5 import QtCore, QtWidgets
@@ -34,8 +38,10 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider, QStatusBar, QMenu, QRadioButton)
 from PyQt5.QtCore import Qt, QStringListModel
+from PyQt5.QtGui import QImage
 import sys
 import os
+import io
 from datetime import date
 
 import numpy as np
@@ -66,9 +72,9 @@ from skimage.transform import warp
 
 
 
-ver = '0.4'
+ver = '0.5'
 #rdate = date.today().strftime('%Y-%m-%d')
-rdate = '2025-01-15'
+rdate = '2025-01-22'
 
 
 
@@ -419,7 +425,7 @@ class UI_TemCompanion(QMainWindow):
     def donate(self):
         msg = QMessageBox()
         msg.setText("I will make this app freely available for the society.<br>"\
-                    "If you like this app, show your appreciation and <a href=\"https://www.paypal.com/donate/?business=ZCSWE88TR2YHY&no_recurring=0&currency_code=USD\">buy me a lunch!</a>"\
+                    "If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a lunch!</a>"\
                     "<br>"\
                     "Your support is my motivation!")
         msg.setWindowTitle(ver + ": Buy me a LUNCH!")
@@ -451,11 +457,21 @@ class PlotCanvas(QMainWindow):
         self.preview_dict = {}
         self.selector = None
         
+        # Default settings for scale bar
+        self.scalebar_settings = {'scalebar': True,
+                                  'color': 'yellow',
+                                  'location': 'lower left',
+                                  'scale_loc': 'top',
+                                  'sep': 2}
+        self.scalebar = None
+        
         
         # Variables for the measure function
         self.line = None
         self.start_point = None
         self.end_point = None
+        self.active_point = None
+        self.inactive_point = None
         self.measurement_active = False
         self.line_profile_mode = False
 
@@ -480,7 +496,7 @@ class PlotCanvas(QMainWindow):
         
         
         # Create the navigation toolbar, tied to the canvas
-        self.mpl_toolbar = CustomToolbar(self.canvas, self)        
+        self.mpl_toolbar = CustomToolbar(self.canvas, parent=self)        
         vbox = QVBoxLayout()
         vbox.addWidget(self.mpl_toolbar)
         vbox.addWidget(self.canvas)
@@ -541,6 +557,9 @@ class PlotCanvas(QMainWindow):
         livefft_action = QAction('Live FFT', self)
         livefft_action.triggered.connect(self.live_fft)
         edit_menu.addAction(livefft_action)
+        copy_action = QAction('Copy Image to Clipboard', self)
+        copy_action.triggered.connect(self.copy_img)
+        edit_menu.addAction(copy_action)
         
         # Analyze menu and actions
         analyze_menu = menubar.addMenu('Analyze')
@@ -719,7 +738,24 @@ class PlotCanvas(QMainWindow):
             # Keep the history
             self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
             self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
-
+            
+            
+    def copy_img(self):
+        buf = io.BytesIO()
+        figsize = self.canvas.figure.get_size_inches()
+        img_size = self.get_current_img_from_canvas().shape
+        dpi = float(sorted(img_size/figsize, reverse=True)[0])
+        if len(self.canvas.figure.axes) != 1:
+            self.canvas.figure.axes[1].set_visible(False)
+        self.canvas.figure.savefig(buf, dpi=dpi)
+        if len(self.canvas.figure.axes) != 1:
+            self.canvas.figure.axes[1].set_visible(True)
+        
+        self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
+        buf.close()
+        
+        self.statusBar.showMessage("The current image has been copied to the clipboard!")
+        self.fig.canvas.draw_idle()
 
     def wiener_filter(self):
         
@@ -834,20 +870,35 @@ class PlotCanvas(QMainWindow):
         self.axes.set_axis_off()
         # Add scale bar 
         self.scale = self.canvas.data['axes'][1]['scale']
-        self.units = self.canvas.data['axes'][1]['units']  
+        self.units = self.canvas.data['axes'][1]['units'] 
+        
+        if self.scalebar_settings['scalebar']:
+            self.create_scalebar()
+            
+        self.fig.tight_layout(pad=0)
+        self.fig.canvas.draw()
+        
+    def create_scalebar(self):
+        if self.scalebar is not None:
+            self.scalebar.remove()
+        
         if self.units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
-            dimension = 'si-length' # Real space image
+            self.scalebar_settings['dimension'] = 'si-length' # Real space image
         elif self.units in ['1/um', '1/µm', '1/nm', '1/pm']:
-            dimension = 'si-length-reciprocal' # Diffraction
+            self.scalebar_settings['dimension']  = 'si-length-reciprocal' # Diffraction
         else: # Cannot parse the unit correctly, reset to pixel scale
             self.units = 'px'
             self.scale = 1
-            dimension = 'pixel-length'
-        self.scalebar = ScaleBar(self.scale, self.units, location="lower left",
-                                 dimension=dimension,
-                                 scale_loc="top", frameon=False, sep=2, color='yellow')
+            self.scalebar_settings['dimension']  = 'pixel-length'
+        
+    
+        self.scalebar = ScaleBar(self.scale, self.units, location=self.scalebar_settings['location'],
+                             dimension=self.scalebar_settings['dimension'],
+                             scale_loc=self.scalebar_settings['scale_loc'], 
+                             frameon=False, sep=self.scalebar_settings['sep'], 
+                             color=self.scalebar_settings['color'])
         self.axes.add_artist(self.scalebar)
-        self.fig.tight_layout(pad=0)
+        
         
     
     def show_info(self):
@@ -888,13 +939,15 @@ class PlotCanvas(QMainWindow):
                 return
         
             # Update the new scale to the image dict
+            self.scale = scale
+            self.units = units
             self.canvas.data['axes'][0]['scale'] = scale
             self.canvas.data['axes'][1]['scale'] = scale
             self.canvas.data['axes'][0]['units'] = units
             self.canvas.data['axes'][1]['units'] = units
-            self.scalebar.remove()
-            # Recreate the image with the new scale
-            self.create_img()
+            
+            # Recreate the scalebar the new scale
+            self.create_scalebar()
             self.canvas.draw()
             
             # Keep the history
@@ -906,7 +959,13 @@ class PlotCanvas(QMainWindow):
         self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_button_press)
         self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.on_button_release)
         # Display a message in the status bar
-        self.statusBar.showMessage("Draw a line with mouse to measure")
+        self.statusBar.showMessage("Draw a line with mouse to measure. Drag with mouse if needed.")
+        
+        preview_name = "Line Profile"
+        self.preview_dict[preview_name] = PlotCanvasLineProfile(parent=self)
+        self.preview_dict[preview_name].plot_name = preview_name            
+        self.preview_dict[preview_name].setWindowTitle(preview_name)
+        self.preview_dict[preview_name].show()
             
 
     def stop_distance_measurement(self):
@@ -951,27 +1010,43 @@ class PlotCanvas(QMainWindow):
     def on_button_press(self, event):
         if event.inaxes != self.axes:
             return
-        self.cleanup() # Cleanup any existing measurements
-        self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
-        self.start_point = (event.xdata, event.ydata)
-        self.line, = self.axes.plot([self.start_point[0], self.start_point[0]], 
-                                  [self.start_point[1], self.start_point[1]], 'r-',linewidth=1)
+        if self.start_point is None and self.end_point is None:
+            # First click
+            self.cleanup() # Cleanup any existing measurements
+            self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+            self.start_point = (event.xdata, event.ydata)
+            self.inactive_point = self.start_point
+            self.line, = self.axes.plot([self.start_point[0], self.start_point[0]], 
+                                      [self.start_point[1], self.start_point[1]], 'r-',linewidth=1)
+            
+            
+        if self.start_point is not None and self.end_point is not None:
+            # Drag on existing points to resize
+            self.active_point, self.inactive_point = closer_point((event.xdata, event.ydata), self.start_point, self.end_point)
+            self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+            
         self.fig.canvas.draw_idle()
 
     def on_mouse_move(self, event):
-        if self.line is None or self.start_point is None:
+        if self.line is None or self.start_point is None or self.inactive_point is None:
             return
         if event.inaxes != self.axes:
             return
-        x0, y0 = self.start_point
+        x0, y0 = self.inactive_point
         self.line.set_data([x0, event.xdata], [y0, event.ydata])
+        
         self.fig.canvas.draw_idle()
 
     def on_button_release(self, event):
         if event.inaxes != self.axes:
             return
-        
-        self.end_point = (event.xdata, event.ydata)
+        if self.end_point is None:
+            self.end_point = (event.xdata, event.ydata)
+        elif self.inactive_point == self.start_point:
+            self.end_point = (event.xdata, event.ydata)
+        else:
+            self.start_point = (event.xdata, event.ydata)
+            
         
         # Handle measure the distance
         if self.measurement_active and self.start_point is not None and self.end_point is not None:
@@ -984,14 +1059,15 @@ class PlotCanvas(QMainWindow):
             # Define a line with two points and display the line profile
             p0 = round(self.start_point[0]), round(self.start_point[1])
             p1 = round(self.end_point[0]), round(self.end_point[1])
-            self.fig.canvas.mpl_disconnect(self.button_press_cid)
-            self.fig.canvas.mpl_disconnect(self.button_release_cid)
+            self.preview_dict['Line Profile'].plot_lineprofile(p0, p1)
+            # self.fig.canvas.mpl_disconnect(self.button_press_cid)
+            # self.fig.canvas.mpl_disconnect(self.button_release_cid)
 
-            preview_name = self.windowTitle() + ": Line Profile"
-            self.preview_dict[preview_name] = PlotCanvasLineProfile(p0, p1, self)
-            self.preview_dict[preview_name].plot_name = preview_name            
-            self.preview_dict[preview_name].setWindowTitle(preview_name)
-            self.preview_dict[preview_name].show()
+            # preview_name = self.windowTitle() + ": Line Profile"
+            # self.preview_dict[preview_name] = PlotCanvasLineProfile(p0, p1, self)
+            # self.preview_dict[preview_name].plot_name = preview_name            
+            # self.preview_dict[preview_name].setWindowTitle(preview_name)
+            # self.preview_dict[preview_name].show()
             
             
         self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
@@ -1169,19 +1245,9 @@ class PlotCanvas3d(PlotCanvas):
         self.axes.set_axis_off()
         # Add scale bar 
         self.scale = self.canvas.data['axes'][1]['scale']
-        self.units = self.canvas.data['axes'][1]['units']  
-        if self.units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
-            dimension = 'si-length' # Real space image
-        elif self.units in ['1/um', '1/µm', '1/nm', '1/pm']:
-            dimension = 'si-length-reciprocal' # Diffraction
-        else: # Cannot parse the unit correctly, reset to pixel scale
-            self.units = ''
-            self.scale = 1
-            dimension = 'pixel-length'
-        self.scalebar = ScaleBar(self.scale, self.units, location="lower left", 
-                                 dimension=dimension,
-                                 scale_loc="top", frameon=False, sep=2, color='yellow')
-        self.axes.add_artist(self.scalebar)
+        self.units = self.canvas.data['axes'][1]['units'] 
+        if self.scalebar_settings['scalebar']:
+            self.create_scalebar()
         self.fig.tight_layout(pad=0)
         # Create a slider for stacks
         self.slider_ax = self.fig.add_axes([0.2, 0.9, 0.7, 0.03], facecolor='lightgoldenrodyellow')
@@ -1311,9 +1377,9 @@ class PlotCanvas3d(PlotCanvas):
                 drift_x_min, drift_x_max = min(drift_x), max(drift_x)
                 drift_y_min, drift_y_max = min(drift_y), max(drift_y)
                 x_min = max(int(drift_x_max) + 1, 0)
-                x_max = min(img_x - 1, int(img_x + drift_x_min) - 1)
+                x_max = min(img_x, int(img_x + drift_x_min) - 1)
                 y_min = max(int(drift_y_max) + 1,0)
-                y_max = min(img_y - 1, int(img_y + drift_y_min) - 1)
+                y_max = min(img_y, int(img_y + drift_y_min) - 1)
                 
                 img_crop = img[:,x_min:x_max,y_min:y_max]
                 
@@ -1467,6 +1533,9 @@ class PlotCanvasFFT(PlotCanvas):
         # img is the image dictionary, NOT FFT. FFT will be calculated in create_img()
         super().__init__(img, parent)
         
+        # Always show FFT scale in si-length-reciprocal
+        self.scalebar_settings['dimension'] = 'si-length-reciprocal'
+        
         analyze_menu = self.menubar.children()[3] #Analyze is at #3
         measure_fft_action = QAction('Measure FFT', self)
         measure_fft_action.triggered.connect(self.measure_fft)        
@@ -1508,11 +1577,9 @@ class PlotCanvasFFT(PlotCanvas):
         
         self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
         self.axes.set_axis_off()
-        #Scale bar with inverse unit        
-        self.scalebar = ScaleBar(self.scale, self.units, dimension='si-length-reciprocal', 
-                                 location="lower left", scale_loc="top", frameon=False, sep=2, 
-                                 color='yellow')
-        self.axes.add_artist(self.scalebar)
+        #Scale bar with inverse unit  
+        if self.scalebar_settings['scalebar']:
+            self.create_scalebar()
         self.fig.tight_layout(pad=0)
         
     def update_img(self, real_data):
@@ -1536,10 +1603,8 @@ class PlotCanvasFFT(PlotCanvas):
         self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
         self.axes.set_axis_off()
         #Scale bar with inverse unit        
-        self.scalebar = ScaleBar(self.scale, self.units, dimension='si-length-reciprocal', 
-                                 location="lower left", scale_loc="top", frameon=False, sep=2, 
-                                 color='yellow')
-        self.axes.add_artist(self.scalebar)
+        if self.scalebar_settings['scalebar']:
+            self.create_scalebar()
         self.fig.tight_layout(pad=0)
         
         
@@ -1643,7 +1708,7 @@ class PlotCanvasFFT(PlotCanvas):
         
 #========= Plot canvas for line profile =======================================
 class PlotCanvasLineProfile(QMainWindow):
-        def __init__(self, p1, p2, parent=None):
+        def __init__(self, parent=None):
             super().__init__(parent)
             
             self.main_frame = QWidget()
@@ -1651,11 +1716,11 @@ class PlotCanvasLineProfile(QMainWindow):
             self.axes = self.fig.add_subplot(111)
             self.canvas = FigureCanvas(self.fig)
             self.canvas.setParent(self)
-            self.img_data = self.parent().get_current_img_from_canvas()
+            
             self.selector = None
             self.text = None
             
-            self.plot_lineprofile(p1, p2)
+            #self.plot_lineprofile(p1, p2)
             
             # Create the navigation toolbar, tied to the canvas
             self.mpl_toolbar = LineProfileToolbar(self.canvas, self)        
@@ -1675,6 +1740,9 @@ class PlotCanvasLineProfile(QMainWindow):
             save_action = QAction('Export', self)
             save_action.triggered.connect(self.mpl_toolbar.save_figure)
             file_menu.addAction(save_action)
+            copy_action = QAction('Copy Plot to Clipboard', self)
+            copy_action.triggered.connect(self.copy_plot)
+            file_menu.addAction(copy_action)
             close_action = QAction('Close', self)
             close_action.triggered.connect(self.close)
             file_menu.addAction(close_action)
@@ -1698,8 +1766,23 @@ class PlotCanvasLineProfile(QMainWindow):
             
             self.menubar = menubar
             
+        def copy_plot(self):
+            buf = io.BytesIO()
+            
+            dpi = 150
+            
+            self.canvas.figure.savefig(buf, transparent=True, dpi=dpi)
+            
+            
+            self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
+            buf.close()
+            
+            self.fig.canvas.draw_idle()
+            
 
-        def plot_lineprofile(self, p1, p2, linewidth=1):   
+        def plot_lineprofile(self, p1, p2, linewidth=1):  
+            self.img_data = self.parent().get_current_img_from_canvas()
+            self.axes.clear()
             self.start_point = p1
             self.stop_point = p2
             lineprofile = profile_line(self.img_data, (p1[1], p1[0]), (p2[1], p2[0]), linewidth=linewidth, reduce_func=np.mean)
@@ -1709,8 +1792,12 @@ class PlotCanvasLineProfile(QMainWindow):
             self.axes.set_xlabel('Distance ({})'.format(self.parent().units))
             self.axes.set_ylabel('Intensity')
             self.axes.set_xlim(min(line_x), max(line_x))
+            y_span = max(lineprofile) - min(lineprofile)
+            y_max = max(lineprofile) + y_span * 0.1
+            y_min = min(lineprofile) - y_span * 0.1
+            self.axes.set_ylim(y_min, y_max)
             self.fig.tight_layout()
-            self.canvas.draw()
+            self.canvas.draw_idle()
             
         def update_lineprofile(self, linewidth):
             self.linewidth = linewidth
@@ -1788,15 +1875,6 @@ class PlotCanvasLineProfile(QMainWindow):
             self.fig.canvas.draw_idle()   
             
 
-            
-    
-            
-
-        
-        
-        
-            
-
 
 #========= Redefined window for image edit button =============================
 class CustomSettingsDialog(QDialog):
@@ -1805,11 +1883,11 @@ class CustomSettingsDialog(QDialog):
         self.setWindowTitle("Image Settings")
         self.ax = ax
         self.img = ax.get_images()[0] if ax.get_images() else None
-
+        self.scalebar_settings = self.parent().plotcanvas.scalebar_settings
         # Create the layout
         layout = QVBoxLayout()
 
-
+        
         # vmin and vmax inputs
         h_layout_vmin = QHBoxLayout()
         self.vmin_label = QLabel("vmin (%):")
@@ -1852,6 +1930,40 @@ class CustomSettingsDialog(QDialog):
         # Set current colormap
         if self.img:
             self.cmap_combobox.setCurrentText(self.img.get_cmap().name)
+            
+        # Scalebar customization
+        
+        self.scalebar_check = QCheckBox("Add scalebar to image")
+        self.scalebar_check.setChecked(self.scalebar_settings['scalebar'])
+        
+        layout.addWidget(self.scalebar_check)
+        h_layout_scalebar = QHBoxLayout()
+        self.sbcolor_label = QLabel('Scalebar color')
+        self.sbcolor_combobox = QComboBox()
+        sbcolor = ['black', 'white', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
+        self.sbcolor_combobox.addItems(sbcolor)
+        self.sbcolor_combobox.setCurrentText(self.scalebar_settings['color'])
+        h_layout_scalebar.addWidget(self.sbcolor_label)
+        h_layout_scalebar.addWidget(self.sbcolor_combobox)
+        h_layout_loc = QHBoxLayout()
+        self.sbloc_label = QLabel('Scalebar location')
+        self.sblocation_combox = QComboBox()
+        sbloc = ['lower left', 'lower right', 'lower center', 'upper left', 'upper right', 'upper center']
+        self.sblocation_combox.addItems(sbloc)
+        self.sblocation_combox.setCurrentText(self.scalebar_settings['location'])
+        h_layout_loc.addWidget(self.sbloc_label)
+        h_layout_loc.addWidget(self.sblocation_combox)
+        h_layout_scaleloc = QHBoxLayout()
+        self.scaleloc_label = QLabel('Text location')
+        self.scaleloc = QComboBox()
+        scaleloc = ['top', 'bottom', 'left', 'right', 'none'] 
+        self.scaleloc.addItems(scaleloc)
+        self.scaleloc.setCurrentText(self.scalebar_settings['scale_loc'])
+        h_layout_scaleloc.addWidget(self.scaleloc_label)
+        h_layout_scaleloc.addWidget(self.scaleloc)
+        layout.addLayout(h_layout_scalebar)
+        layout.addLayout(h_layout_loc)
+        layout.addLayout(h_layout_scaleloc)
 
         # Apply button
         buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Ok)
@@ -1896,6 +2008,15 @@ class CustomSettingsDialog(QDialog):
         # Apply colormap
         self.cmap_name = self.cmap_combobox.currentText()
         self.img.set_cmap(self.cmap_name)
+        
+        # Apply scalebar styles
+        self.scalebar_settings['scalebar'] = self.scalebar_check.isChecked()
+        self.scalebar_settings['color'] = self.sbcolor_combobox.currentText()
+        self.scalebar_settings['location'] = self.sblocation_combox.currentText()
+        self.scalebar_settings['scale_loc'] = self.scaleloc.currentText()
+        
+        self.parent().apply_scalebar()
+        
 
         # Redraw the canvas
         self.ax.figure.canvas.draw_idle()
@@ -1910,7 +2031,12 @@ class CustomToolbar(NavigationToolbar):
     def __init__(self, canvas, parent=None):
         super().__init__(canvas, parent)
         
+        self.imgsetting_dialog = None
+        self.plotcanvas = parent
+        self.scalebar_settings = self.plotcanvas.scalebar_settings
         self.remove_button('Subplots')
+        
+        
 
     def remove_button(self,text):
         # The button we want to remove is 'Subplots' (usually the seventh item in the toolbar)
@@ -1920,7 +2046,7 @@ class CustomToolbar(NavigationToolbar):
                 self.removeAction(action)
                 break
         
-    def save_figure(self, *args):
+    def save_figure(self, *args):       
         # Replace the save figure to use PIL and tif_writer
         options = QFileDialog.Options()
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(self.parent(), 
@@ -1970,29 +2096,44 @@ class CustomToolbar(NavigationToolbar):
     # Redefine the edit axis button
     def edit_parameters(self):
         """Override the default edit_parameters to use a custom dialog."""
-        if self.canvas.figure:
-            axes = self.canvas.figure.get_axes()
-            if not axes:
-                return
-            if len(axes) > 1:
-                selected_axes, ok = QInputDialog.getItem(
-                    self, "Edit Plot",
-                    "Select the axes to edit",
-                    [ax.get_title() or f"Axes {i + 1}" for i, ax in enumerate(axes)],
-                    current=0,
-                    editable=False
-                )
-                if not ok:
-                    return
-                selected_axes = axes[
-                    [ax.get_title() or f"Axes {i + 1}" for i, ax in enumerate(axes)]
-                    .index(selected_axes)
-                ]
-            else:
-                selected_axes = axes[0]
+        #if self.canvas.figure:
+        axes = self.canvas.figure.get_axes()
+        if not axes:
+            return
+            # if len(axes) > 1:
+            #     selected_axes, ok = QInputDialog.getItem(
+            #         self, "Edit Plot",
+            #         "Select the axes to edit",
+            #         [ax.get_title() or f"Axes {i + 1}" for i, ax in enumerate(axes)],
+            #         current=0,
+            #         editable=False
+            #     )
+            #     if not ok:
+            #         return
+            #     selected_axes = axes[
+            #         [ax.get_title() or f"Axes {i + 1}" for i, ax in enumerate(axes)]
+            #         .index(selected_axes)
+            #     ]
+            # else:
+                # Always select the image axis which is the first
+        selected_axes = axes[0]
 
-            dialog = CustomSettingsDialog(selected_axes, parent=self)
-            dialog.exec_()
+        self.imgsetting_dialog = CustomSettingsDialog(selected_axes, parent=self)
+        self.imgsetting_dialog.exec_()
+        
+    def apply_scalebar(self):
+        if self.imgsetting_dialog is not None:
+            self.plotcanvas.scalebar_settings = self.imgsetting_dialog.scalebar_settings
+            
+            # Remove the original scalebar
+            if  self.plotcanvas.scalebar is not None:
+                self.plotcanvas.scalebar.remove()
+                self.plotcanvas.scalebar = None
+            
+            # Apply the new style
+            if self.plotcanvas.scalebar_settings['scalebar']:
+                self.plotcanvas.create_scalebar()
+            
             
             
 #============ Toolbar for the lineprofile ======================================
@@ -3201,6 +3342,19 @@ def measure_distance(A, B, scale=1):
     distance_pixels = np.sqrt((x1 - x0)**2 + (y1 - y0)**2)
     distance_units = distance_pixels * scale
     return distance_units
+
+def closer_point(p0, p1, p2):
+    # Calculate the Euclidean distance from p0 to p1
+    distance_p1 = measure_distance(p0, p1)
+    
+    # Calculate the Euclidean distance from p0 to p2
+    distance_p2 = measure_distance(p0, p2)
+    
+    # Determine which point is closer to p0 and return it
+    if distance_p1 < distance_p2:
+        return p1, p2
+    else:
+        return p2, p1
 
 def line(p1, p2):
     '''

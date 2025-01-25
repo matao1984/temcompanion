@@ -98,15 +98,15 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 ## 7. Working on list
 - <del> Export metadata
 
-<del> - Angle measurement in measure mode
+- <del> Angle measurement in measure mode
 
-<del> - Improve FFT peak measurement accuracy
+- <del> Improve FFT peak measurement accuracy
 
-<del> - Extract line profile 
+- <del> Extract line profile 
 
-<del> - Image registration
+- <del> Image registration
 
-<del> - Live FFT with interactive area selection
+- <del> Live FFT with interactive area selection
 
 - Mask in FFT and iFFT
 

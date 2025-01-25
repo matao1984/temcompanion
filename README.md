@@ -109,5 +109,7 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 - <del> Live FFT with interactive area selection
 
 - Mask in FFT and iFFT
+  
+- Executable App bundle for Windows and MacOS
 
 - Better color maps for EDS maps

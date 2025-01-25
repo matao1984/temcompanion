@@ -96,7 +96,7 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 - First version!
 
 ## 7. Working on list
-<del> - Export metadata
+- <del> Export metadata
 
 <del> - Angle measurement in measure mode
 

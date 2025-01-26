@@ -21,7 +21,7 @@ Simply type ``temcom`` in the Anaconda prompt console. A GUI will pop up. Load t
 
 ## 3. Formats
 ### 3.1 Input formats
-Currently, TemCompanion is programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
+Currently, TemCompanion is programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format, and common image formats like tiff, jpg, png, etc (either gray scale or RGB, with or without a valid pixel calibration). New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
 ### 3.2 List of available functions
 Currently available functions include:

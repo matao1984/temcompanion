@@ -28,15 +28,21 @@ Currently available functions include:
 * Preview any image type signals. If the input file contains multiple image frames, a slider bar is added on the image to navigate.
 * Rotate image: positive angles would rotate the image counterclockwise and vice versa. The image will expand upon rotation.
 * Crop image: crop to any size with a GUI rectangle selection.
-* Adjust vmin/vmax (in percentile) for display.
+* Adjust vmin/vmax for display.
 * Apply a color map to images.
-* Compute an fast Fourier transform directly or with a Hann window applied.
+* Add a scalebar and customize its color, location, etc.
 * View and set the pixel scale.
-* Measure by drawing a line on images.
+* Measure distance and angle interactively by drawing a line on images.
+* Extract line profiles interactively.
+* Compute a fast Fourier transform directly or with a Hann window applied.
+* Compute live FFT from a selected area that can be adjusted interactively.
+* Apply masks on FFT and compute masked inverse FFT.
 * Measure d-spacing from FFT spots. The center of FFT peaks is fitted with a center of mass function. The angle from horizontal direction is also measured.
-* Apply Wiener, ABS, and non-linear filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
-* View the metadata of the TEM data file.
+* Apply Wiener, ABS, non-linear, Butterworth, and Gaussian filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
+* View the axes information and metadata of the TEM data file.
 * The processing history by TemCompanion is saved in the metadata tree under "process" entry.
+* Align image stack with both phase cross-correlation (rigid) and optical flow (non rigid).
+* Copy displayed images directly and paste to power point, etc.
 
 
 ### 3.3 Output formats

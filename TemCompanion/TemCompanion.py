@@ -83,8 +83,8 @@ from skimage.transform import warp
 
 
 ver = '0.6'
-rdate = date.today().strftime('%Y-%m-%d')
-#rdate = '2025-01-22'
+#rdate = date.today().strftime('%Y-%m-%d')
+rdate = '2025-01-27'
 
 
 
@@ -576,8 +576,7 @@ class PlotCanvas(QMainWindow):
         fft_action.setShortcut('ctrl+f')
         fft_action.triggered.connect(self.fft)
         edit_menu.addAction(fft_action)
-        windowedfft_action = QAction('&Windowed FFT', self)
-        windowedfft_action.setShortcut('ctrl+shift+w')
+        windowedfft_action = QAction('Windowed FFT', self)
         windowedfft_action.triggered.connect(self.windowedfft)
         edit_menu.addAction(windowedfft_action)
         livefft_action = QAction('&Live FFT', self)

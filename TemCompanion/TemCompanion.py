@@ -27,7 +27,14 @@
 # The line in measuurement and lineprofile modes can be dragged and resized interactively.
 # Added scalebar customization: turn on/off, color, location, etc.
 # Copy image directly to the clipboard and paste in Power Point, etc.
-
+# 2025-01-   v0.6
+# Fixed crop and crop stack have the same effect in stack images
+# Improved speed for interactive measurement and line profile
+# Improved measurement results displaying
+# Improved units convertion between image and FFT. Now can compute FFT from uncalibrated images and diffraction patterns.
+# Added shortcuts for most of the functions
+# Added mask and ifft filtering
+# Improved image setting dialog
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -39,6 +46,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QSlider, QStatusBar, QMenu, QRadioButton)
 from PyQt5.QtCore import Qt, QStringListModel
 from PyQt5.QtGui import QImage
+from superqt import QDoubleRangeSlider
+
 import sys
 import os
 import io
@@ -60,10 +69,11 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as Navigatio
 
 from matplotlib.figure import Figure
 from matplotlib_scalebar.scalebar import ScaleBar
-from matplotlib.widgets import Slider, RectangleSelector, SpanSelector
+from matplotlib.widgets import Slider, RectangleSelector, SpanSelector, EllipseSelector
+from matplotlib.patches import Circle
 
 from hrtem_filter import filters
-from scipy.fft import fft2, fftshift
+from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.filters import window
 from skimage.measure import profile_line
 from scipy.ndimage import rotate, shift
@@ -72,9 +82,9 @@ from skimage.transform import warp
 
 
 
-ver = '0.5'
-#rdate = date.today().strftime('%Y-%m-%d')
-rdate = '2025-01-22'
+ver = '0.6'
+rdate = date.today().strftime('%Y-%m-%d')
+#rdate = '2025-01-22'
 
 
 
@@ -95,7 +105,6 @@ class UI_TemCompanion(QMainWindow):
         if self.preview_dict:
             for plot in self.preview_dict.keys():
                 self.preview_dict[plot].close()
-        event.accept()
         
 
         
@@ -452,7 +461,8 @@ class PlotCanvas(QMainWindow):
         self.canvas.setFocus()
 
         # Attach the image dict to canvas
-        self.canvas.data = copy.deepcopy(img)
+        self.canvas.data = img
+        self.img_size = img['data'].shape
         self.canvas.img_idx = None  
         self.preview_dict = {}
         self.selector = None
@@ -473,6 +483,7 @@ class PlotCanvas(QMainWindow):
         self.active_point = None
         self.inactive_point = None
         self.measurement_active = False
+        self.text = None # Measurement result text
         self.line_profile_mode = False
         self.linewidth = 1 # Default linewidth for line profile
 
@@ -481,7 +492,10 @@ class PlotCanvas(QMainWindow):
         self.button_release_cid = None
         self.motion_notify_cid = None
         
-        
+        # All the push buttons
+        self.buttons = {'crop_ok': None,
+                        'crop_cancel': None,
+                        'distance_finish': None}
         
         self.distance_fft = 0
         self.ang = 0
@@ -518,11 +532,11 @@ class PlotCanvas(QMainWindow):
         
     
     # def closeEvent(self, event):
-    #     # Close all window
-    #     if self.preview_dict:
-    #         for plot in self.preview_dict.keys():
-    #             self.preview_dict[plot].close()
-    #     event.accept()
+    #     if self.measurement_active:
+    #         self.stop_distance_measurement()
+    #     if self.line_profile_mode:
+    #         self.stop_line_profile()
+        
         
         
         
@@ -530,82 +544,98 @@ class PlotCanvas(QMainWindow):
         menubar = self.menuBar()  # Create a menu bar
 
         # File menu and actions
-        file_menu = menubar.addMenu('File')
-        save_action = QAction('Save', self)
+        file_menu = menubar.addMenu('&File')
+        save_action = QAction('&Save as', self)
+        save_action.setShortcut('ctrl+s')
         save_action.triggered.connect(self.mpl_toolbar.save_figure)
         file_menu.addAction(save_action)
-        close_action = QAction('Close', self)
+        copy_action = QAction('&Copy Image to Clipboard', self)
+        copy_action.setShortcut('ctrl+c')
+        copy_action.triggered.connect(self.copy_img)
+        file_menu.addAction(copy_action)
+        imagesetting_action = QAction('&Image Settings',self)
+        imagesetting_action.setShortcut('ctrl+o')
+        imagesetting_action.triggered.connect(self.mpl_toolbar.edit_parameters)
+        file_menu.addAction(imagesetting_action)
+        close_action = QAction('&Close', self)
+        close_action.setShortcut('ctrl+x')
         close_action.triggered.connect(self.close)
         file_menu.addAction(close_action)
 
         # Edit menu and actions
-        edit_menu = menubar.addMenu('Process')
-        imagesetting_action = QAction('Image Settings',self)
-        imagesetting_action.triggered.connect(self.mpl_toolbar.edit_parameters)
-        edit_menu.addAction(imagesetting_action)
-        crop_action = QAction('Crop', self)
+        edit_menu = menubar.addMenu('&Process')
+        crop_action = QAction('&Crop', self)
+        crop_action.setShortcut('ctrl+shift+c')
         crop_action.triggered.connect(self.crop)
         edit_menu.addAction(crop_action)
-        rotate_action = QAction('Rotate', self)
+        rotate_action = QAction('&Rotate', self)
+        rotate_action.setShortcut('ctrl+shift+r')
         rotate_action.triggered.connect(self.rotate)
         edit_menu.addAction(rotate_action)
-        fft_action = QAction('FFT', self)
+        fft_action = QAction('&FFT', self)
+        fft_action.setShortcut('ctrl+f')
         fft_action.triggered.connect(self.fft)
         edit_menu.addAction(fft_action)
-        windowedfft_action = QAction('Windowed FFT', self)
+        windowedfft_action = QAction('&Windowed FFT', self)
+        windowedfft_action.setShortcut('ctrl+shift+w')
         windowedfft_action.triggered.connect(self.windowedfft)
         edit_menu.addAction(windowedfft_action)
-        livefft_action = QAction('Live FFT', self)
+        livefft_action = QAction('&Live FFT', self)
+        livefft_action.setShortcut('ctrl+shift+f')
         livefft_action.triggered.connect(self.live_fft)
         edit_menu.addAction(livefft_action)
-        copy_action = QAction('Copy Image to Clipboard', self)
-        copy_action.triggered.connect(self.copy_img)
-        edit_menu.addAction(copy_action)
+        
         
         # Analyze menu and actions
-        analyze_menu = menubar.addMenu('Analyze')
+        analyze_menu = menubar.addMenu('&Analyze')
         setscale_action = QAction('Set Scale', self)
         setscale_action.triggered.connect(self.setscale)
         analyze_menu.addAction(setscale_action)
-        measure_action = QAction('Measure', self)
+        measure_action = QAction('&Measure', self)
+        measure_action.setShortcut('ctrl+m')
         measure_action.triggered.connect(self.measure)
         analyze_menu.addAction(measure_action)
-        # measure_fft_action = QAction('Measure FFT', self)
-        # measure_fft_action.triggered.connect(self.measure_fft)        
-        # analyze_menu.addAction(measure_fft_action)
-        lineprofile_action = QAction('Line Profile', self)
+        lineprofile_action = QAction('&Line Profile', self)
+        lineprofile_action.setShortcut('ctrl+l')
         lineprofile_action.triggered.connect(self.lineprofile)
         analyze_menu.addAction(lineprofile_action)
         
 
         # Filter menu and actions
-        filter_menu = menubar.addMenu('Filter')
-        filtersetting_action = QAction('Filter Settings', self)
+        filter_menu = menubar.addMenu('&Filter')
+        filtersetting_action = QAction('&Filter Settings', self)
+        filtersetting_action.setShortcut('ctrl+shift+f')
         filtersetting_action.triggered.connect(UI_TemCompanion.filter_settings)
         filter_menu.addAction(filtersetting_action)
         
-        wiener_action = QAction('Apply Wiener', self)
+        wiener_action = QAction('&Apply Wiener', self)
+        wiener_action.setShortcut('ctrl+shift+w')
         wiener_action.triggered.connect(self.wiener_filter)
         filter_menu.addAction(wiener_action)
-        absf_action = QAction('Apply ABSF', self)
+        absf_action = QAction('&Apply ABSF', self)
+        absf_action.setShortcut('ctrl+shift+a')
         absf_action.triggered.connect(self.absf_filter)
         filter_menu.addAction(absf_action)
-        non_linear_action = QAction('Apply Non-Linear', self)
+        non_linear_action = QAction('&Apply Non-Linear', self)
+        non_linear_action.setShortcut('ctrl+shift+n')
         non_linear_action.triggered.connect(self.non_linear_filter)
         filter_menu.addAction(non_linear_action)
-        bw_action = QAction('Apply Butterworth low pass', self)
+        bw_action = QAction('&Apply Butterworth low pass', self)
+        bw_action.setShortcut('ctrl+shift+b')
         bw_action.triggered.connect(self.bw_filter)
         filter_menu.addAction(bw_action)
-        gaussian_action = QAction('Apply Gaussian low pass', self)
+        gaussian_action = QAction('&Apply Gaussian low pass', self)
+        gaussian_action.setShortcut('ctrl+shift+g')
         gaussian_action.triggered.connect(self.gaussion_filter)
         filter_menu.addAction(gaussian_action)
 
         # Info menu
-        info_menu = menubar.addMenu('Info')
+        info_menu = menubar.addMenu('&Info')
         axes_action = QAction('Image Axes', self)
         axes_action.triggered.connect(self.show_axes)
         info_menu.addAction(axes_action)
-        info_action = QAction('View Metadata', self)
+        info_action = QAction('&View Metadata', self)
+        info_action.setShortcut('ctrl+i')
         info_action.triggered.connect(self.show_info)
         info_menu.addAction(info_action)
         about_action = QAction('About', self)
@@ -636,34 +666,49 @@ class PlotCanvas(QMainWindow):
         if self.selector is None:
             self.selector = RectangleSelector(ax, onselect=self.on_select, interactive=True, useblit=True,
                                               drag_from_anywhere=True, use_data_coordinates=True,
+                                              minspanx=5, minspany=5,
                                               button=[1]
                                               )
             
             # Crop button
-            self.ok_button = QPushButton('OK', parent=self.canvas)
-            self.ok_button.move(30, 30)
-            self.ok_button.clicked.connect(self.confirm_crop)
-            self.ok_button.hide()
-            self.cancel_button = QPushButton('Cancel', parent=self.canvas)
-            self.cancel_button.move(110,30)
-            self.cancel_button.clicked.connect(self.cancel_crop)
-            self.cancel_button.hide()
+            self.buttons['crop_ok'] = QPushButton('OK', parent=self.canvas)
+            self.buttons['crop_ok'].move(30, 30)
+            self.buttons['crop_ok'].clicked.connect(self.confirm_crop)
+           
+            self.buttons['crop_cancel'] = QPushButton('Cancel', parent=self.canvas)
+            self.buttons['crop_cancel'].move(100,30)
+            self.buttons['crop_cancel'].clicked.connect(self.cancel_crop)
             
-        self.selector.set_active(True)
-        self.ok_button.show()
-        self.cancel_button.show()
-        self.fig.canvas.draw()
+            self.buttons['crop_input'] = QPushButton(('Manual input'), parent=self.canvas)
+            self.buttons['crop_input'].move(170,30)
+            self.buttons['crop_input'].clicked.connect(self.manual_crop)
+            
+            
+            self.selector.set_active(True)
+            # Show buttons
+            for value in self.buttons.values():
+                if value is not None:
+                    value.show()
+            
+            self.fig.canvas.draw_idle()
 
     def on_select(self, eclick, erelease):
         pass  # handle the crop in the confirm_crop function
 
-
+    def manual_crop(self):
+        if self.selector is not None:
+            dialog = ManualCropDialog(parent=self)
+           
+            if dialog.exec_() == QDialog.Accepted:
+                x0, x1 = dialog.x_range
+                y0, y1 = dialog.y_range
+                self.selector.extents = x0, x1, y0, y1
 
 
     def confirm_crop(self):
         if self.selector is not None and self.selector.active:
             x0, x1, y0, y1 = self.selector.extents
-            if abs(x1 - x0) > 1 and abs(y1 - y0) >1: 
+            if abs(x1 - x0) > 5 and abs(y1 - y0) > 5: 
                 # Valid area is selected               
                 img = self.get_img_dict_from_canvas()
                 cropped_img = img['data'][int(y0):int(y1), int(x0):int(x1)]                
@@ -679,15 +724,18 @@ class PlotCanvas(QMainWindow):
                 self.preview_dict[preview_name].show()
                 
                 # Write process history in the original_metadata
-                self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(y0),int(y1),int(x0),int(x1)))
+                self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(x0),int(x1),int(y0),int(y1)))
                 self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
                 
             self.selector.set_active(False)
             self.selector.set_visible(False)
             self.selector.disconnect_events()  # Disconnect event handling
-            self.selector = None            
-            self.ok_button.hide()
-            self.cancel_button.hide()
+            self.selector = None  
+            # Reset buttons
+            for value in self.buttons.values():
+                if value is not None:
+                    value.hide()
+                    value = None
             
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
@@ -695,12 +743,17 @@ class PlotCanvas(QMainWindow):
             
     
     def cancel_crop(self):
-        self.selector.set_active(False)
-        self.selector.set_visible(False)
-        self.selector.disconnect_events()  # Disconnect event handling
-        self.selector = None            
-        self.ok_button.hide()
-        self.cancel_button.hide()
+        if self.selector is not None:
+            self.selector.set_active(False)
+            self.selector.set_visible(False)
+            self.selector.disconnect_events()  # Disconnect event handling
+            self.selector = None  
+            
+        for value in self.buttons.values():
+            if value is not None:
+                value.hide()
+                value = None
+        
         # Display a message in the status bar
         self.statusBar.showMessage("Ready")
         self.fig.canvas.draw_idle()
@@ -746,14 +799,18 @@ class PlotCanvas(QMainWindow):
         figsize = self.canvas.figure.get_size_inches()
         img_size = self.get_current_img_from_canvas().shape
         dpi = float(sorted(img_size/figsize, reverse=True)[0])
+        # Hide other elements
         if len(self.canvas.figure.axes) != 1:
             self.canvas.figure.axes[1].set_visible(False)
+        
         self.canvas.figure.savefig(buf, dpi=dpi)
-        if len(self.canvas.figure.axes) != 1:
-            self.canvas.figure.axes[1].set_visible(True)
+        
         
         self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
         buf.close()
+        if len(self.canvas.figure.axes) != 1:
+            self.canvas.figure.axes[1].set_visible(True)
+        
         
         self.statusBar.showMessage("The current image has been copied to the clipboard!")
         self.fig.canvas.draw_idle()
@@ -885,7 +942,7 @@ class PlotCanvas(QMainWindow):
         
         if self.units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
             self.scalebar_settings['dimension'] = 'si-length' # Real space image
-        elif self.units in ['1/um', '1/µm', '1/nm', '1/pm']:
+        elif self.units in ['1/m', '1/cm', '1/mm', '1/um', '1/µm', '1/nm', '1/pm']:
             self.scalebar_settings['dimension']  = 'si-length-reciprocal' # Diffraction
         else: # Cannot parse the unit correctly, reset to pixel scale
             self.units = 'px'
@@ -961,6 +1018,11 @@ class PlotCanvas(QMainWindow):
         self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.on_button_release)
         # Display a message in the status bar
         self.statusBar.showMessage("Draw a line with mouse to measure. Drag with mouse if needed.")
+        if self.buttons['distance_finish'] is None and self.measurement_active:
+            self.buttons['distance_finish'] = QPushButton('Finish', parent=self.canvas)
+            self.buttons['distance_finish'].move(30, 30)
+            self.buttons['distance_finish'].clicked.connect(self.stop_distance_measurement)
+            self.buttons['distance_finish'].show()
         
         # For line profile mode
         if self.line_profile_mode:
@@ -986,14 +1048,19 @@ class PlotCanvas(QMainWindow):
             self.button_press_cid = None
             self.button_release_cid = None
             self.motion_notify_cid = None
-            self.fig.canvas.draw_idle()
+                
+        if self.buttons['distance_finish'] is not None:
+            self.buttons['distance_finish'].hide()
+            self.buttons['distance_finish'] = None
+            
+        self.fig.canvas.draw_idle()
             
     def stop_line_profile(self):
         if self.line_profile_mode:
             self.line_profile_mode = False
             self.cleanup()  # Cleanup any existing measurements
-            # self.fig.canvas.mpl_disconnect(self.button_press_cid)
-            # self.fig.canvas.mpl_disconnect(self.button_release_cid)
+            self.fig.canvas.mpl_disconnect(self.button_press_cid)
+            self.fig.canvas.mpl_disconnect(self.button_release_cid)
             #self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
             self.button_press_cid = None
             self.button_release_cid = None
@@ -1004,27 +1071,36 @@ class PlotCanvas(QMainWindow):
             
 
     def cleanup(self):
-        if self.line:
+        if self.line is not None:
             self.line.remove()
             self.line = None
         self.start_point = None
         self.end_point = None
+        
+        if self.text is not None:
+            self.text.remove()
+            self.text = None
+        
+            
         self.fig.canvas.draw_idle()
 
     def on_button_press(self, event):
+        threshold_x = self.img_size[0] / 10
+        threshold_y = self.img_size[1] / 10
+        threshold = min (threshold_x, threshold_y)
         if event.inaxes != self.axes:
             return
-        if self.start_point is None and self.end_point is None:
+        if (self.start_point is None and self.end_point is None) or (measure_distance((event.xdata, event.ydata), self.start_point) > threshold and measure_distance((event.xdata, event.ydata), self.end_point) > threshold):
             # First click
             self.cleanup() # Cleanup any existing measurements
             self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
             self.start_point = (event.xdata, event.ydata)
             self.inactive_point = self.start_point
             self.line, = self.axes.plot([self.start_point[0], self.start_point[0]], 
-                                      [self.start_point[1], self.start_point[1]], 'r-',linewidth=1)
+                                      [self.start_point[1], self.start_point[1]], 'r-',linewidth=self.linewidth)
             
-            
-        if self.start_point is not None and self.end_point is not None:
+        else:    
+        # if self.start_point is not None and self.end_point is not None:
             # Drag on existing points to resize
             self.active_point, self.inactive_point = closer_point((event.xdata, event.ydata), self.start_point, self.end_point)
             self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
@@ -1037,9 +1113,13 @@ class PlotCanvas(QMainWindow):
         if event.inaxes != self.axes:
             return
         x0, y0 = self.inactive_point
-        self.line.set_data([x0, event.xdata], [y0, event.ydata])
+        x1, y1 = event.xdata, event.ydata
         
-        self.fig.canvas.draw_idle()
+        # Only update and redraw if the mouse movement is significant
+        if abs(x1 - x0) > self.img_size[0] * 0.01 or abs(y1 - y0) > self.img_size[1] * 0.01:  # Example threshold
+            self.line.set_data([x0, x1], [y0, y1])
+            self.fig.canvas.draw_idle()
+        
 
     def on_button_release(self, event):
         if event.inaxes != self.axes:
@@ -1055,8 +1135,18 @@ class PlotCanvas(QMainWindow):
         # Handle measure the distance
         if self.measurement_active and self.start_point is not None and self.end_point is not None:
             distance_units = measure_distance(self.start_point, self.end_point, scale=self.scale)
-            angle = calculate_angle_from_3_points(self.end_point, self.start_point, (self.start_point[0] - 100,self.start_point[1]))
-            self.measure_dialog.update_measurement(distance_units, angle)
+            #angle = calculate_angle_from_3_points(self.end_point, self.start_point, (self.start_point[0] - 100,self.start_point[1]))
+            angle = calculate_angle_to_horizontal(self.start_point, self.end_point)
+            if self.text is not None:
+                self.text.remove()
+            
+            text_x = self.start_point[0] 
+            text_y = self.start_point[1] - self.img_size[1] * 0.05
+            self.text = self.axes.text(text_x, text_y, f'{distance_units:.3f} {self.units}; {angle:.2f} degrees',
+                           color='yellow', rotation=angle)
+            self.text.set_rotation_mode('anchor')
+            self.canvas.draw_idle()
+            #self.measure_dialog.update_measurement(distance_units, angle)
             
         # Handle line profile
         if self.line_profile_mode and self.start_point is not None and self.end_point is not None:
@@ -1087,8 +1177,6 @@ class PlotCanvas(QMainWindow):
     def measure(self):
         if not self.measurement_active:
             self.measurement_active = True
-            self.measure_dialog = MeasurementDialog(0, 0, self.units, self)
-            self.measure_dialog.show()
             self.start_distance_measurement()
         
 
@@ -1096,25 +1184,25 @@ class PlotCanvas(QMainWindow):
         
     
     def fft(self):
-        if self.units not in ['m','cm','mm','um','nm','pm']:
-            QMessageBox.warning(self, 'FFT', 'FFT unavailable! Make sure it is a real space image with a valid scale in real space unit!')
-        else:
-            img_dict = self.get_img_dict_from_canvas()
-            # Crop to a square if not
-            data = img_dict['data']
-            if data.shape[0] != data.shape[1]:
-                # Image will be cropped to square for FFT
-                data = filters.crop_to_square(data)
-                img_dict['data'] = data
-            # FFT calculation is handled in the PlotCanvasFFT class
-            
-            preview_name = self.canvas.canvas_name + '_FFT'
-            
-            title = self.windowTitle()
-            self.preview_dict[preview_name] = PlotCanvasFFT(img_dict, parent=self)
-            self.preview_dict[preview_name].setWindowTitle('FFT of ' + title)
-            self.preview_dict[preview_name].canvas.canvas_name = preview_name
-            self.preview_dict[preview_name].show()
+        # if self.units not in ['m','cm','mm','um','nm','pm']:
+        #     QMessageBox.warning(self, 'FFT', 'FFT unavailable! Make sure it is a real space image with a valid scale in real space unit!')
+        # else:
+        img_dict = self.get_img_dict_from_canvas()
+        # Crop to a square if not
+        data = img_dict['data']
+        if data.shape[0] != data.shape[1]:
+            # Image will be cropped to square for FFT
+            data = filters.crop_to_square(data)
+            img_dict['data'] = data
+        # FFT calculation is handled in the PlotCanvasFFT class
+        
+        preview_name = self.canvas.canvas_name + '_FFT'
+        
+        title = self.windowTitle()
+        self.preview_dict[preview_name] = PlotCanvasFFT(img_dict, parent=self)
+        self.preview_dict[preview_name].setWindowTitle('FFT of ' + title)
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
         
     
     def windowedfft(self):
@@ -1220,6 +1308,15 @@ class PlotCanvas(QMainWindow):
 class PlotCanvas3d(PlotCanvas):
     def __init__(self, img, parent=None):
         super().__init__(img, parent)
+        
+        # Redefine image size 
+        self.img_size = img['data'].shape[1], img['data'].shape[2]
+        
+        # Add extra buttons
+        self.buttons['crop_stack_ok'] = None
+        self.buttons['crop_stack_cancel'] = None
+        
+        # Add Stack menu
         stack_menu = QMenu('Stack', self) 
         self.menubar.insertMenu(self.menubar.children()[5].children()[0],stack_menu)
         crop_stack = QAction('Crop Stack', self)
@@ -1274,12 +1371,43 @@ class PlotCanvas3d(PlotCanvas):
         self.canvas.draw_idle()
         
     def crop_stack(self):
-        self.crop()
-    
-    def confirm_crop(self):
+        ax = self.canvas.figure.get_axes()[0]
+        # Display a message in the status bar
+        self.statusBar.showMessage("Drag a rectangle to crop. Hold Shift to draw a square.")
+        
+
+        
+        if self.selector is None:
+            self.selector = RectangleSelector(ax, onselect=self.on_select, interactive=True, useblit=True,
+                                              drag_from_anywhere=True, use_data_coordinates=True,
+                                              minspanx=5, minspany=5,
+                                              button=[1]
+                                              )
+            
+            # Crop button
+            self.buttons['crop_stack_ok'] = QPushButton('OK', parent=self.canvas)
+            self.buttons['crop_stack_ok'].move(30, 30)
+            self.buttons['crop_stack_ok'].clicked.connect(self.confirm_crop_stack)
+
+            self.buttons['crop_stack_cancel'] = QPushButton('Cancel', parent=self.canvas)
+            self.buttons['crop_stack_cancel'].move(100,30)
+            self.buttons['crop_stack_cancel'].clicked.connect(self.cancel_crop)
+            
+            self.buttons['crop_stack_input'] = QPushButton('Manual input', parent=self.canvas)
+            self.buttons['crop_stack_input'].move(170,30)
+            self.buttons['crop_stack_input'].clicked.connect(self.manual_crop)
+            
+            self.selector.set_active(True)
+            for value in self.buttons.values():
+                if value is not None:
+                    value.show()
+            
+            self.fig.canvas.draw_idle()
+        
+    def confirm_crop_stack(self):
         if self.selector is not None and self.selector.active:
             x0, x1, y0, y1 = self.selector.extents
-            if abs(x1 - x0) > 1 and abs(y1 - y0) >1: 
+            if abs(x1 - x0) > 5 and abs(y1 - y0) >5: 
                 # Valid area is selected               
                 img = copy.deepcopy(self.canvas.data)
                 cropped_img = img['data'][:,int(y0):int(y1), int(x0):int(x1)]                
@@ -1295,18 +1423,22 @@ class PlotCanvas3d(PlotCanvas):
                 self.preview_dict[preview_name].show()
                 
                 # Write process history in the original_metadata
-                self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(y0),int(y1),int(x0),int(x1)))
+                self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(x0),int(x1),int(y0),int(y1)))
                 self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
                 
             self.selector.set_active(False)
             self.selector.set_visible(False)
             self.selector.disconnect_events()  # Disconnect event handling
-            self.selector = None            
-            self.ok_button.hide()
-            self.cancel_button.hide()
-            # Display a message in the status bar
+            self.selector = None    
+            for value in self.buttons.values():
+                if value is not None:
+                    value.hide()
+                    value = None
+            
             self.statusBar.showMessage("Ready")
             self.fig.canvas.draw_idle()
+            
+
     
     def rotate_stack(self):
         # Open a dialog to take the rotation angle
@@ -1539,11 +1671,15 @@ class PlotCanvasFFT(PlotCanvas):
         # img is the image dictionary, NOT FFT. FFT will be calculated in create_img()
         super().__init__(img, parent)
         
-        # Always show FFT scale in si-length-reciprocal
-        self.scalebar_settings['dimension'] = 'si-length-reciprocal'
+        edit_menu = self.menubar.children()[2]
+        mask_action = QAction('Mask and iFFT', self)
+        mask_action.triggered.connect(self.mask)
+        edit_menu.addAction(mask_action)
+        
         
         analyze_menu = self.menubar.children()[3] #Analyze is at #3
-        measure_fft_action = QAction('Measure FFT', self)
+        measure_fft_action = QAction('&Measure FFT', self)
+        measure_fft_action.setShortcut('ctrl+shift+m')
         measure_fft_action.triggered.connect(self.measure_fft)        
         analyze_menu.addAction(measure_fft_action)
         
@@ -1551,35 +1687,72 @@ class PlotCanvasFFT(PlotCanvas):
         filter_menu = self.menubar.children()[4]
         self.menubar.removeAction(filter_menu.menuAction())
         
-        self.marker = None        
+        self.marker = None  
+        
+        self.n_mask = 0
+        self.active_mask = None
+        self.active_idx = None
+        
+        # Add extra buttons
+        self.buttons['mask_add'] = None
+        self.buttons['mask_remove'] = None
+        self.buttons['mask_ifft'] = None
+        self.buttons['mask_cancel'] = None
+        
+        self.fft_button_press_cid = None
+        self.fft_button_release_cid = None
+        self.fft_motion_notify_cid = None
+        self.fft_scroll_event_cid = None
+        
+    def set_scale_units(self):
+        img_dict = self.canvas.data 
+        self.real_scale = img_dict['axes'][1]['scale']
+        # Update image size
+        self.img_size = img_dict['data'].shape
+        fft_scale = 1 / self.real_scale / self.img_size[0]
+        self.real_units = img_dict['axes'][0]['units']
+        
+            
+        if self.real_units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
+            fft_units = f'1/{self.real_units}'
+        elif self.real_units in ['1/m', '1/cm', '1/mm', '1/um', '1/µm', '1/nm', '1/pm']:
+            fft_units = self.real_units.split('/')[-1]
+        else: # Cannot parse the unit correctly, reset to pixel scale
+            fft_units = 'px'
+            fft_scale = 1
+            
+        
+        
+        # Update the data associated with this canvas object
+        self.units = fft_units 
+        self.scale = fft_scale
+        
+        # Update image dictionary
+        img_dict['axes'][0]['size'] = self.img_size[0]
+        img_dict['axes'][1]['size'] = self.img_size[1]
+        img_dict['axes'][0]['scale'] = fft_scale
+        img_dict['axes'][1]['scale'] = fft_scale
+        img_dict['axes'][0]['units'] = fft_units
+        img_dict['axes'][1]['units'] = fft_units
+        
         
     def create_img(self):
         img_dict = self.canvas.data  
         data = img_dict['data']
         
-        # Display the power spectrum for better visualization
-        fft_data = np.abs(fftshift(fft2(data))) 
+        fft_data = fftshift(fft2(data))
+        fft_mag = np.abs(fft_data)
         # Normalize image data
         #fft_data = norm_img(fft_data) * 100
         # Reformat the axes of the FFT image
-        im_x, im_y = data.shape
-        img_scale = img_dict['axes'][1]['scale']
-        fft_scale = 1 / img_scale / im_x
         
-        # Update the image dictionary with the FFT data
-        img_dict['data'] = fft_data
-        img_dict['axes'][0]['size'] = im_x
-        img_dict['axes'][1]['size'] = im_y
-        img_dict['axes'][0]['scale'] = fft_scale
-        img_dict['axes'][1]['scale'] = fft_scale
-        img_dict['axes'][0]['units'] = '1/{}'.format(img_dict['axes'][0]['units'])
-        img_dict['axes'][1]['units'] = '1/{}'.format(img_dict['axes'][1]['units'])
+        # Update image data to fft
+        self.canvas.data['fft'] = fft_data
+        self.canvas.data['data'] = fft_mag
+        self.set_scale_units()
         
-        # Update the data associated with this canvas object
-        self.units = self.canvas.data['axes'][1]['units'] 
-        self.scale = self.canvas.data['axes'][1]['scale']
 
-        vmin, vmax = np.percentile(fft_data, (30,99.9))
+        vmin, vmax = np.percentile(fft_mag, (30,99.9))
         
         self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
         self.axes.set_axis_off()
@@ -1590,21 +1763,26 @@ class PlotCanvasFFT(PlotCanvas):
         
     def update_img(self, real_data):
         # Compute fft from real_data and update the display and scale
-        fft_data = np.abs(fftshift(fft2(real_data)))
-        imsize = fft_data.shape[0]
-        im_scale = self.parent().scale
-        fft_scale = 1 / im_scale / imsize
-        # update the scale
-        self.scale = fft_scale
-        self.canvas.data['data'] = fft_data
-        # update the image canvas
+        fft_data = fftshift(fft2(real_data))
+        fft_mag = np.abs(fft_data)
+        self.canvas.data['fft'] = fft_data
+        self.canvas.data['data'] = fft_mag
+        # Update the units
+        self.canvas.data['axes'][0]['units'] = self.real_units
+        self.canvas.data['axes'][1]['units'] = self.real_units
+        self.canvas.data['axes'][0]['scale'] = self.real_scale
+        self.canvas.data['axes'][1]['scale'] = self.real_scale
+        # Update the units and scale
+        self.set_scale_units()
+        
+        # Clear the image canvas
         self.axes.clear()
         
         # Reset the measurement marker if exists
         if self.marker is not None:
             self.marker = None
         
-        vmin, vmax = np.percentile(fft_data, (30,99.9))
+        vmin, vmax = np.percentile(fft_mag, (30,99.9))
         
         self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
         self.axes.set_axis_off()
@@ -1613,12 +1791,6 @@ class PlotCanvasFFT(PlotCanvas):
             self.create_scalebar()
         self.fig.tight_layout(pad=0)
         
-        
-        # # Update the new size and scale to the image dict
-        self.canvas.data['axes'][0]['scale'] = self.scale
-        self.canvas.data['axes'][1]['scale'] = self.scale 
-        self.canvas.data['axes'][0]['size'] = imsize
-        self.canvas.data['axes'][1]['size'] = imsize
        
         self.canvas.draw_idle()
         
@@ -1673,8 +1845,8 @@ class PlotCanvasFFT(PlotCanvas):
         self.distance_fft = 1/(distance_px * self.scale)
         
         # Calculate the angle from horizontal
-        self.ang = calculate_angle_from_3_points((cx, cy), (x0,y0), (x0 - 100,y0))
-        
+        #self.ang = calculate_angle_from_3_points((cx, cy), (x0,y0), (x0 - 100,y0))
+        self.ang = calculate_angle_to_horizontal((x0,y0), (cx,cy))
         # display results in the dialog
         self.measure_fft_dialog.update_measurement(self.distance_fft, self.ang)
         
@@ -1698,19 +1870,234 @@ class PlotCanvasFFT(PlotCanvas):
                     
         
     def measure_fft(self):
-        real_units = None
-        if self.units == '1/nm':
-            real_units = 'nm'
-        elif self.units == '1/um':
-            real_units = 'um'
-        if real_units is not None:
+        if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
+            real_units = self.units.split('/')[-1]
             self.measure_fft_dialog = MeasureFFTDialog(0, 0, real_units, self)
             self.measure_fft_dialog.show()
             self.start_fft_measurement()
+            
         else:
-            QMessageBox.warning(self, 'Measure FFT', 'Only available for FFT!')
+            QMessageBox.warning(self, 'Measure FFT', 'Invalid calibration in FFT! Please calibrate the image and try again.')
+         
+    
+    def mask(self):
+        self.mask_list = []
+        self.sym_mask_list = []
+        
+        self.fft_button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.fft_on_press)
+        self.fft_button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.fft_on_release)
 
         
+        # Buttons for add, remove, cancel
+        self.buttons['mask_add'] = QPushButton('Add', parent=self.canvas)
+        self.buttons['mask_add'].setGeometry(30, 30, 80, 30)
+        self.buttons['mask_add'].clicked.connect(self.add_mask)
+        self.buttons['mask_remove'] = QPushButton('Remove', parent=self.canvas)
+        self.buttons['mask_remove'] .setGeometry(100, 30, 80, 30)
+        self.buttons['mask_remove'] .clicked.connect(self.remove_mask)
+        self.buttons['mask_cancel']  = QPushButton('Cancel', parent=self.canvas)
+        self.buttons['mask_cancel'].setGeometry(170, 30, 80, 30)
+        self.buttons['mask_cancel'].clicked.connect(self.cleanup_mask)
+        self.buttons['mask_ifft'] = QPushButton('iFFT', parent=self.canvas)
+        self.buttons['mask_ifft'].setGeometry(240, 30, 80, 30)
+        self.buttons['mask_ifft'].clicked.connect(self.ifft_filter)
+        
+        for value in self.buttons.values():
+            if value is not None:
+                value.show()
+        
+        self.add_mask()
+        
+        self.statusBar.showMessage('Drag on the red circle to position. Scroll to resize. Add more as needed.')
+        self.canvas.draw_idle()
+        
+    
+    
+    def add_mask(self):       
+        # Default size and position
+        x0, y0 = self.img_size[0]/4, self.img_size[1]/4
+        r0 = int(self.img_size[0]/100)
+        mask = Circle((x0,y0),radius=r0, color='red', fill=False)
+        self.axes.add_artist(mask)
+        self.mask_list.append(mask)
+        
+        # Set color to inactive mask
+        if self.active_mask is not None:
+            self.active_mask.set_color('orange')
+        
+        # Add another circle at symmetric position
+        
+        sym_mask = Circle((self.img_size[0]-x0,self.img_size[1]-y0), radius=r0, color='yellow', fill=False)
+        self.sym_mask_list.append(sym_mask)
+        self.axes.add_artist(sym_mask)
+        self.active_mask = mask
+        self.active_idx = self.mask_list.index(mask)
+        self.canvas.draw_idle()
+        
+    def remove_mask(self):
+        if self.active_mask is not None:
+            self.mask_list.remove(self.active_mask)
+            self.sym_mask_list[self.active_idx].remove()
+            self.sym_mask_list.pop(self.active_idx)
+            self.active_mask.remove()
+            
+            self.active_mask = None
+            self.active_idx = None
+            self.canvas.draw_idle()
+        
+    def fft_on_press(self,event):
+        
+        if event.inaxes != self.axes:
+            return
+        
+        if self.active_mask is not None:
+            self.active_mask.set_color('orange')
+        x, y = event.xdata, event.ydata
+        # Find the closest circle in the mask list
+        #min_dist = float('inf')
+        for i, mask in enumerate(self.mask_list):
+            cx, cy = mask.center
+            d = measure_distance((x,y), (cx,cy))
+            if d < mask.radius * 1.5:
+                self.active_mask = mask
+                self.active_idx = i
+                break
+        # Set red color to the active circle
+        self.active_mask.set_color('red')        
+        self.fft_motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.fft_on_move)
+        self.fft_scroll_event_cid = self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.canvas.draw_idle()
+        
+    def fft_on_move(self, event):
+        if event.inaxes != self.axes:
+            return
+        x, y = event.xdata, event.ydata
+        x0, y0 = self.active_mask.center
+        
+        self.active_mask.center = x, y
+        self.sym_mask_list[self.active_idx].center = (self.img_size[0]-x, self.img_size[1]-y)
+        self.canvas.draw_idle()
+        # if abs(x0-x) > self.img_size[0] /100 or abs(y0-y) > self.img_size[1] / 100:
+        #     self.fig.canvas.draw()
+            
+     
+    def fft_on_release(self, event):
+        if event.inaxes != self.axes:
+            return
+        
+        
+        self.fig.canvas.mpl_disconnect(self.fft_motion_notify_cid)
+        self.canvas.draw_idle()
+                
+    def on_scroll(self, event):
+        if self.active_mask is None:
+            return
+
+        if event.button == 'up':
+            new_radius = self.active_mask.radius + 1
+        elif event.button == 'down':
+            new_radius = max(self.active_mask.radius - 1, 1)
+            
+        else:
+            return
+        
+        self.active_mask.set_radius(new_radius)
+        self.sym_mask_list[self.active_idx].set_radius(new_radius)
+
+        self.fig.canvas.draw_idle() 
+        
+            
+
+    
+    def cleanup_mask(self):
+        for i in range(len(self.mask_list)):
+            self.mask_list[i].remove()
+            self.sym_mask_list[i].remove()
+        self.mask_list = []
+        self.sym_mask_list = []
+        
+        for value in self.buttons.values():
+            if value is not None:
+                value.hide()
+                value = None
+
+        self.active_mask = None
+        self.active_idx = None
+        #self.fig.canvas.mpl_disconnect(self.fft_motion_notify_cid)
+        self.fig.canvas.mpl_disconnect(self.fft_button_press_cid)
+        self.fig.canvas.mpl_disconnect(self.fft_button_release_cid)
+        self.fig.canvas.mpl_disconnect(self.fft_scroll_event_cid)
+        
+        self.canvas.draw_idle()
+        
+    def create_mask(self, edge_width=5):
+        
+        mask = np.zeros(self.img_size, dtype=float)
+        mask_lst = self.mask_list + self.sym_mask_list
+        for circle in mask_lst:
+            x_center, y_center = circle.center
+            radius = circle.get_radius()
+            # Create a grid of coordinates
+            Y, X = np.ogrid[:self.img_size[0], :self.img_size[1]]
+            
+            # Calculate the Euclidean distance from each grid point to the circle's center
+            distance = np.sqrt((X - x_center)**2 + (Y - y_center)**2)
+            
+            # Create the base circle mask: inside the circle is 1, outside is 0
+            inside_circle = (distance <= radius)
+            outside_circle = (distance >= radius + edge_width)
+            
+            # Transition zone
+            transition_zone = ~inside_circle & ~outside_circle
+            transition_mask = np.clip((radius + edge_width - distance) / edge_width, 0, 1)
+    
+            # Combine masks
+            mask[inside_circle] = 1
+            mask[transition_zone] = transition_mask[transition_zone]
+            
+        return mask
+     
+    def ifft_filter(self):
+        if self.mask_list and self.sym_mask_list:
+            mask = self.create_mask()
+            fft_data = self.canvas.data['fft']
+            masked_fft = fft_data * mask
+            filtered_img = ifft2(ifftshift(masked_fft)).real
+            filtered_img_dict = self.get_img_dict_from_canvas()
+            filtered_img_dict['data'] = filtered_img
+            
+            # Calculate scale and update
+            if self.units != 'px':
+                img_scale = 1 / self.scale /self.img_size[0]
+                img_units = self.units.split('/')[-1]
+                
+            else:
+                img_scale = 1
+                img_units = 'px'
+            
+            for axes in filtered_img_dict['axes']:
+                axes['units'] = img_units
+                axes['scale'] = img_scale
+                
+                
+            # Create a new plot canvas and display
+            mask_center = [(int(circle.center[0]), int(circle.center[1])) for circle in self.mask_list]
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + f'_iFFT_{mask_center}'
+            self.preview_dict[preview_name] = PlotCanvas(filtered_img_dict,parent=self)
+            self.preview_dict[preview_name].canvas.canvas_name = preview_name
+            
+            self.preview_dict[preview_name].setWindowTitle('iFFT of ' + title)
+            self.preview_dict[preview_name].show()
+            
+            # Keep the history
+            self.preview_dict[preview_name].process['process'].append(f'IFFT from {mask_center}')
+            self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+        else:
+            QMessageBox.warning(self, 'Mask and iFFT', 'Add mask(s) first!') 
+    
+            
+            
         
 #========= Plot canvas for line profile =======================================
 class PlotCanvasLineProfile(QMainWindow):
@@ -1737,36 +2124,46 @@ class PlotCanvasLineProfile(QMainWindow):
             self.setCentralWidget(self.main_frame)
             self.create_menubar()
             
+            # Buttons
+            self.buttons = {'measure_clear': None}
+            
             self.linewidth = 1
             
         def create_menubar(self):
             menubar = self.menuBar()
             
-            file_menu = menubar.addMenu('File')
-            save_action = QAction('Export', self)
+            file_menu = menubar.addMenu('&File')
+            save_action = QAction('&Save as', self)
+            save_action.setShortcut('ctrl+s')
             save_action.triggered.connect(self.mpl_toolbar.save_figure)
             file_menu.addAction(save_action)
-            copy_action = QAction('Copy Plot to Clipboard', self)
+            copy_action = QAction('&Copy Plot to Clipboard', self)
+            copy_action.setShortcut('ctrl+c')
             copy_action.triggered.connect(self.copy_plot)
             file_menu.addAction(copy_action)
-            close_action = QAction('Close', self)
+            close_action = QAction('&Close', self)
+            close_action.setShortcut('ctrl+x')
             close_action.triggered.connect(self.close)
             file_menu.addAction(close_action)
             
             measure_menu = menubar.addMenu('Measure')
             measure_horizontal = QAction('Measure horizontal', self)
+            
             measure_horizontal.triggered.connect(self.measure_horizontal)
             measure_menu.addAction(measure_horizontal)
             measure_vertical = QAction('Measure vertical', self)
+            
             measure_vertical.triggered.connect(self.measure_vertical)
             measure_menu.addAction(measure_vertical)
             
-            settings_menu = menubar.addMenu('Settings')
-            linewidth_setting_action = QAction('Set line width',self)
+            settings_menu = menubar.addMenu('&Settings')
+            linewidth_setting_action = QAction('&Set line width',self)
+            linewidth_setting_action.setShortcut('ctrl+w')
             linewidth_setting_action.triggered.connect(self.linewidth_setting)
             settings_menu.addAction(linewidth_setting_action)
 
-            plotsettings_action = QAction('Plot Settings', self)
+            plotsettings_action = QAction('&Plot Settings', self)
+            plotsettings_action.setShortcut('ctrl+o')
             plotsettings_action.triggered.connect(self.plotsetting)
             settings_menu.addAction(plotsettings_action)
             
@@ -1777,7 +2174,7 @@ class PlotCanvasLineProfile(QMainWindow):
             
             dpi = 150
             
-            self.canvas.figure.savefig(buf, transparent=True, dpi=dpi)
+            self.canvas.figure.savefig(buf, dpi=dpi)
             
             
             self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
@@ -1834,16 +2231,25 @@ class PlotCanvasLineProfile(QMainWindow):
             distance = xmax - xmin
             if self.text is not None:
                 self.text.remove()
-            self.text = self.axes.text(0.05, 0.9, f'{distance:.4f} ({self.parent().units})',
-                                       transform=self.axes.transAxes, color='red')
+                
+            ylim = self.axes.get_ylim()
+            text_x = distance * 0.1 + xmin
+            text_y = ylim[1] - (ylim[1] - ylim[0]) * 0.1
+            
+            self.text = self.axes.text(text_x, text_y, f'{distance:.4f} ({self.parent().units})',
+                                       color='black')
             self.canvas.draw_idle()
             
         def on_select_v(self,ymin,ymax):
             distance = ymax - ymin
             if self.text is not None:
                 self.text.remove()
-            self.text = self.axes.text(0.05, 0.9, f'{distance:.0f} (Counts)',
-                                       transform=self.axes.transAxes, color='red')
+                
+            xlim = self.axes.get_xlim()
+            text_x = xlim[1] - (xlim[1] - xlim[0]) * 0.3
+            text_y = ymax - distance * 0.1
+            self.text = self.axes.text(text_x, text_y, f'{distance:.0f} (Counts)',
+                                       color='black')
             self.canvas.draw_idle()
             
         def cleanup(self):
@@ -1877,11 +2283,10 @@ class PlotCanvasLineProfile(QMainWindow):
                 self.clear_button = QPushButton('Clear', parent=self.canvas)
                 self.clear_button.move(10, 10)
                 self.clear_button.clicked.connect(self.cleanup)
-                self.clear_button.hide()
              
-            self.selector.set_active(True)
-            self.clear_button.show()
-            self.fig.canvas.draw_idle()   
+                self.selector.set_active(True)
+                self.clear_button.show()
+                self.fig.canvas.draw_idle()   
             
 
 
@@ -1893,33 +2298,60 @@ class CustomSettingsDialog(QDialog):
         self.ax = ax
         self.img = ax.get_images()[0] if ax.get_images() else None
         self.scalebar_settings = self.parent().plotcanvas.scalebar_settings
+        
+        self.original_settings = {}
+        self.original_settings['scalebar'] = copy.copy(self.scalebar_settings)
         # Create the layout
         layout = QVBoxLayout()
-
         
-        # vmin and vmax inputs
-        h_layout_vmin = QHBoxLayout()
-        self.vmin_label = QLabel("vmin (%):")
-        self.vmin_input = QLineEdit()
-        h_layout_vmin.addWidget(self.vmin_label)
-        h_layout_vmin.addWidget(self.vmin_input)
-        layout.addLayout(h_layout_vmin)
-
-        h_layout_vmax = QHBoxLayout()
-        self.vmax_label = QLabel("vmax (%):")
-        self.vmax_input = QLineEdit()
-        h_layout_vmax.addWidget(self.vmax_label)
-        h_layout_vmax.addWidget(self.vmax_input)
-        layout.addLayout(h_layout_vmax)
-
+        # vmin and vmax slider
+        vminmax_label = QLabel('vmin/max')
+        self.doubleslider = QDoubleRangeSlider(Qt.Orientation.Horizontal)
+        self.doubleslider.valueChanged.connect(self.update_clim)
+        
+        h_box = QHBoxLayout()
+        h_box.addWidget(vminmax_label)
+        h_box.addWidget(self.doubleslider)
+        
+        
+        
         # Set current vmin and vmax
         if self.img:
             vmin, vmax = self.img.get_clim()
-            # # Calculate vmin and vmax is at what percentile
-            vmin_percentile = stats.percentileofscore(self.img._A.data.flat, vmin)
-            vmax_percentile = stats.percentileofscore(self.img._A.data.flat, vmax)
-            self.vmin_input.setText(f'{vmin_percentile:.2f}')
-            self.vmax_input.setText(f'{vmax_percentile:.2f}')
+            dmin = int(np.min(self.img._A))
+            dmax = round(np.max(self.img._A))
+            self.doubleslider.setRange(dmin, dmax)
+            self.doubleslider.setValue((vmin, vmax))
+            
+            self.original_settings['vmin/max'] = (vmin, vmax)
+        
+        layout.addLayout(h_box)
+            
+            
+        
+        # # vmin and vmax inputs
+        # h_layout_vmin = QHBoxLayout()
+        # self.vmin_label = QLabel("vmin (%):")
+        # self.vmin_input = QLineEdit()
+        # h_layout_vmin.addWidget(self.vmin_label)
+        # h_layout_vmin.addWidget(self.vmin_input)
+        # layout.addLayout(h_layout_vmin)
+
+        # h_layout_vmax = QHBoxLayout()
+        # self.vmax_label = QLabel("vmax (%):")
+        # self.vmax_input = QLineEdit()
+        # h_layout_vmax.addWidget(self.vmax_label)
+        # h_layout_vmax.addWidget(self.vmax_input)
+        # layout.addLayout(h_layout_vmax)
+
+        # Set current vmin and vmax
+        # if self.img:
+        #     vmin, vmax = self.img.get_clim()
+        #     # # Calculate vmin and vmax is at what percentile
+        #     vmin_percentile = stats.percentileofscore(self.img._A.data.flat, vmin)
+        #     vmax_percentile = stats.percentileofscore(self.img._A.data.flat, vmax)
+        #     self.vmin_input.setText(f'{vmin_percentile:.2f}')
+        #     self.vmax_input.setText(f'{vmax_percentile:.2f}')
         
 
         # Colormap dropdown
@@ -1938,12 +2370,18 @@ class CustomSettingsDialog(QDialog):
 
         # Set current colormap
         if self.img:
-            self.cmap_combobox.setCurrentText(self.img.get_cmap().name)
+            cmap = self.img.get_cmap().name
+            self.cmap_combobox.setCurrentText(cmap)
+            self.original_settings['cmap'] = cmap
+            
+        # Update colormap if changed
+        self.cmap_combobox.currentTextChanged.connect(self.update_colormap)
             
         # Scalebar customization
         
         self.scalebar_check = QCheckBox("Add scalebar to image")
         self.scalebar_check.setChecked(self.scalebar_settings['scalebar'])
+        self.scalebar_check.stateChanged.connect(self.update_scalebar)
         
         layout.addWidget(self.scalebar_check)
         h_layout_scalebar = QHBoxLayout()
@@ -1952,22 +2390,29 @@ class CustomSettingsDialog(QDialog):
         sbcolor = ['black', 'white', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
         self.sbcolor_combobox.addItems(sbcolor)
         self.sbcolor_combobox.setCurrentText(self.scalebar_settings['color'])
+        self.sbcolor_combobox.currentTextChanged.connect(self.update_scalebar)
+        
+        
         h_layout_scalebar.addWidget(self.sbcolor_label)
         h_layout_scalebar.addWidget(self.sbcolor_combobox)
+        
         h_layout_loc = QHBoxLayout()
         self.sbloc_label = QLabel('Scalebar location')
         self.sblocation_combox = QComboBox()
         sbloc = ['lower left', 'lower right', 'lower center', 'upper left', 'upper right', 'upper center']
         self.sblocation_combox.addItems(sbloc)
         self.sblocation_combox.setCurrentText(self.scalebar_settings['location'])
+        self.sblocation_combox.currentTextChanged.connect(self.update_scalebar)
         h_layout_loc.addWidget(self.sbloc_label)
         h_layout_loc.addWidget(self.sblocation_combox)
+        
         h_layout_scaleloc = QHBoxLayout()
         self.scaleloc_label = QLabel('Text location')
         self.scaleloc = QComboBox()
         scaleloc = ['top', 'bottom', 'left', 'right', 'none'] 
         self.scaleloc.addItems(scaleloc)
         self.scaleloc.setCurrentText(self.scalebar_settings['scale_loc'])
+        self.scaleloc.currentTextChanged.connect(self.update_scalebar)
         h_layout_scaleloc.addWidget(self.scaleloc_label)
         h_layout_scaleloc.addWidget(self.scaleloc)
         layout.addLayout(h_layout_scalebar)
@@ -1975,49 +2420,30 @@ class CustomSettingsDialog(QDialog):
         layout.addLayout(h_layout_scaleloc)
 
         # Apply button
-        buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Ok)
-        self.apply_button = buttons.button(QDialogButtonBox.Apply)
-        self.apply_button.clicked.connect(self.apply_settings)
+        buttons = QDialogButtonBox(QDialogButtonBox.Reset | QDialogButtonBox.Ok)
+        self.reset_button = buttons.button(QDialogButtonBox.Reset)
+        self.reset_button.clicked.connect(self.reset_settings)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
-        self.ok_button.clicked.connect(self.handle_ok)
+        self.ok_button.clicked.connect(self.accept)
         
         layout.addWidget(buttons)
         
 
         self.setLayout(layout)
-
-    def apply_settings(self):
-        if not self.img:
-            print("No image present in the axes.")
-            return
-            
-
-        # Apply vmin and vmax
-        try:
-            vmin_percentile = float(self.vmin_input.text())
-            vmax_percentile = float(self.vmax_input.text())
-            
-        except ValueError:
-            QMessageBox.warning(self, 'Image Settings', 'Invalid vmin or vmax value!')
-            return
-            
-
-        vmin = np.percentile(self.img._A.data, vmin_percentile)        
-
-        vmax = np.percentile(self.img._A.data, vmax_percentile)
         
-        if vmin >= vmax:
-           QMessageBox.warning(self, 'Image Settings', 'Invalid vmin or vmax value!')
-           return
-       
-        else:
-            self.img.set_clim(vmin, vmax)
-
-
+    def update_clim(self):
+        # Apply vmin and vmax
+        vmin, vmax = self.doubleslider.value()
+        self.img.set_clim(vmin,vmax)
+        self.ax.figure.canvas.draw_idle()
+        
+    def update_colormap(self):
         # Apply colormap
         self.cmap_name = self.cmap_combobox.currentText()
         self.img.set_cmap(self.cmap_name)
-        
+        self.ax.figure.canvas.draw_idle()
+    
+    def update_scalebar(self):
         # Apply scalebar styles
         self.scalebar_settings['scalebar'] = self.scalebar_check.isChecked()
         self.scalebar_settings['color'] = self.sbcolor_combobox.currentText()
@@ -2025,14 +2451,24 @@ class CustomSettingsDialog(QDialog):
         self.scalebar_settings['scale_loc'] = self.scaleloc.currentText()
         
         self.parent().apply_scalebar()
-        
-
-        # Redraw the canvas
         self.ax.figure.canvas.draw_idle()
+        
     
-    def handle_ok(self):
-        self.apply_settings()
-        self.accept()
+    def reset_settings(self):
+        # Reset scalebar
+        self.scalebar_check.setChecked(self.original_settings['scalebar']['scalebar'])
+        self.sbcolor_combobox.setCurrentText(self.original_settings['scalebar']['color'])
+        self.sblocation_combox.setCurrentText(self.original_settings['scalebar']['location'])
+        self.scaleloc.setCurrentText(self.original_settings['scalebar']['scale_loc'])
+        self.update_scalebar()
+        
+        # Reset vmin vmax
+        self.doubleslider.setValue(self.original_settings['vmin/max'])
+        self.update_clim()
+        
+        # Reset colormap
+        self.cmap_combobox.setCurrentText(self.original_settings['cmap'])
+        self.update_colormap()
 
 
 #============ Define a custom toolbar to handle the save function==============
@@ -2095,12 +2531,21 @@ class CustomToolbar(NavigationToolbar):
                     img_size = img_to_save['data'].shape
                     dpi = float(sorted(img_size/figsize, reverse=True)[0])
                     
+                    # Hide all the buttons if active
+                    # for key, value in self.plotcanvas.buttons.items():
+                    #     if value is not None:
+                    #         self.plotcanvas.buttons[key].hide()
+                    
                     
                     self.canvas.figure.savefig(self.file_path, dpi=dpi, format=self.file_type)
-                try:
+                    
+                    # Bring back the hiden buttons
+                    # for key, value in self.plotcanvas.buttons.items():
+                    #     if value is not None:
+                    #         self.plotcanvas.buttons[key].show()
+                if isinstance(self.canvas.img_idx, int):
                     self.canvas.figure.axes[1].set_visible(True)
-                except:
-                    pass
+                
                 
     # Redefine the edit axis button
     def edit_parameters(self):
@@ -2450,6 +2895,82 @@ class RotateImageDialog(QDialog):
     def handle_ok(self):
         self.rotate_ang = self.angle_input.text()
         self.accept()
+        
+#============== Manual crop dialog ================================
+class ManualCropDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Input crop range")
+        self.x_range = None
+        self.y_range = None
+        layout = QVBoxLayout()
+        x_layout = QHBoxLayout()
+        x_label = QLabel('x range')
+        self.x_min = QLineEdit()
+        self.x_min.setPlaceholderText('xmin')
+        x_label2 = QLabel(':')
+        self.x_max = QLineEdit()
+        self.x_max.setPlaceholderText('xmax')
+        x_layout.addWidget(x_label)
+        x_layout.addWidget(self.x_min)
+        x_layout.addWidget(x_label2)
+        x_layout.addWidget(self.x_max)
+        y_layout = QHBoxLayout()
+        y_label = QLabel('y range')
+        self.y_min = QLineEdit()
+        self.y_min.setPlaceholderText('ymin')
+        y_label2 = QLabel(':')
+        self.y_max = QLineEdit()
+        self.y_max.setPlaceholderText('ymax')
+        y_layout.addWidget(y_label)
+        y_layout.addWidget(self.y_min)
+        y_layout.addWidget(y_label2)
+        y_layout.addWidget(self.y_max)
+        
+        layout.addLayout(x_layout)
+        layout.addLayout(y_layout)
+        
+        # Dialog Buttons (OK and Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+        
+    def handle_ok(self):
+        # Validate the inputs
+        try:
+            xmin = int(self.x_min.text())
+            xmax = int(self.x_max.text())
+            ymin = int(self.y_min.text())
+            ymax = int(self.y_max.text())
+        except:
+            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be integers!')
+            return
+            
+        img_size = self.parent().img_size
+        if xmin < 0 or xmax < 0 or ymin < 0 or ymax < 0:
+            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be positive!')
+            return
+        
+        elif xmax > img_size[0] or ymax > img_size[1]:
+            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be smaller than the image size!')
+            return
+        
+        elif xmin > xmax or ymin > ymax:
+            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Min must be greater than max!')
+            return
+        
+        elif xmax - xmin < 5 or ymax - ymin < 5:
+            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Crop range must be at least 5 pixels!')
+            return
+        
+        else:
+            self.x_range = xmin, xmax
+            self.y_range = ymin, ymax
+        self.accept()
+        
         
 
 #============ Set scale dialogue ==================================
@@ -3086,13 +3607,14 @@ def add_scalebar_to_pil(im, scale, unit):
     # Add text
     text = str(sb_len) + ' ' + unit
     fontsize = int(im_x / 20)
-    try: 
-        font = ImageFont.truetype("arial.ttf", fontsize)
-    except:
-        try: 
-            font = ImageFont.truetype("Helvetica.ttc", fontsize)
-        except:
-            font = ImageFont.load_default()
+    font = ImageFont.load_default(fontsize)
+    # try: 
+    #     font = ImageFont.truetype("arial.ttf", fontsize)
+    # except:
+    #     try: 
+    #         font = ImageFont.truetype("Helvetica.ttc", fontsize)
+    #     except:
+    #         font = ImageFont.load_default()
     txt_x, txt_y = (sb_start_x * 1.1, sb_start_y - fontsize * 1.1 - im_y/80)
     # Add outline to the text
     dx = im_x / 800
@@ -3100,7 +3622,7 @@ def add_scalebar_to_pil(im, scale, unit):
     draw.text((txt_x+dx, txt_y-dx), text, font=font, fill='black')
     draw.text((txt_x-dx, txt_y+dx), text, font=font, fill='black')
     draw.text((txt_x+dx, txt_y+dx), text, font=font, fill='black')
-    draw.text((txt_x, txt_y), text, fill='white', font=font, anchor=None)  
+    draw.text((txt_x, txt_y), text, font=font, fill='white', anchor=None)  
     
 
 # def scale_bar_to_fig(imgshape,scale,unit,facecolor="white",edgecolor="black"):
@@ -3344,6 +3866,34 @@ def calculate_angle_from_3_points(A, B, C):
     angle_deg = math.degrees(angle_rad)
 
     return angle_deg
+
+def calculate_angle_to_horizontal(A, B):
+    '''
+    Calculate the angle of A, B and x direction  
+    '''
+    y = B[1] - A[1]
+    x = B[0] - A[0]
+    if x == 0:
+        if y > 0:
+            ang = -90
+        else:
+            ang = 90
+        return ang
+    ang_rad = math.atan((B[1]-A[1])/(B[0]-A[0]))
+    ang = math.degrees(ang_rad)  
+    
+    # Reformat the angle to be -180 to 180
+    if x >0 and y>0:
+        return -1 * ang
+    if x>0 and y<0:
+        return -1 * ang
+    if x<0 and y>0:
+        return -180 - ang
+    if x<0 and y<0:
+        return 180 - ang
+    
+    
+    return ang
 
 def measure_distance(A, B, scale=1):
     x0, y0 = A

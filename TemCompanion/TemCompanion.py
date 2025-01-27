@@ -1775,7 +1775,9 @@ class PlotCanvasFFT(PlotCanvas):
         self.set_scale_units()
         
         # Clear the image canvas
+        
         self.axes.clear()
+        self.scalebar = None
         
         # Reset the measurement marker if exists
         if self.marker is not None:

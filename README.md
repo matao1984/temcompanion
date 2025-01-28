@@ -62,6 +62,15 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v0.6
+- Fixed crop and crop stack have the same effect in stack images
+- Improved speed for interactive measurement and line profile
+- Improved measurement results displaying
+- Improved units convertion between image and FFT. Now can compute FFT from uncalibrated images and diffraction patterns.
+- Added shortcuts for most of the functions
+- Added mask and ifft filtering
+- Improved image setting dialog
+
 ### v0.5
 - The line in measuurement and lineprofile modes can be dragged and resized interactively.
 - Added scalebar customization: turn on/off, color, location, etc.

@@ -27,7 +27,7 @@
 # The line in measuurement and lineprofile modes can be dragged and resized interactively.
 # Added scalebar customization: turn on/off, color, location, etc.
 # Copy image directly to the clipboard and paste in Power Point, etc.
-# 2025-01-   v0.6
+# 2025-01-27   v0.6
 # Fixed crop and crop stack have the same effect in stack images
 # Improved speed for interactive measurement and line profile
 # Improved measurement results displaying
@@ -35,6 +35,15 @@
 # Added shortcuts for most of the functions
 # Added mask and ifft filtering
 # Improved image setting dialog
+# Added manual input for cropping
+
+# 2025-01-31  v1.0
+# Significant update with redesigned UI. Now it is separated from the old EMD-converter.
+# Batch converter function calls the old Emd-converter and runs batch conversion.
+# Added flip image and stack
+# Added custom color map for colors to transition from black at 0 intensity
+# Send to windows and mac bundles
+
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -43,8 +52,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
-                             QSlider, QStatusBar, QMenu, QRadioButton)
-from PyQt5.QtCore import Qt, QStringListModel
+                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy)
+from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
 from PyQt5.QtGui import QImage
 from superqt import QDoubleRangeSlider
 
@@ -55,7 +64,7 @@ from datetime import date
 
 import numpy as np
 import copy
-from scipy import stats
+
 from scipy.ndimage import center_of_mass
 
 import pickle
@@ -69,8 +78,9 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as Navigatio
 
 from matplotlib.figure import Figure
 from matplotlib_scalebar.scalebar import ScaleBar
-from matplotlib.widgets import Slider, RectangleSelector, SpanSelector, EllipseSelector
+from matplotlib.widgets import Slider, RectangleSelector, SpanSelector
 from matplotlib.patches import Circle
+from matplotlib.colors import LinearSegmentedColormap
 
 from hrtem_filter import filters
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
@@ -82,29 +92,64 @@ from skimage.transform import warp
 
 
 
-ver = '0.6'
+ver = '1.0'
 #rdate = date.today().strftime('%Y-%m-%d')
-rdate = '2025-01-27'
+rdate = '2025-01-31'
+
+#===================Redirect output to the main window===============================
+# Custom stream class to capture output
+class EmittingStream(QObject):
+    text_written = pyqtSignal(str)  # Signal to emit text
+
+    def write(self, text):
+        self.text_written.emit(str(text))  # Emit the text
+
+    def flush(self):
+        pass  # Required for compatibility with sys.stdout
+        
+
+        
+   
+        
+
+        
+#=====================Main Window UI ===============================================
 
 
-
-
-class UI_TemCompanion(QMainWindow):
+class UI_TemCompanion(QWidget):
     def __init__(self):
         super().__init__()
-        self.setupUi(self)
-        self.retranslateUi(self)
-        self.set_scalebar()
-        self.files = None
-        self.output_dir = None
+        self.setupUi()
+        self.file = None
         self.preview_dict = {}
+        self.converter = None
+        # Create the custom stream and connect it to the QTextEdit
+        self.stream = EmittingStream()
+        self.stream.text_written.connect(self.append_text)
+   
+        # Redirect sys.stdout and sys.stderr to the custom stream
+        sys.stdout = self.stream
+        sys.stderr = self.stream
+        
+        
+
+        
+        self.print_info()
+   
+    def append_text(self, text):
+        # Append text to the QTextEdit
+        self.outputBox.moveCursor(self.outputBox.textCursor().End)  # Move cursor to the end
+        self.outputBox.insertPlainText(text)  # Insert the text
         
     #=============== Redefine the close window behavior============================
     def closeEvent(self, event):
         # Close all window
         if self.preview_dict:
-            for plot in self.preview_dict.keys():
-                self.preview_dict[plot].close()
+            for plot in self.preview_dict.values():
+                plot.close()
+        
+        if self.converter is not None and self.converter.isVisible():
+            self.converter.close()
         
 
         
@@ -117,290 +162,131 @@ class UI_TemCompanion(QMainWindow):
                                  "GS-cutoff": "0.3"}
 
     filter_parameters = filter_parameters_default.copy()
-    scale_bar = False
     
-    @classmethod
-    def set_scalebar(cls):
-        cls.scale_bar = not cls.scale_bar
-
         
 
 
-    def setupUi(self, TemCompanion):
-        TemCompanion.setObjectName("TemCompanion")
-        TemCompanion.resize(465, 370)
-        self.openfileButton = QtWidgets.QPushButton(TemCompanion)
-        self.openfileButton.setGeometry(QtCore.QRect(30, 20, 91, 61))
+    def setupUi(self):
+        
+        self.setObjectName("TemCompanion")
+        self.setWindowTitle(f"TemCompanion Ver {ver}")
+        self.resize(400, 300)
+        
+        buttonlayout = QHBoxLayout()
+        
+        self.openfileButton = QPushButton(self)
+        #self.openfileButton.setGeometry(QtCore.QRect(30, 20, 80, 60))
+        self.openfileButton.resize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
+        self.openfileButton.setText('Open \nImages')
         
-        self.openfilebox = QtWidgets.QTextEdit(TemCompanion,readOnly=True)
-        self.openfilebox.setGeometry(QtCore.QRect(130, 20, 301, 61))
-        self.openfilebox.setObjectName("OpenFileBox")
         
-        self.previewButton = QtWidgets.QPushButton(TemCompanion)
-        self.previewButton.setGeometry(QtCore.QRect(30, 90, 91, 61))
-        self.previewButton.setObjectName("Preview")
         
-        self.filterButton = QtWidgets.QPushButton(TemCompanion)
-        self.filterButton.setGeometry(QtCore.QRect(130, 90, 91, 61))
-        self.filterButton.setObjectName("filterButton")
+        self.convertButton = QPushButton(self)
+        #self.convertButton.setGeometry(QtCore.QRect(100, 20, 80, 60))
+        self.convertButton.resize(80, 60)
+        self.convertButton.setObjectName("BatchConvert")
+        self.convertButton.setText("Batch \nConvert")
         
-        self.convertlabel = QtWidgets.QLabel(TemCompanion)
-        self.convertlabel.setGeometry(QtCore.QRect(260, 100, 91, 16))
-        self.convertlabel.setObjectName("ConvertTo")
         
-        self.formatselect = QtWidgets.QComboBox(TemCompanion)
-        self.formatselect.setGeometry(QtCore.QRect(330, 100, 95, 22))
-        self.formatselect.addItems(['tiff + png','tiff', 'png', 'jpg'])
-        self.formatselect.setObjectName("FormatSelect")
         
-        self.setdirButton = QtWidgets.QPushButton(TemCompanion)
-        self.setdirButton.setGeometry(QtCore.QRect(30, 160, 91, 61))
-        self.setdirButton.setObjectName("SetDir")
         
-        self.outputdirbox = QtWidgets.QTextEdit(TemCompanion)
-        self.outputdirbox.setGeometry(QtCore.QRect(130, 160, 301, 61))
-        self.outputdirbox.setObjectName("OutPutDirBox")
-        
-        self.checkscalebar = QtWidgets.QCheckBox(TemCompanion)
-        self.checkscalebar.setGeometry(QtCore.QRect(250, 130, 170, 20))
-        self.checkscalebar.setChecked(True)
-        self.checkscalebar.setObjectName("checkscalebar")
-        
-        self.convertButton = QtWidgets.QPushButton(TemCompanion)
-        self.convertButton.setGeometry(QtCore.QRect(30, 230, 91, 61))
-        self.convertButton.setObjectName("convertButton")
-        
-        self.convertbox = QtWidgets.QTextEdit(TemCompanion)
-        self.convertbox.setGeometry(QtCore.QRect(130, 230, 301, 61))
-        self.convertbox.setObjectName("convertbox")
-        
-        self.authorlabel = QtWidgets.QLabel(TemCompanion)
-        self.authorlabel.setGeometry(QtCore.QRect(30, 340, 351, 16))
-        self.authorlabel.setObjectName("authorlabel")
-        
-        self.aboutButton = QtWidgets.QPushButton(TemCompanion)
-        self.aboutButton.setGeometry(QtCore.QRect(30, 300, 90, 30))
-        self.aboutButton.setObjectName("aboutButton")
-        
-        self.contactButton = QtWidgets.QPushButton(TemCompanion)
-        self.contactButton.setGeometry(QtCore.QRect(150, 300, 90, 30))
-        self.contactButton.setObjectName("contactButton")
-        
-        self.donateButton = QtWidgets.QPushButton(TemCompanion)
-        self.donateButton.setGeometry(QtCore.QRect(270, 300, 130, 30))
-        self.donateButton.setObjectName("donateButton")
+        self.aboutButton = QPushButton(self)
+        #self.aboutButton.setGeometry(QtCore.QRect(170, 20, 80, 60))
+        self.aboutButton.resize(80, 60)
+        self.aboutButton.setSizePolicy(QSizePolicy.Preferred,QSizePolicy.Preferred)
 
-        self.retranslateUi(TemCompanion)
-        QtCore.QMetaObject.connectSlotsByName(TemCompanion)
+        self.aboutButton.setObjectName("aboutButton")
+        self.aboutButton.setText("About")
+        
+        self.contactButton = QPushButton(self)
+        #self.contactButton.setGeometry(QtCore.QRect(240, 20, 80, 60))
+        self.contactButton.resize(80, 60)
+        self.contactButton.setObjectName("contactButton")
+        self.contactButton.setText("Contact")
+        self.contactButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        self.donateButton = QPushButton(self)
+        #self.donateButton.setGeometry(QtCore.QRect(310, 20, 80, 60))
+        self.donateButton.resize(80, 60)
+        self.donateButton.setObjectName("donateButton")
+        self.donateButton.setText("Buy me\n a LUNCH!")
+        self.donateButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        buttonlayout.addWidget(self.openfileButton)
+        buttonlayout.addWidget(self.convertButton)
+        buttonlayout.addWidget(self.aboutButton)
+        buttonlayout.addWidget(self.contactButton)
+        buttonlayout.addWidget(self.donateButton)
+        
+        layout = QVBoxLayout()
+        layout.addLayout(buttonlayout)
+        
+        self.authorlabel = QLabel(self)
+        #self.authorlabel.setGeometry(QtCore.QRect(30, 320, 350, 16))
+        self.authorlabel.setObjectName("authorlabel")
+        self.authorlabel.setText(f'TemCompanion by Dr. Tao Ma   {rdate}')
+        
+        
+        self.outputBox = QTextEdit(self, readOnly=True)
+        #self.outputBox.setGeometry(35, 90, 350, 210)
+        self.outputBox.resize(350, 210)
+        layout.addWidget(self.outputBox)   
+        layout.addWidget(self.authorlabel)
+        
+        self.setLayout(layout)
+
         
 #====================================================================
 # Connect all functions
         self.openfileButton.clicked.connect(self.openfile)
-        self.setdirButton.clicked.connect(self.set_dir)
-        self.convertButton.clicked.connect(self.convert_emd)
+        
+        self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
         self.contactButton.clicked.connect(self.show_contact)
         self.donateButton.clicked.connect(self.donate)
-        self.previewButton.clicked.connect(self.preview)
-        self.filterButton.clicked.connect(self.filter_settings)
-        self.checkscalebar.stateChanged.connect(UI_TemCompanion.set_scalebar)
-
         
 
-    def retranslateUi(self, TemCompanion):
-        _translate = QtCore.QCoreApplication.translate
-        TemCompanion.setWindowTitle(_translate("TemCompanion", "TemCompanion Ver {}".format(ver)))
-        self.openfileButton.setText(_translate("TemCompanion", "Open files"))
-        self.convertlabel.setText(_translate("TemCompanion", "Covnert to"))
-        self.previewButton.setText(_translate("TemCompanion","Preview"))
-        self.filterButton.setText(_translate("TemCompanion","Filters"))
-        self.setdirButton.setText(_translate("TemCompanion", "Output \n"
-"directory"))
-        self.checkscalebar.setText(_translate("TemCompanion", "Add scale bar to images"))
-        self.convertButton.setText(_translate("TemCompanion", "Convert All"))
-        self.authorlabel.setText(_translate("TemCompanion", "TemCompanion by Dr. Tao Ma   {}".format(rdate)))
-        
-        self.aboutButton.setText(_translate("TemCompanion", "About"))
-        self.contactButton.setText(_translate("TemCompanion", "Contact"))
-        self.donateButton.setText(_translate("TemCompanion", "Buy me a LUNCH!"))
         
         
+    def print_info(self):
+        print('='*42)
+        print('''
+        TemCompanion 
+--- a convenient tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg.     
+Address your questions and suggestions to matao1984@gmail.com.
+See the "About" for more details. Buy me a lunch if you like it!
+              ''')
+                    
+        print('          Version: ' + ver + ' Released: ' + rdate)
+        print('='*42)
 
         
 #===================================================================
 # Open file button connected to OpenFile
 
     def openfile(self):
-        self.files, _ = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
+        self.file, _ = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
                                                      "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
-        if self.files:
-            self.output_dir = getDirectory(self.files[0],s='/')
-            self.outputdirbox.setText(self.output_dir)
-            self.openfilebox.setText('')
-            for file in self.files:
-                self.openfilebox.append(file)
-                QApplication.processEvents()
+        if self.file:
+            try:
+                self.preview()
+            except:
+                print(f'Open file unsuccessful: {self.file} Check the file is not in use or corrupted.')
+                    
+           
         else: 
-            self.files = None # Canceled, set back to None
+            self.file = None # Canceled, set back to None
                 
 
 
-#===================================================================
-# Output directory button connected to SetDir
-
-    def set_dir(self):
-        self.output_dir = str(QFileDialog.getExistingDirectory(self, "Select Directory") + '/')
-        if self.output_dir:
-            self.outputdirbox.setText(self.output_dir)
-            QApplication.processEvents()
-            
-#===================================================================
-# Let's go button connected to convertButton
-    def refresh_output(self, text):
-        self.convertbox.append(text)
-        QApplication.processEvents()
-        
-    def convert_emd(self): 
-        if self.files == None:
-            QMessageBox.warning(self, 'No files loaded', 'Select file(s) to convert!')
-            
-        else:
-            self.refresh_output('Converting, please wait...')
-            self.f_type = self.formatselect.currentText()
-            
-
-                
-            
-            
-            # Load filter parameters 
-            delta_wf = int(self.filter_parameters['WF Delta'])
-            order_wf = int(self.filter_parameters['WF Bw-order'])
-            cutoff_wf = float(self.filter_parameters['WF Bw-cutoff'])
-            delta_absf = int(self.filter_parameters['ABSF Delta'])
-            order_absf = int(self.filter_parameters['ABSF Bw-order'])
-            cutoff_absf = float(self.filter_parameters['ABSF Bw-cutoff'])
-            delta_nl = int(self.filter_parameters['NL Delta'])
-            order_nl = int(self.filter_parameters['NL Bw-order'])
-            N = int(self.filter_parameters['NL Cycles'])
-            cutoff_nl = float(self.filter_parameters['NL Bw-cutoff'])
-            order_bw = int(self.filter_parameters['Bw-order'])
-            cutoff_bw = float(self.filter_parameters['Bw-cutoff'])
-            cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
-            
-            
-            
-            
-            for file in self.files:  
-                # convert_file(file,output_dir,f_type)
-                msg = "Converting '{}.{}'".format(getFileName(file),getFileType(file))
-                print(msg)
-                self.refresh_output(msg)
-                try:                
-                    convert_file(file,self.output_dir,self.f_type, scalebar = UI_TemCompanion.scale_bar,
-                                 apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
-                                 apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
-                                 apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
-                                 apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
-                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian
-                                 )
-                    
-                    msg = "'{}.{}' has been converted".format(getFileName(file),getFileType(file))
-                    print(msg)
-                    self.refresh_output(msg)
-    
-    
-                except:
-                    msg = "'{}.{}' has been skipped".format(getFileName(file),getFileType(file))
-                    print(msg)
-                    self.refresh_output(msg)
-    
-            self.refresh_output("Convertion finished!") 
-            print('Convertion finished!')
+#======================================================================
+    def batch_convert(self):
+        # Open a new window for batch conversion
+        self.converter = BatchConverter()
+        self.converter.show()
             
         
-
-
-
-
-#=====================================================================
-#Preview button function
-    def preview(self):
-        # Preview function set to view only 1 file for simplicity
-        if self.files == None:
-            QMessageBox.warning(self, 'No files loaded', 'Select file(s) to preview!')
-        else:
-            # Single file case:
-            if len(self.files) == 1:
-                f = load_file(self.files[0])
-                f_name = getFileName(self.files[0])
-            
-            #Multiple file case, open a select file window
-            else:
-                # Create an instance of the ListSelector     
-                select_img_window = select_img_for_preview()
-    
-                # Set the list of items to select from
-                select_img_window.set_items(self.files)
-    
-                # Show the window
-                result = select_img_window.exec_()
-    
-                # Check if the dialog was accepted and print the selected file
-                if result == QDialog.Accepted and select_img_window.selected_file:
-                    preview_file = select_img_window.selected_file
-                    f = load_file(preview_file)
-                    f_name = getFileName(preview_file)
-                                    
-            
-            
-    
-            for i in range(len(f)):
-                img = f[i]
-                try:
-                    title = img['metadata']['General']['title']
-                except:
-                    title = ''   
-                preview_name = 'preview_{}'.format(i)    
-    
-                    
-                if img['data'].ndim == 2:                
-                    preview_im = PlotCanvas(img)
-                    
-    
-                elif img['data'].ndim == 3:
-                    # Modify the axes to be aligned with the save functions
-                    # Backup the original axes
-                    img['original_axes'] = copy.deepcopy(img['axes'])
-                    img['axes'].pop(0)
-                    img['axes'][0]['index_in_array'] = 0
-                    img['axes'][1]['index_in_array'] = 1
-                    preview_im = PlotCanvas3d(img)
-                    
-                
-                preview_im.setWindowTitle(f_name + ": " + title)
-                preview_im.canvas.canvas_name = preview_name
-                self.preview_dict[preview_name] = preview_im
-                self.preview_dict[preview_name].show() 
-            
-            
-            
-#================ Define filter settings function ============================
-    @classmethod
-    def filter_settings(cls):
-     
-        filtersettingdialog = FilterSettingDialogue(cls.apply_wf, cls.apply_absf, cls.apply_nl, 
-                                                    cls.apply_bw, cls.apply_gaussian, cls.filter_parameters)
-        result = filtersettingdialog.exec_()
-        if result == QDialog.Accepted:
-            cls.filter_parameters = filtersettingdialog.parameters
-            cls.apply_wf = filtersettingdialog.apply_wf
-            cls.apply_absf = filtersettingdialog.apply_absf
-            cls.apply_nl = filtersettingdialog.apply_nl
-            cls.apply_bw = filtersettingdialog.apply_bw
-            cls.apply_gaussian = filtersettingdialog.apply_gaussian
-            
-               
 #=====================================================================        
     @classmethod
     def show_about(cls):
@@ -418,6 +304,7 @@ class UI_TemCompanion(QMainWindow):
         msg.setWindowTitle(ver + ": About")
 
         msg.exec()
+        
 
 #=====================================================================        
     def show_contact(self):
@@ -441,6 +328,65 @@ class UI_TemCompanion(QMainWindow):
 
         msg.exec()
 
+
+
+
+            
+            
+            
+#================ Define filter settings function ============================
+    @classmethod
+    def filter_settings(cls):
+     
+        filtersettingdialog = FilterSettingDialogue(cls.apply_wf, cls.apply_absf, cls.apply_nl, 
+                                                    cls.apply_bw, cls.apply_gaussian, cls.filter_parameters)
+        result = filtersettingdialog.exec_()
+        if result == QDialog.Accepted:
+            cls.filter_parameters = filtersettingdialog.parameters
+            cls.apply_wf = filtersettingdialog.apply_wf
+            cls.apply_absf = filtersettingdialog.apply_absf
+            cls.apply_nl = filtersettingdialog.apply_nl
+            cls.apply_bw = filtersettingdialog.apply_bw
+            cls.apply_gaussian = filtersettingdialog.apply_gaussian
+        
+# ====================== Open file for preview ===============================
+    def preview(self):
+        f = load_file(self.file)
+        f_name = getFileName(self.file)
+        
+    
+        for i in range(len(f)):
+            img = f[i]
+            try:
+                title = img['metadata']['General']['title']
+            except:
+                title = ''   
+            preview_name = 'preview_{}'.format(i)    
+
+                
+            if img['data'].ndim == 2:                
+                preview_im = PlotCanvas(img, parent=self)
+                
+
+            elif img['data'].ndim == 3:
+                # Modify the axes to be aligned with the save functions
+                # Backup the original axes
+                img['original_axes'] = copy.deepcopy(img['axes'])
+                img['axes'].pop(0)
+                img['axes'][0]['index_in_array'] = 0
+                img['axes'][1]['index_in_array'] = 1
+                preview_im = PlotCanvas3d(img, parent=self)
+                
+            
+            preview_im.setWindowTitle(f_name + ": " + title)
+            preview_im.canvas.canvas_name = preview_name
+            self.preview_dict[preview_name] = preview_im
+            self.preview_dict[preview_name].show() 
+            
+            print(f'Opened successfully: {f_name + ": " + title}.')
+            
+            
+            
 #=========== Define figure canvas for preview ===================================================
 class PlotCanvas(QMainWindow):
     def __init__(self, img, parent=None):
@@ -455,6 +401,7 @@ class PlotCanvas(QMainWindow):
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setParent(self.main_frame)
         
+               
         
         # Set the click to focus to receive key press event
         self.canvas.setFocusPolicy( QtCore.Qt.ClickFocus )
@@ -537,9 +484,8 @@ class PlotCanvas(QMainWindow):
     #     if self.line_profile_mode:
     #         self.stop_line_profile()
         
-        
-        
-        
+
+       
     def create_menubar(self):
         menubar = self.menuBar()  # Create a menu bar
 
@@ -572,6 +518,12 @@ class PlotCanvas(QMainWindow):
         rotate_action.setShortcut('ctrl+shift+r')
         rotate_action.triggered.connect(self.rotate)
         edit_menu.addAction(rotate_action)
+        fliplr_action = QAction('Flip horizontal', self)
+        fliplr_action.triggered.connect(self.flip_horizontal)
+        edit_menu.addAction(fliplr_action)
+        flipud_action = QAction('Flip vertical',self)
+        flipud_action.triggered.connect(self.flip_vertical)
+        edit_menu.addAction(flipud_action)
         fft_action = QAction('&FFT', self)
         fft_action.setShortcut('ctrl+f')
         fft_action.triggered.connect(self.fft)
@@ -713,6 +665,10 @@ class PlotCanvas(QMainWindow):
                 cropped_img = img['data'][int(y0):int(y1), int(x0):int(x1)]                
                 img['data'] = cropped_img
                 
+                # Update axes size
+                img['axes'][0]['size'] = img['data'].shape[0]
+                img['axes'][1]['size'] = img['data'].shape[1]
+                
                 
                 # Create a new PlotCanvas to display
                 title = self.windowTitle()
@@ -721,6 +677,8 @@ class PlotCanvas(QMainWindow):
                 self.preview_dict[preview_name].setWindowTitle(title + '_cropped')
                 self.preview_dict[preview_name].canvas.canvas_name = preview_name
                 self.preview_dict[preview_name].show()
+                
+                print('Cropped {} by {}:{}, {}:{}'.format(title, int(x0), int(x1),int(y0), int(y1)))
                 
                 # Write process history in the original_metadata
                 self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(x0),int(x1),int(y0),int(y1)))
@@ -780,6 +738,10 @@ class PlotCanvas(QMainWindow):
             rotated_array = rotate(img_to_rotate,ang)
             img['data'] = rotated_array
             
+            # Update axes size
+            img['axes'][0]['size'] = img['data'].shape[0]
+            img['axes'][1]['size'] = img['data'].shape[1]
+            
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
@@ -787,11 +749,52 @@ class PlotCanvas(QMainWindow):
             self.preview_dict[preview_name].setWindowTitle(title + ' rotated by {} deg'.format(ang))
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
+            print(f'Rotated {title} by {ang} degrees counterclockwise.')
             
             # Keep the history
             self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
             self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
-            
+    
+    def flip_horizontal(self):
+        img = self.get_img_dict_from_canvas()
+        img_to_flip = img['data']
+        flipped_array = np.fliplr(img_to_flip)
+        img['data'] = flipped_array
+        
+        # Create a new PlotCanvs to display        
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_Flipped_LR'
+        self.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+        self.preview_dict[preview_name].setWindowTitle(title + ' flipped horizontally')
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
+        
+        print(f'Flipped {title} horizontally.')
+        
+        # Keep the history
+        self.preview_dict[preview_name].process['process'].append('Flipped horizontally')
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+        
+    def flip_vertical(self):
+        img = self.get_img_dict_from_canvas()
+        img_to_flip = img['data']
+        flipped_array = np.flipud(img_to_flip)
+        img['data'] = flipped_array
+        
+        # Create a new PlotCanvs to display        
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_Flipped_UD'
+        self.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+        self.preview_dict[preview_name].setWindowTitle(title + ' flipped vertically')
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
+        
+        print(f'Flipped {title} vertically.')
+        
+        # Keep the history
+        self.preview_dict[preview_name].process['process'].append('Flipped vertically')
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+
             
     def copy_img(self):
         buf = io.BytesIO()
@@ -822,7 +825,6 @@ class PlotCanvas(QMainWindow):
         cutoff_wf = float(filter_parameters['WF Bw-cutoff'])
         img_wf = self.get_img_dict_from_canvas()
         title = self.windowTitle()
-        print(f'Applying Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}...')
         wf = apply_filter(img_wf['data'], 'Wiener', delta=delta_wf, lowpass_order=order_wf, lowpass_cutoff=cutoff_wf)
         img_wf['data'] = wf
         preview_name = self.canvas.canvas_name + '_WF'
@@ -831,6 +833,9 @@ class PlotCanvas(QMainWindow):
         self.preview_dict[preview_name].setWindowTitle(title + ' Wiener Filtered')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         self.preview_dict[preview_name].show()
+        
+        print(f'Applied Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}.')
+
         
         # Keep the history
         self.preview_dict[preview_name].process['process'].append('Wiener filter applied with delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(delta_wf,order_wf,cutoff_wf))
@@ -844,7 +849,6 @@ class PlotCanvas(QMainWindow):
         cutoff_absf = float(filter_parameters['ABSF Bw-cutoff'])
         img_absf = self.get_img_dict_from_canvas()
         title = self.windowTitle()
-        print(f'Applying ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}...')
         absf = apply_filter(img_absf['data'], 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
         img_absf['data'] = absf
         preview_name = self.canvas.canvas_name + '_ABSF'
@@ -854,11 +858,16 @@ class PlotCanvas(QMainWindow):
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         self.preview_dict[preview_name].show()
         
+        # Print results output
+        msg = f'ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}.'
+        print(msg)
+        
         # Keep the history
         self.preview_dict[preview_name].process['process'].append('ABS filter applied with delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(delta_absf,order_absf,cutoff_absf))
         self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
         
 
+    
     def non_linear_filter(self):
         filter_parameters = UI_TemCompanion.filter_parameters        
         delta_nl = int(filter_parameters['NL Delta'])
@@ -867,7 +876,6 @@ class PlotCanvas(QMainWindow):
         N = int(filter_parameters['NL Cycles'])
         img_nl = self.get_img_dict_from_canvas()
         title = self.windowTitle()
-        print(f'Applying Non-Linear filter to {title} with delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}...')
         nl = apply_filter(img_nl['data'], 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
         img_nl['data'] = nl
         preview_name = self.canvas.canvas_name + '_NL'
@@ -877,10 +885,14 @@ class PlotCanvas(QMainWindow):
         self.preview_dict[preview_name].setWindowTitle(title + ' NL Filtered')
         self.preview_dict[preview_name].show()
         
+        # Print results output
+        msg = f'Applied Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}.'
+        print(msg)
+
+        
         # Keep the history
         self.preview_dict[preview_name].process['process'].append('Nonlinear filter applied with N= {}, delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(N,delta_nl,order_nl,cutoff_nl))
         self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
-    
         
     def bw_filter(self):
         filter_parameters = UI_TemCompanion.filter_parameters        
@@ -888,7 +900,6 @@ class PlotCanvas(QMainWindow):
         cutoff_bw = float(filter_parameters['Bw-cutoff'])
         img_bw = self.get_img_dict_from_canvas()
         title = self.windowTitle()
-        print(f'Applying Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}...')
         bw = apply_filter(img_bw['data'], 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
         img_bw['data'] = bw
         preview_name = self.canvas.canvas_name + '_Bw'
@@ -898,6 +909,8 @@ class PlotCanvas(QMainWindow):
         self.preview_dict[preview_name].setWindowTitle(title + ' Butterworth Filtered')
         self.preview_dict[preview_name].show()
         
+        print(f'Applied Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}.')
+
         # Keep the history
         self.preview_dict[preview_name].process['process'].append('Butterworth filter applied with Bw-order = {}, Bw-cutoff = {}'.format(order_bw,cutoff_bw))
         self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
@@ -907,7 +920,6 @@ class PlotCanvas(QMainWindow):
         cutoff_gaussian = float(filter_parameters['GS-cutoff'])
         img_gaussian = self.get_img_dict_from_canvas()
         title = self.windowTitle()
-        print(f'Applying Gaussian filter to {title} with cutoff = {cutoff_gaussian}...')
         gaussian = apply_filter(img_gaussian['data'], 'Gaussian', cutoff_ratio=cutoff_gaussian)
         img_gaussian['data'] = gaussian
         preview_name = self.canvas.canvas_name + '_GS'
@@ -917,13 +929,17 @@ class PlotCanvas(QMainWindow):
         self.preview_dict[preview_name].setWindowTitle(title + ' Gaussian Filtered')
         self.preview_dict[preview_name].show()
         
+        print(f'Applied Gaussian filter to {title} with cutoff = {cutoff_gaussian}.')
+
+        
         # Keep the history
         self.preview_dict[preview_name].process['process'].append('Gaussian filter applied with cutoff = {}'.format(cutoff_gaussian))
         self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
     
     
     def create_img(self):
-        self.im = self.axes.imshow(self.canvas.data['data'],cmap='gray')
+        
+        self.im = self.axes.imshow(self.canvas.data['data'], cmap='gray')
         self.axes.set_axis_off()
         # Add scale bar 
         self.scale = self.canvas.data['axes'][1]['scale']
@@ -932,6 +948,15 @@ class PlotCanvas(QMainWindow):
         if self.scalebar_settings['scalebar']:
             self.create_scalebar()
             
+        if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
+            vmin = np.percentile(self.canvas.data['data'], 30)
+            vmax = np.percentile(self.canvas.data['data'], 99.9)
+        else:
+            vmin = np.percentile(self.canvas.data['data'], 0)
+            vmax = np.percentile(self.canvas.data['data'], 100)
+            
+        # Update vmin/vmax
+        self.im.set_clim(vmin, vmax)    
         self.fig.tight_layout(pad=0)
         self.fig.canvas.draw()
         
@@ -1006,6 +1031,8 @@ class PlotCanvas(QMainWindow):
             # Recreate the scalebar the new scale
             self.create_scalebar()
             self.canvas.draw()
+            
+            print(f'Scale updated to {scale} {units}')
             
             # Keep the history
             self.process['process'].append('Scale updated to {} {}'.format(scale, units))
@@ -1084,8 +1111,8 @@ class PlotCanvas(QMainWindow):
         self.fig.canvas.draw_idle()
 
     def on_button_press(self, event):
-        threshold_x = self.img_size[0] / 10
-        threshold_y = self.img_size[1] / 10
+        threshold_x = self.img_size[0] / 50
+        threshold_y = self.img_size[1] / 50
         threshold = min (threshold_x, threshold_y)
         if event.inaxes != self.axes:
             return
@@ -1174,9 +1201,21 @@ class PlotCanvas(QMainWindow):
         
     
     def measure(self):
-        if not self.measurement_active:
+        if not self.measurement_active and not self.line_profile_mode:
             self.measurement_active = True
             self.start_distance_measurement()
+        else:
+            QMessageBox.warning(self, "Measurement","Cannot start measurement because line profile is active!")
+    
+#============ Line profile function ==========================================
+    def lineprofile(self):
+        if not self.line_profile_mode and not self.measurement_active:
+            self.line_profile_mode = True
+            self.linewidth = 1
+            self.start_distance_measurement()
+            
+        else:
+            QMessageBox.warning(self, "Line profile", "Cannot start line profile because measurement is active!")
         
 
 #================= FFT ======================================================        
@@ -1278,7 +1317,7 @@ class PlotCanvas(QMainWindow):
         # Update the FFT 
         self.preview_dict['Live FFT'].update_img(self.live_img['data'])
         
-        print(f"Displaying FFT from {y_min}:{y_max}, {x_min}:{x_max}")
+        print(f"Displaying FFT from {x_min}:{x_max}, {y_min}:{y_max}")
     
     def stop_live_fft(self):
         if self.selector is not None:
@@ -1292,13 +1331,7 @@ class PlotCanvas(QMainWindow):
         
             
 
-#============ Line profile function ==========================================
-    def lineprofile(self):
-        if not self.line_profile_mode:
-            self.line_profile_mode = True
-            self.linewidth = 1
-        self.start_distance_measurement()
-        
+
             
 
 
@@ -1318,19 +1351,25 @@ class PlotCanvas3d(PlotCanvas):
         # Add Stack menu
         stack_menu = QMenu('Stack', self) 
         self.menubar.insertMenu(self.menubar.children()[5].children()[0],stack_menu)
-        crop_stack = QAction('Crop Stack', self)
+        crop_stack = QAction('Crop stack', self)
         crop_stack.triggered.connect(self.crop_stack)
         stack_menu.addAction(crop_stack)
-        rotate_stack = QAction('Rotate Stack', self)
+        rotate_stack = QAction('Rotate stack', self)
         rotate_stack.triggered.connect(self.rotate_stack)
         stack_menu.addAction(rotate_stack)
-        align_stack_cc = QAction('Align Stack with Cross-Correlation', self)
+        fliplr_stack = QAction('Flip horizontal', self)
+        fliplr_stack.triggered.connect(self.flip_stack_horizontal)
+        stack_menu.addAction(fliplr_stack)
+        flipud_stack = QAction('Flip vertical', self)
+        flipud_stack.triggered.connect(self.flip_stack_vertical)
+        stack_menu.addAction(flipud_stack)
+        align_stack_cc = QAction('Align stack with Cross-Correlation', self)
         align_stack_cc.triggered.connect(self.align_stack_cc)
         stack_menu.addAction(align_stack_cc)
-        align_stack_of = QAction('Align Stack with Optical Flow', self)
+        align_stack_of = QAction('Align stack with Optical Flow', self)
         align_stack_of.triggered.connect(self.align_stack_of)
         stack_menu.addAction(align_stack_of)
-        integrate_stack = QAction('Integrate Stack', self)
+        integrate_stack = QAction('Integrate stack', self)
         integrate_stack.triggered.connect(self.integrate_stack)  
         stack_menu.addAction(integrate_stack)
         export_stack = QAction('Export as tiff stack', self)
@@ -1369,6 +1408,47 @@ class PlotCanvas3d(PlotCanvas):
         self.im.set_data(self.canvas.data['data'][self.canvas.img_idx])
         self.canvas.draw_idle()
         
+        
+    def flip_stack_horizontal(self):
+        img = copy.deepcopy(self.canvas.data)
+        img_to_flip = img['data']
+        flipped_array = img_to_flip[:,:,::-1]
+        img['data'] = flipped_array
+        
+        # Create a new PlotCanvs to display        
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_Flipped_LR'
+        self.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+        self.preview_dict[preview_name].setWindowTitle(title + ' flipped horizontally')
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
+        
+        print(f'Flipped the entire stack of {title} horizontally.')
+        
+        # Keep the history
+        self.preview_dict[preview_name].process['process'].append('Flipped horizontally')
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+   
+    def flip_stack_vertical(self):
+        img = copy.deepcopy(self.canvas.data)
+        img_to_flip = img['data']
+        flipped_array = img_to_flip[:,::-1,:]
+        img['data'] = flipped_array
+        
+        # Create a new PlotCanvs to display        
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_Flipped_UD'
+        self.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+        self.preview_dict[preview_name].setWindowTitle(title + ' flipped vertically')
+        self.preview_dict[preview_name].canvas.canvas_name = preview_name
+        self.preview_dict[preview_name].show()
+        
+        print(f'Flipped the entire stack of {title} vertically.')
+        
+        # Keep the history
+        self.preview_dict[preview_name].process['process'].append('Flipped vertically')
+        self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+    
     def crop_stack(self):
         ax = self.canvas.figure.get_axes()[0]
         # Display a message in the status bar
@@ -1411,6 +1491,9 @@ class PlotCanvas3d(PlotCanvas):
                 img = copy.deepcopy(self.canvas.data)
                 cropped_img = img['data'][:,int(y0):int(y1), int(x0):int(x1)]                
                 img['data'] = cropped_img.astype('int16')
+                # Update axes size
+                img['axes'][0]['size'] = img['data'].shape[1]
+                img['axes'][1]['size'] = img['data'].shape[2]
                 
                 
                 # Create a new PlotCanvas to display
@@ -1420,6 +1503,8 @@ class PlotCanvas3d(PlotCanvas):
                 self.preview_dict[preview_name].setWindowTitle(title + '_cropped')
                 self.preview_dict[preview_name].canvas.canvas_name = preview_name
                 self.preview_dict[preview_name].show()
+                
+                print(f'Cropped the entire stack of {title} by {x0}:{x1}, {y0}:{y1}.')
                 
                 # Write process history in the original_metadata
                 self.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(x0),int(x1),int(y0),int(y1)))
@@ -1457,6 +1542,10 @@ class PlotCanvas3d(PlotCanvas):
             rotated_array = rotate(img_to_rotate,ang,(2,1))
             img['data'] = rotated_array.astype('int16')
             
+            # Update axes
+            img['axes'][0]['size'] = img['data'].shape[0]
+            img['axes'][1]['size'] = img['data'].shape[1]
+            
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
@@ -1464,6 +1553,8 @@ class PlotCanvas3d(PlotCanvas):
             self.preview_dict[preview_name].setWindowTitle(title + ' rotated by {} deg'.format(ang))
             self.preview_dict[preview_name].canvas.canvas_name = preview_name
             self.preview_dict[preview_name].show()
+            
+            print(f'Rotated the entire stack of {title} by {ang} degrees counterclockwise.')
             
             # Keep the history
             self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
@@ -1486,7 +1577,7 @@ class PlotCanvas3d(PlotCanvas):
             
             # Calculate the drift with sub pixel precision
             upsampling = 100
-            print('Calculate drifts using phase cross-correlation...')
+            print('Stack alignment using phase cross-correlation.')
             for n in range(img_n -1):            
                 fixed = img[n]
                 moving = img[n+1]
@@ -1503,8 +1594,9 @@ class PlotCanvas3d(PlotCanvas):
             for n in range(img_n-1):
                 drift = drift + drift_stack[n]
                 img_to_shift = img[n+1]
-                print(f'Shifting slice {n+1} by {drift}')
+                
                 img[n+1,:,:] = shift(img_to_shift,drift)
+                print(f'Shifted slice {n+1} by {drift}')
                 drift_all.append(drift)
                 
             if crop_img:
@@ -1519,6 +1611,7 @@ class PlotCanvas3d(PlotCanvas):
                 y_max = min(img_y, int(img_y + drift_y_min) - 1)
                 
                 img_crop = img[:,x_min:x_max,y_min:y_max]
+                print(f'Cropped images to {y_min}:{y_max}, {x_min}:{x_max}.')
                 
                 if crop_to_square:
                     x, y = img_crop[0].shape
@@ -1530,9 +1623,13 @@ class PlotCanvas3d(PlotCanvas):
                         new_start = int((y - x) / 2)
                         new_end = new_start + x 
                         img_crop = img_crop[:,:,new_start:new_end]
+                    print(f'Further cropped to square from {new_start}:{new_end}.')
                     
                 aligned_img['data'] = img_crop
                 aligned_img['data'] = aligned_img['data'].astype('int16')
+                # Update axes size
+                aligned_img['axes'][0]['size'] = aligned_img['data'].shape[1]
+                aligned_img['axes'][1]['size'] = aligned_img['data'].shape[2]
             print('Stack alignment finished!')
                     
             # Create a new PlotCanvas to display
@@ -1557,20 +1654,20 @@ class PlotCanvas3d(PlotCanvas):
         #     algorithm = dialog.algorithm
         #     apply_window = dialog.apply_window
             
-        print('Calculate drifts using Optical Flow iLK...')
+        print('Stack alignment using Optical Flow iLK.')
         img_n, nr, nc = img.shape
         drift_stack = []
         for n in range(img_n -1):            
             fixed = img[n]
             moving = img[n+1]
             
-            print(f'Calculate the drift of slice {n+1} using Optical Flow iLK...')
+            #print(f'Calculate the drift of slice {n+1} using Optical Flow iLK...')
             
             u, v = optical_flow_ilk(fixed, moving)
             drift_stack.append((u, v))
         
         # Apply the correction
-        print('Applying drift correction...')
+        #print('Applying drift correction...')
         row_coords, col_coords = np.meshgrid(np.arange(nr), np.arange(nc), indexing='ij')
         drift = np.array([np.zeros((nr,nc)),np.zeros((nr,nc))])
         for n in range(img_n-1):
@@ -1607,6 +1704,8 @@ class PlotCanvas3d(PlotCanvas):
         self.preview_dict[preview_name].setWindowTitle(title + ' integrated')
         self.preview_dict[preview_name].canvas.canvas_name = preview_name
         self.preview_dict[preview_name].show()
+        
+        print(f'Stack of {title} has been integrated.')
         
         # Keep the history
         # self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
@@ -1657,12 +1756,13 @@ class PlotCanvas3d(PlotCanvas):
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i].astype('int16'), 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
                     save_as_tif16(img, f_name + f'_{i}', output_dir)
+                    print(f'Exported series to {output_dir} as {file_type}.')
                     
             elif selected_type in ['Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
                     save_with_pil(img, f_name + f'_{i}', output_dir, file_type, scalebar=UI_TemCompanion.scale_bar) 
-
+                    print(f'Exported series to {output_dir} as {file_type}')
 
 #========== PlotCanvas for FFT ================================================
 class PlotCanvasFFT(PlotCanvas):
@@ -2320,7 +2420,11 @@ class CustomSettingsDialog(QDialog):
         if self.img:
             vmin, vmax = self.img.get_clim()
             dmin = int(np.min(self.img._A))
-            dmax = round(np.max(self.img._A))
+            if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
+                dmax = np.percentile(self.img._A, 99.9)
+            else:
+                dmax = np.percentile(self.img._A, 100)
+            #dmax = round(np.max(self.img._A))
             self.doubleslider.setRange(dmin, dmax)
             self.doubleslider.setValue((vmin, vmax))
             
@@ -2360,10 +2464,11 @@ class CustomSettingsDialog(QDialog):
         self.cmap_label = QLabel("Colormap:")
         self.cmap_combobox = QComboBox()
         colormaps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis',
-                     'Greys', 'Greys_r', 'Purples', 'Purples_r', 'Blues', 'Blues_r', 
-                     'Greens', 'Greens_r', 'Oranges', 'Oranges_r', 'Reds', 'Reds_r',
                      'gray', 'spring', 'summer', 'autumn', 'winter', 'cool',
-                      'Wistia', 'hot']
+                      'Wistia', 'hot',
+                     'Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Lime', 'Purple',
+                     'Magenta', 'Pink', 'Blue', 'Maize'
+                     ]
         self.cmap_combobox.addItems(colormaps)
         h_layout_cmap.addWidget(self.cmap_label)
         h_layout_cmap.addWidget(self.cmap_combobox)
@@ -2377,6 +2482,8 @@ class CustomSettingsDialog(QDialog):
             
         # Update colormap if changed
         self.cmap_combobox.currentTextChanged.connect(self.update_colormap)
+        
+        
             
         # Scalebar customization
         
@@ -2441,6 +2548,8 @@ class CustomSettingsDialog(QDialog):
     def update_colormap(self):
         # Apply colormap
         self.cmap_name = self.cmap_combobox.currentText()
+        if self.cmap_name in custom_cmap.keys():
+            self.cmap_name = custom_cmap[self.cmap_name]
         self.img.set_cmap(self.cmap_name)
         self.ax.figure.canvas.draw_idle()
     
@@ -2471,6 +2580,29 @@ class CustomSettingsDialog(QDialog):
         self.cmap_combobox.setCurrentText(self.original_settings['cmap'])
         self.update_colormap()
 
+#============ Redefined custom color maps transitioning from black ============
+# Redefine color maps for pure colors to transition from black
+custom_cmap = {}
+n_bins = 255  # Number of discrete colors to use in the colormap
+base_colors = {'Red': (1,0,0),
+               'Orange': (1,69/255,0),
+               'Yellow': (1,1,0),
+               'Green': (0,1,0),
+               'Cyan': (0,1,1),
+               'Lime': (0,0,1),
+               'Purple': (128/255, 0, 128/255),
+               'Magenta': (1,0,1),
+               'Pink': (1,192/255,203/255),
+               'Blue': (0, 39/255, 76/255),
+               'Maize': (1, 203/255, 5/255)
+                }
+# Generate colors from the base color dictionary
+for key, value in base_colors.items():
+    colors = [(0,0,0), value] # Black to the color    
+    # Create a colormap
+    cmap_name = key
+    cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=n_bins)
+    custom_cmap[key] = cm
 
 #============ Define a custom toolbar to handle the save function==============
 class CustomToolbar(NavigationToolbar):
@@ -2507,7 +2639,7 @@ class CustomToolbar(NavigationToolbar):
             self.file_type = getFileType(self.file_path)
             self.f_name = getFileName(self.file_path)
             self.output_dir = getDirectory(self.file_path,s='/')
-            print(f"Saving figure to {self.file_path} with format {self.file_type}")
+            print(f"Save figure to {self.file_path} with format {self.file_type}")
             img_to_save = {}
             for key in ['data', 'axes', 'metadata', 'original_metadata']:
                 if key in self.canvas.data.keys():
@@ -2523,9 +2655,10 @@ class CustomToolbar(NavigationToolbar):
                     self.canvas.figure.axes[1].set_visible(False)
                     
                 if self.file_type == 'tiff':
+                    
                     save_as_tif16(img_to_save, self.f_name, self.output_dir)
                 elif self.selected_type in ['Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
-                    save_with_pil(img_to_save, self.f_name, self.output_dir, self.file_type, scalebar=UI_TemCompanion.scale_bar) 
+                    save_with_pil(img_to_save, self.f_name, self.output_dir, self.file_type, scalebar=self.plotcanvas.scalebar_settings['scalebar']) 
                 else:
                     # Save with matplotlib. Need to calculate the dpi to keep the original size
                     figsize = self.canvas.figure.get_size_inches()
@@ -2555,22 +2688,8 @@ class CustomToolbar(NavigationToolbar):
         axes = self.canvas.figure.get_axes()
         if not axes:
             return
-            # if len(axes) > 1:
-            #     selected_axes, ok = QInputDialog.getItem(
-            #         self, "Edit Plot",
-            #         "Select the axes to edit",
-            #         [ax.get_title() or f"Axes {i + 1}" for i, ax in enumerate(axes)],
-            #         current=0,
-            #         editable=False
-            #     )
-            #     if not ok:
-            #         return
-            #     selected_axes = axes[
-            #         [ax.get_title() or f"Axes {i + 1}" for i, ax in enumerate(axes)]
-            #         .index(selected_axes)
-            #     ]
-            # else:
-                # Always select the image axis which is the first
+            
+        # Always select the image axis which is the first
         selected_axes = axes[0]
 
         self.imgsetting_dialog = CustomSettingsDialog(selected_axes, parent=self)
@@ -2718,7 +2837,7 @@ class FilterSettingDialogue(QDialog):
         self.parameters = {}
 
         # Wiener Filter Section
-        self.wiener_check = QCheckBox("Apply Wiener Filter")
+        self.wiener_check = QCheckBox("Apply Wiener Filter (for batch conversion)")
         self.wiener_check.setChecked(apply_wf)
         
         self.wiener_group = QGroupBox()
@@ -2744,7 +2863,7 @@ class FilterSettingDialogue(QDialog):
         layout.addWidget(self.wiener_group)
 
         # ABS Filter Section
-        self.absf_check = QCheckBox("Apply ABS Filter")
+        self.absf_check = QCheckBox("Apply ABS Filter (for batch conversion)")
         self.absf_check.setChecked(apply_absf)
         self.absf_group = QGroupBox()
         form_layout = QFormLayout()
@@ -2771,7 +2890,7 @@ class FilterSettingDialogue(QDialog):
         layout.addWidget(self.absf_group)
 
         # Non-Linear Filter Section
-        self.nl_check = QCheckBox("Apply Non-Linear Filter")
+        self.nl_check = QCheckBox("Apply Non-Linear Filter (for batch conversion)")
         self.nl_check.setChecked(apply_nl)
         self.nl_group = QGroupBox()
         form_layout = QFormLayout()
@@ -2803,7 +2922,7 @@ class FilterSettingDialogue(QDialog):
         layout.addWidget(self.nl_group)
         
         # Butterworth filter 
-        self.bw_check = QCheckBox("Apply Buttwrworth Filter")
+        self.bw_check = QCheckBox("Apply Buttwrworth Filter (for batch conversion)")
         self.bw_check.setChecked(apply_bw)
         self.bw_group = QGroupBox()
         form_layout = QFormLayout()
@@ -2823,7 +2942,7 @@ class FilterSettingDialogue(QDialog):
         layout.addWidget(self.bw_group)
         
         # Gaussian filter 
-        self.gaussian_check = QCheckBox("Apply Gaussian Filter")
+        self.gaussian_check = QCheckBox("Apply Gaussian Filter (for batch conversion)")
         self.gaussian_check.setChecked(apply_gaussian)
         self.gaussian_group = QGroupBox()
         form_layout = QFormLayout()
@@ -3455,6 +3574,241 @@ class MeasureFFTDialog(QDialog):
         
     def closeEvent(self, event):
          self.parent().stop_fft_measurement()
+         
+         
+#========================Batch conversion window ===================
+class BatchConverter(QWidget):
+    def __init__(self,parent=None):
+        super().__init__(parent)
+        self.setupUi()
+        self.scale_bar = True
+        self.files = None
+        self.output_dir = None 
+        self.get_filter_parameters()
+        
+        
+
+        
+
+
+    def setupUi(self):
+        self.setWindowTitle("Batch Conversion")
+        self.setObjectName("BatchConverter")
+        self.resize(400, 300)
+        
+        self.openfileButton = QtWidgets.QPushButton("Open \nFiles",self)
+        self.openfileButton.setFixedSize(80, 60)
+        self.openfileButton.setObjectName("OpenFile")
+        self.openfileButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        self.openfilebox = QtWidgets.QTextEdit(self,readOnly=True)
+        self.openfilebox.resize(240,60)
+        self.openfilebox.setObjectName("OpenFileBox")
+        self.openfilebox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
+        
+        self.filterButton = QtWidgets.QPushButton("Filter\nSettings",self)
+        self.filterButton.setFixedSize(80, 60)
+        self.filterButton.setObjectName("filterButton")
+        self.filterButton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        
+        self.convertlabel = QtWidgets.QLabel('Convert To',self)
+        
+        self.convertlabel.setObjectName("ConvertTo")
+        
+        
+        self.formatselect = QtWidgets.QComboBox(self)
+        
+        self.formatselect.addItems(['tiff + png','tiff', 'png', 'jpg'])
+        self.formatselect.setObjectName("FormatSelect")
+        
+        self.setdirButton = QtWidgets.QPushButton("Output \nDirectory",self)
+        self.setdirButton.setFixedSize(80, 60)
+        self.setdirButton.setObjectName("SetDir")
+        self.setdirButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        self.outputdirbox = QtWidgets.QTextEdit(self, readOnly=True)
+        self.outputdirbox.resize(240, 40)
+        self.outputdirbox.setObjectName("OutPutDirBox")
+        self.outputdirbox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        self.checkscalebar = QtWidgets.QCheckBox("Add scale bar to images",self)
+        
+        self.checkscalebar.setChecked(True)
+        self.checkscalebar.setObjectName("checkscalebar")
+        
+        self.convertButton = QtWidgets.QPushButton("Convert \nAll",self)
+        self.convertButton.setFixedSize(80, 60)
+        self.convertButton.setObjectName("convertButton")
+        self.convertButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        self.convertbox = QtWidgets.QTextEdit(self, readOnly=True)
+        self.convertbox.resize(240,40)
+        self.convertbox.setObjectName("convertbox")
+        self.convertbox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        layout = QVBoxLayout()
+        layout1 = QHBoxLayout()
+        layout1.addWidget(self.openfileButton)
+        layout1.addWidget(self.openfilebox)
+        layout2 = QHBoxLayout()
+        layout2_1 = QVBoxLayout()
+        layout2_1_1 = QHBoxLayout()
+        
+        layout2_1_1.addWidget(self.convertlabel)
+        layout2_1_1.addWidget(self.formatselect)
+        
+        layout2_1.addLayout(layout2_1_1)
+        layout2_1.addWidget(self.checkscalebar)
+        layout2.addLayout(layout2_1)
+        layout2.addWidget(self.filterButton)
+        layout2.addStretch(1)
+        layout3 = QHBoxLayout()
+        layout3.addWidget(self.setdirButton)
+        layout3.addWidget(self.outputdirbox)
+        layout4 = QHBoxLayout()
+        layout4.addWidget(self.convertButton)
+        layout4.addWidget(self.convertbox)
+        layout.addLayout(layout1)
+        layout.addLayout(layout2)
+        layout.addLayout(layout3)
+        layout.addLayout(layout4)
+        
+        self.setLayout(layout)
+
+        
+#====================================================================
+# Connect all functions
+        self.openfileButton.clicked.connect(self.openfile)
+        self.setdirButton.clicked.connect(self.set_dir)
+        
+        self.filterButton.clicked.connect(self.filter_settings)
+        self.checkscalebar.stateChanged.connect(self.set_scalebar)
+        self.convertButton.clicked.connect(self.convert_emd)
+        
+        
+        
+    def set_scalebar(self):
+        self.scale_bar = self.checkscalebar.isChecked()
+        
+    def get_filter_parameters(self):
+        self.apply_wf = UI_TemCompanion.apply_wf
+        self.apply_absf = UI_TemCompanion.apply_absf
+        self.apply_nl = UI_TemCompanion.apply_nl
+        self.apply_bw = UI_TemCompanion.apply_bw
+        self.apply_gaussian = UI_TemCompanion.apply_gaussian
+        
+        # Read filter parameters from the main window
+        self.filter_parameters = UI_TemCompanion.filter_parameters
+        
+#===================================================================
+# Open file button connected to OpenFile
+
+    def openfile(self):
+        self.files, _ = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+        if self.files:
+            self.output_dir = getDirectory(self.files[0],s='/')
+            self.outputdirbox.setText(self.output_dir)
+            self.openfilebox.setText('')
+            for file in self.files:
+                self.openfilebox.append(file)
+                QApplication.processEvents()
+        else: 
+            self.files = None # Canceled, set back to None
+                
+
+
+#===================================================================
+# Output directory button connected to SetDir
+
+    def set_dir(self):
+        self.output_dir = str(QFileDialog.getExistingDirectory(self, "Select Directory") + '/')
+        if self.output_dir:
+            self.outputdirbox.setText(self.output_dir)
+            QApplication.processEvents()
+            
+#===================================================================
+# Let's go button connected to convertButton
+    def refresh_output(self, text):
+        self.convertbox.append(text)
+        QApplication.processEvents()
+        
+    def convert_emd(self): 
+        if self.files == None:
+            QMessageBox.warning(self, 'No files loaded', 'Select file(s) to convert!')
+            
+        else:
+            self.refresh_output('Converting, please wait...')
+            self.f_type = self.formatselect.currentText()
+            
+
+                
+            
+            
+            # Load filter parameters 
+            delta_wf = int(self.filter_parameters['WF Delta'])
+            order_wf = int(self.filter_parameters['WF Bw-order'])
+            cutoff_wf = float(self.filter_parameters['WF Bw-cutoff'])
+            delta_absf = int(self.filter_parameters['ABSF Delta'])
+            order_absf = int(self.filter_parameters['ABSF Bw-order'])
+            cutoff_absf = float(self.filter_parameters['ABSF Bw-cutoff'])
+            delta_nl = int(self.filter_parameters['NL Delta'])
+            order_nl = int(self.filter_parameters['NL Bw-order'])
+            N = int(self.filter_parameters['NL Cycles'])
+            cutoff_nl = float(self.filter_parameters['NL Bw-cutoff'])
+            order_bw = int(self.filter_parameters['Bw-order'])
+            cutoff_bw = float(self.filter_parameters['Bw-cutoff'])
+            cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
+            
+       
+            
+            
+            for file in self.files:  
+                # convert_file(file,output_dir,f_type)
+                msg = "Converting '{}.{}'".format(getFileName(file),getFileType(file))
+                print(msg)
+                self.refresh_output(msg)
+                try:                
+                    convert_file(file,self.output_dir,self.f_type, scalebar = self.scale_bar,
+                                 apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
+                                 apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
+                                 apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
+                                 apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
+                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian
+                                 )
+                    
+                    msg = "'{}.{}' has been converted".format(getFileName(file),getFileType(file))
+                    print(msg)
+                    self.refresh_output(msg)
+    
+    
+                except:
+                    msg = "'{}.{}' has been skipped".format(getFileName(file),getFileType(file))
+                    print(msg)
+                    self.refresh_output(msg)
+    
+            self.refresh_output("Convertion finished!") 
+            print('Convertion finished!')
+            
+        
+
+
+
+
+
+            
+            
+            
+#================ Define filter settings function ============================
+    
+    def filter_settings(self):
+        # Call the main window method
+        UI_TemCompanion.filter_settings()
+        
+        self.get_filter_parameters()
+     
+
 
                  
 
@@ -3495,6 +3849,7 @@ def norm_img(data):
     norm = (data - data.min())/(data.max()-data.min())
     return norm
 
+#@run_in_executor
 def apply_filter(img, filter_type, **kwargs):
     filter_dict = {'Wiener': filters.wiener_filter,
                    'ABS': filters.abs_filter,
@@ -3506,6 +3861,7 @@ def apply_filter(img, filter_type, **kwargs):
     
     if filter_type in filter_dict.keys():
         img = filters.crop_to_square(img)
+        
         result = filter_dict[filter_type](img, **kwargs)
         if filter_type in ['Wiener', 'ABS', 'NL']:
             return result[0]
@@ -3517,11 +3873,7 @@ def save_as_tif16(input_file, f_name, output_dir,
                   apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False):
     img = copy.deepcopy(input_file)
     # Check if the image data is compatible with 16-bit int
-    if all(i.is_integer() for i in img['data'].flat):
-        img['data'] = img['data'].astype('int16')
-        
-    else:
-        img['data'] = img['data'].astype('float32')
+    img['data'] = img['data'].astype('int16')
         
 
     # Save unfiltered    
@@ -3626,23 +3978,6 @@ def add_scalebar_to_pil(im, scale, unit):
     draw.text((txt_x, txt_y), text, font=font, fill='white', anchor=None)  
     
 
-# def scale_bar_to_fig(imgshape,scale,unit,facecolor="white",edgecolor="black"):
-#     # Add a scalebar to the preview image handled by matplotlib
-#     im_x, im_y = imgshape
-#     fov_x = im_x * scale
-#     sb_len_float = fov_x / 6
-#     sb_lst = [0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000,2000,5000]
-#     sb_len = sorted(sb_lst, key=lambda a: abs(a - sb_len_float))[0]
-#     sb_len_px = sb_len / scale
-#     sb_start_x, sb_start_y = (im_x / 12, im_y *11 / 12)
-#     fontsize = int(im_y / 25)
-    
-#     lw = im_y/80
-#     sb = patches.Rectangle((sb_start_x,sb_start_y),sb_len_px,im_y/80,fc=facecolor,ec=edgecolor,lw=lw)
-#     text = str(sb_len) + ' ' + unit
-
-#     txt_x, txt_y = (sb_start_x + sb_len * 0.1, sb_start_y - im_y/80)
-#     return sb, text, txt_x, txt_y, fontsize
     
 
 def save_file_as(input_file, f_name, output_dir, f_type, **kwargs): 
@@ -3666,6 +4001,7 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
     cutoff_gaussian = kwargs['cutoff_gaussian']    
     scale_bar = kwargs['scalebar']
     #Save images
+        
 
     #Check if the output_dir exists
     if not os.path.exists(output_dir):
@@ -3924,25 +4260,11 @@ def line(p1, p2):
     A = (p2[1] - p1[1])
     B = (p2[0] - p1[0])
     k = A /B   
-    return k, -k * p1[0] + p1[1]
-                
-
-
+    return k, -k * p1[0] + p1[1]    
+               
 #====Application entry==================================
 QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-print('='*50)
-print('''
-      TemCompanion 
-      --- a convenient tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg.
-          
-      This app was designed by Dr. Tao Ma. 
-      Address your questions and suggestions to matao1984@gmail.com.
-      Please see the "About" before use!
-      Hope you get good results and publications from it!
-      ''')
-            
-print('          Version: ' + ver + ' Released: ' + rdate)
-print('='*50)
+
     
 
 def main():

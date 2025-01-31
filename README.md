@@ -62,6 +62,13 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v1.0
+- Significant update with redesigned UI. Now it is separated from the old EMD-converter.
+- Batch converter function calls the old Emd-converter and runs batch conversion.
+- Added flip image and stack
+- Added custom color map for colors to transition from black at 0 intensity
+- Standalone bundles for Windows x64 and MacOS ARM are available, which do not require a python environment and installation.
+
 ### v0.6
 - Fixed crop and crop stack have the same effect in stack images
 - Improved speed for interactive measurement and line profile

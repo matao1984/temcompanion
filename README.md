@@ -43,6 +43,7 @@ Currently available functions include:
 * The processing history by TemCompanion is saved in the metadata tree under "process" entry.
 * Align image stack with both phase cross-correlation (rigid) and optical flow (non rigid).
 * Copy displayed images directly and paste to power point, etc.
+* Run geometric phase analysis on HR(S)TEM images.
 
 
 ### 3.3 Output formats

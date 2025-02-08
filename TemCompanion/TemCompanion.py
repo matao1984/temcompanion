@@ -44,6 +44,13 @@
 # Added custom color map for colors to transition from black at 0 intensity
 # Send to windows and mac bundles
 
+# 2025-02-10 v1.1
+# New Features: Geometric phase analysis
+# New function: resampling (both up and down)
+# Improved mode switching between measure, line profile, etc.
+# Manual input vmin vmax together with the slider bar
+# Fixed some tif images cannot be imported with missing modules
+
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -54,7 +61,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy)
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
-from PyQt5.QtGui import QImage
+from PyQt5.QtGui import QImage, QIcon
 from superqt import QDoubleRangeSlider
 
 import sys
@@ -88,13 +95,13 @@ from skimage.filters import window
 from skimage.measure import profile_line
 from scipy.ndimage import rotate, shift
 from skimage.registration import phase_cross_correlation, optical_flow_ilk
-from skimage.transform import warp
+from skimage.transform import warp, rescale
 
 
 
-ver = '1.0'
+ver = '1.1'
 #rdate = date.today().strftime('%Y-%m-%d')
-rdate = '2025-01-31'
+rdate = '2025-02-10'
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -266,8 +273,8 @@ See the "About" for more details. Buy me a lunch if you like it!
 # Open file button connected to OpenFile
 
     def openfile(self):
-        self.file, _ = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+        self.file, self.file_type = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;16-bit Tiff Files (*.tif *.tiff);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
         if self.file:
             try:
                 self.preview()
@@ -351,7 +358,8 @@ See the "About" for more details. Buy me a lunch if you like it!
         
 # ====================== Open file for preview ===============================
     def preview(self):
-        f = load_file(self.file)
+        
+        f = load_file(self.file, self.file_type)
         f_name = getFileName(self.file)
         
     
@@ -429,15 +437,27 @@ class PlotCanvas(QMainWindow):
         self.end_point = None
         self.active_point = None
         self.inactive_point = None
-        self.measurement_active = False
+        
         self.text = None # Measurement result text
-        self.line_profile_mode = False
+        
         self.linewidth = 1 # Default linewidth for line profile
+        self.marker = None 
+        
+        self.mask_list = []
+        self.sym_mask_list = []
+        
+        # Measurement mode control all in a dictionary
+        self.mode_control = {'measurement': False,
+                             'lineprofile': False,
+                             'measure_fft': False,
+                             'mask': False
+            }
 
         # Connect event handlers
         self.button_press_cid = None
         self.button_release_cid = None
         self.motion_notify_cid = None
+        self.scroll_event_cid = None
         
         # All the push buttons
         self.buttons = {'crop_ok': None,
@@ -524,6 +544,9 @@ class PlotCanvas(QMainWindow):
         flipud_action = QAction('Flip vertical',self)
         flipud_action.triggered.connect(self.flip_vertical)
         edit_menu.addAction(flipud_action)
+        resampling_action = QAction('Resampling', self)
+        resampling_action.triggered.connect(self.resampling)
+        edit_menu.addAction(resampling_action)
         fft_action = QAction('&FFT', self)
         fft_action.setShortcut('ctrl+f')
         fft_action.triggered.connect(self.fft)
@@ -535,6 +558,9 @@ class PlotCanvas(QMainWindow):
         livefft_action.setShortcut('ctrl+shift+f')
         livefft_action.triggered.connect(self.live_fft)
         edit_menu.addAction(livefft_action)
+        gpa_action = QAction('Geometric Phase Analysis', self)
+        gpa_action.triggered.connect(self.gpa)
+        edit_menu.addAction(gpa_action)
         
         
         # Analyze menu and actions
@@ -795,6 +821,51 @@ class PlotCanvas(QMainWindow):
         self.preview_dict[preview_name].process['process'].append('Flipped vertically')
         self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
 
+
+    def resampling(self):
+        # Open a dialog to take the scale factor. Reuse the rotate angle dialog
+        dialog = RotateImageDialog()
+        dialog.setWindowTitle("Resampling image")
+        dialog.angle_input.setPlaceholderText('Enter rescaling factor')
+        # Display a message in the status bar
+        if dialog.exec_() == QDialog.Accepted:
+            rescale_factor = dialog.rotate_ang
+            try:
+                rescale_factor = float(rescale_factor)
+            except ValueError:
+                QMessageBox.critical(self, 'Input Error', 'Please enter a valid rescale factor.')
+                return
+            
+            
+            img = self.get_img_dict_from_canvas()
+            img_to_rebin = img['data']
+            rebinned_array = rescale(img_to_rebin, rescale_factor)
+            img['data'] = rebinned_array
+            
+            # Update axes
+            new_scale = self.scale / rescale_factor
+            new_y, new_x = rebinned_array.shape
+            img['axes'][0]['scale'] = new_scale
+            img['axes'][0]['size'] = new_y
+            img['axes'][1]['scale'] = new_scale
+            img['axes'][1]['size'] = new_x
+            
+            # Create a new PlotCanvs to display        
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + '_Resampled'
+            self.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+            self.preview_dict[preview_name].setWindowTitle(title + ' resampled')
+            self.preview_dict[preview_name].canvas.canvas_name = preview_name
+            self.preview_dict[preview_name].show()
+            
+            print(f'Resampled {title} by a factor of {rescale_factor}.')
+            
+            # Keep the history
+            self.preview_dict[preview_name].process['process'].append(f'Resampled by a factor of {rescale_factor}.')
+            self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+
+
+
             
     def copy_img(self):
         buf = io.BytesIO()
@@ -950,10 +1021,10 @@ class PlotCanvas(QMainWindow):
             
         if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
             vmin = np.percentile(self.canvas.data['data'], 30)
-            vmax = np.percentile(self.canvas.data['data'], 99.9)
+            vmax = np.percentile(self.canvas.data['data'], 99.5)
         else:
-            vmin = np.percentile(self.canvas.data['data'], 0)
-            vmax = np.percentile(self.canvas.data['data'], 100)
+            vmin = np.percentile(self.canvas.data['data'], 0.01)
+            vmax = np.percentile(self.canvas.data['data'], 99.9)
             
         # Update vmin/vmax
         self.im.set_clim(vmin, vmax)    
@@ -1039,19 +1110,47 @@ class PlotCanvas(QMainWindow):
             self.canvas.data['metadata']['process'] = copy.deepcopy(self.process)
     
 #=========== Measure functions ================================================
+    def clear_cid(self):
+        cid_list = [self.button_press_cid, self.button_release_cid, self.motion_notify_cid, self.scroll_event_cid]
+        for i, cid in enumerate(cid_list):
+            if cid is not None:
+                self.fig.canvas.mpl_disconnect(cid)
+                cid_list[i] = None
+                
+    def clear_buttons(self):
+        for key, value in self.buttons.items():
+            if value is not None:
+                self.buttons[key].hide()
+                self.buttons[key] = None
+    
+    def measure(self):
+        # Turn off all active modes
+        self.cleanup()
+        self.clear_cid()
+        self.clear_buttons()
+        
+        for key, value in self.mode_control.items():
+            if value:
+                self.mode_control[key] = False
+        # Turn on measurement mode
+        self.mode_control['measurement'] = True
+        
+        self.start_distance_measurement()
+        
+
     def start_distance_measurement(self):
         self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_button_press)
         self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.on_button_release)
         # Display a message in the status bar
         self.statusBar.showMessage("Draw a line with mouse to measure. Drag with mouse if needed.")
-        if self.buttons['distance_finish'] is None and self.measurement_active:
+        if self.buttons['distance_finish'] is None and self.mode_control['measurement']:
             self.buttons['distance_finish'] = QPushButton('Finish', parent=self.canvas)
             self.buttons['distance_finish'].move(30, 30)
             self.buttons['distance_finish'].clicked.connect(self.stop_distance_measurement)
             self.buttons['distance_finish'].show()
         
         # For line profile mode
-        if self.line_profile_mode:
+        if self.mode_control['lineprofile']:
             preview_name = "Line Profile"
             
             self.preview_dict[preview_name] = PlotCanvasLineProfile(parent=self)
@@ -1061,36 +1160,23 @@ class PlotCanvas(QMainWindow):
             
 
     def stop_distance_measurement(self):
-        if self.measurement_active:
-            self.measurement_active = False
+        if self.mode_control['measurement']:
+            self.mode_control['measurement'] = False
             
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
             
             self.cleanup()  # Cleanup any existing measurements
-            self.fig.canvas.mpl_disconnect(self.button_press_cid)
-            self.fig.canvas.mpl_disconnect(self.button_release_cid)
-            #self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
-            self.button_press_cid = None
-            self.button_release_cid = None
-            self.motion_notify_cid = None
-                
-        if self.buttons['distance_finish'] is not None:
-            self.buttons['distance_finish'].hide()
-            self.buttons['distance_finish'] = None
-            
-        self.fig.canvas.draw_idle()
+            self.clear_cid() # Disconnect all the cid and set them to None
+            self.clear_buttons()         
+            self.fig.canvas.draw_idle()
             
     def stop_line_profile(self):
-        if self.line_profile_mode:
-            self.line_profile_mode = False
+        if self.mode_control['lineprofile']:
+            self.mode_control['lineprofile'] = False
             self.cleanup()  # Cleanup any existing measurements
-            self.fig.canvas.mpl_disconnect(self.button_press_cid)
-            self.fig.canvas.mpl_disconnect(self.button_release_cid)
-            #self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
-            self.button_press_cid = None
-            self.button_release_cid = None
-            self.motion_notify_cid = None
+            self.clear_cid() # Disconnect all the cid and set them to None
+            
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
             self.fig.canvas.draw_idle()
@@ -1100,15 +1186,22 @@ class PlotCanvas(QMainWindow):
         if self.line is not None:
             self.line.remove()
             self.line = None
-        self.start_point = None
-        self.end_point = None
+            self.start_point = None
+            self.end_point = None
         
         if self.text is not None:
             self.text.remove()
             self.text = None
+            
+        if self.marker is not None:
+            self.marker.remove()
+            self.marker = None
+        
+        if self.mode_control['mask']:
+            self.cleanup_mask()
         
             
-        self.fig.canvas.draw_idle()
+        self.canvas.draw_idle()
 
     def on_button_press(self, event):
         threshold_x = self.img_size[0] / 50
@@ -1159,7 +1252,7 @@ class PlotCanvas(QMainWindow):
             
         
         # Handle measure the distance
-        if self.measurement_active and self.start_point is not None and self.end_point is not None:
+        if self.mode_control['measurement'] and self.start_point is not None and self.end_point is not None:
             distance_units = measure_distance(self.start_point, self.end_point, scale=self.scale)
             #angle = calculate_angle_from_3_points(self.end_point, self.start_point, (self.start_point[0] - 100,self.start_point[1]))
             angle = calculate_angle_to_horizontal(self.start_point, self.end_point)
@@ -1175,19 +1268,12 @@ class PlotCanvas(QMainWindow):
             #self.measure_dialog.update_measurement(distance_units, angle)
             
         # Handle line profile
-        if self.line_profile_mode and self.start_point is not None and self.end_point is not None:
+        if self.mode_control['lineprofile'] and self.start_point is not None and self.end_point is not None:
             # Define a line with two points and display the line profile
             p0 = round(self.start_point[0]), round(self.start_point[1])
             p1 = round(self.end_point[0]), round(self.end_point[1])
             self.preview_dict['Line Profile'].plot_lineprofile(p0, p1,self.linewidth)
-            # self.fig.canvas.mpl_disconnect(self.button_press_cid)
-            # self.fig.canvas.mpl_disconnect(self.button_release_cid)
-
-            # preview_name = self.windowTitle() + ": Line Profile"
-            # self.preview_dict[preview_name] = PlotCanvasLineProfile(p0, p1, self)
-            # self.preview_dict[preview_name].plot_name = preview_name            
-            # self.preview_dict[preview_name].setWindowTitle(preview_name)
-            # self.preview_dict[preview_name].show()
+            
             
             
         self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
@@ -1200,22 +1286,26 @@ class PlotCanvas(QMainWindow):
             
         
     
-    def measure(self):
-        if not self.measurement_active and not self.line_profile_mode:
-            self.measurement_active = True
-            self.start_distance_measurement()
-        else:
-            QMessageBox.warning(self, "Measurement","Cannot start measurement because line profile is active!")
+    
     
 #============ Line profile function ==========================================
     def lineprofile(self):
-        if not self.line_profile_mode and not self.measurement_active:
-            self.line_profile_mode = True
-            self.linewidth = 1
-            self.start_distance_measurement()
-            
-        else:
-            QMessageBox.warning(self, "Line profile", "Cannot start line profile because measurement is active!")
+        
+                
+        self.cleanup()
+        self.clear_cid()
+        self.clear_buttons()
+        
+        for key, value in self.mode_control.items():
+            if value:
+                self.mode_control[key] = False
+        # Turn on measurement mode
+        
+        
+        self.mode_control['lineprofile'] = True
+        self.linewidth = 1
+        self.start_distance_measurement()
+         
         
 
 #================= FFT ======================================================        
@@ -1231,6 +1321,9 @@ class PlotCanvas(QMainWindow):
         if data.shape[0] != data.shape[1]:
             # Image will be cropped to square for FFT
             data = filters.crop_to_square(data)
+            new_size = data.shape[0]
+            for ax in img_dict['axes']:
+                ax['size'] = new_size
             img_dict['data'] = data
         # FFT calculation is handled in the PlotCanvasFFT class
         
@@ -1252,6 +1345,9 @@ class PlotCanvas(QMainWindow):
             data = img_dict['data']
             if data.shape[0] != data.shape[1]:
                 data = filters.crop_to_square(data)
+                new_size = data.shape[0]
+                for ax in img_dict['axes']:
+                    ax['size'] = new_size
             w = window('hann', data.shape)
             img_dict['data'] = data * w
             # FFT calculation is handled in the PlotCanvasFFT class
@@ -1328,12 +1424,170 @@ class PlotCanvas(QMainWindow):
             self.statusBar.showMessage("Ready")
             self.canvas.draw_idle()
         
+#============== Put cleanup mask function here===============================
+    def cleanup_mask(self):
+        if self.mask_list or self.sym_mask_list:
+            all_mask_list = self.mask_list + self.sym_mask_list
+            for mask in all_mask_list:
+                mask.remove()
         
+                
+            self.mask_list = []
+            self.sym_mask_list = []
             
-
-
+            self.clear_buttons()
+        
+            self.active_mask = None
+            self.active_idx = None
+            self.clear_cid()
+            self.mode_control['mask'] = False        
             
+            self.canvas.draw_idle()
 
+
+
+#============= Geometric Phase Analysis ======================================
+    def gpa(self):
+        img = self.get_img_dict_from_canvas()
+        data = img['data']
+        
+        # Take a windowed FFT. The image is cropped to square
+        
+        if data.shape[0] != data.shape[1]:
+            data = filters.crop_to_square(data)
+            new_size = data.shape[0]
+            for ax in img['axes']:
+                ax['size'] = new_size
+        w = window('hann', data.shape)
+        img['data'] = data * w
+        # FFT calculation is handled in the PlotCanvasFFT class
+        
+        title = self.windowTitle()
+        preview_fft = PlotCanvasFFT(img, parent=self)
+        self.preview_dict['GPA_FFT'] = preview_fft
+
+        preview_fft.setWindowTitle('Windowed FFT of ' + title)
+        preview_fft.canvas.canvas_name = "GPA_FFT"
+        
+        
+        preview_fft.show()
+        
+        # Add two masks on the FFT
+        self.r = 10
+        self.edgesmooth = 0.3
+        self.vmin = -0.1
+        self.vmax = 0.1
+        
+        preview_fft.mask()
+        preview_fft.add_mask()
+        preview_fft.statusBar.showMessage('Drag the masks on two noncolinear strong spots. Scroll to resize')
+        m1 = preview_fft.mask_list[0]
+        m1.center = self.img_size[1]*0.75, self.img_size[0]*0.25
+        
+        m2 = preview_fft.mask_list[1]
+        m2.center = self.img_size[1]*0.75, self.img_size[0]*0.75
+        
+        # Remove the circles on the symmetric side
+        for circle in preview_fft.sym_mask_list:
+            circle.remove()
+        preview_fft.sym_mask_list = []
+        
+        # Redefine buttons
+        preview_fft.clear_buttons()
+        preview_fft.buttons['GPA'] = QPushButton('Run GPA', preview_fft)
+        preview_fft.buttons['GPA'].setGeometry(30, 80, 80, 30)
+        preview_fft.buttons['GPA'].clicked.connect(self.run_gpa)
+        preview_fft.buttons['GPA'].show()
+        preview_fft.buttons['GPA_settings'] = QPushButton('Settings', preview_fft)
+        preview_fft.buttons['GPA_settings'].setGeometry(100, 80, 80, 30)
+        preview_fft.buttons['GPA_settings'].clicked.connect(self.gpa_settings)
+        preview_fft.buttons['GPA_settings'].show()
+        preview_fft.buttons['GPA_refine'] = QPushButton('Refine mask position', preview_fft)
+        preview_fft.buttons['GPA_refine'].setGeometry(170, 80, 150, 30)
+        preview_fft.buttons['GPA_refine'].clicked.connect(self.refine_mask)
+        preview_fft.buttons['GPA_refine'].show()
+        preview_fft.canvas.draw_idle()
+        
+    def run_gpa(self):
+        img = self.get_img_dict_from_canvas()
+        data = img['data']
+        if data.shape[0] != data.shape[1]:
+            data = filters.crop_to_square(data)
+            new_size = data.shape[0]
+            for ax in img['axes']:
+                ax['size'] = new_size
+        
+        # Get the center and radius of the two masks
+        g1 = self.preview_dict['GPA_FFT'].mask_list[0].center
+        g2 = self.preview_dict['GPA_FFT'].mask_list[1].center
+        r = max(self.preview_dict['GPA_FFT'].mask_list[0].radius, self.preview_dict['GPA_FFT'].mask_list[1].radius)
+        exx, eyy, exy, oxy = calc_strains(data, g1, g2, r, edge_blur=self.edgesmooth)
+        
+        # Display the strain tensors
+        exx_dict = copy.deepcopy(img)
+        exx_dict['data'] = exx
+        self.preview_dict['gpa_exx'] = PlotCanvas(exx_dict, parent=self)
+        self.preview_dict['gpa_exx'].setWindowTitle('Epsilon xx')
+        self.preview_dict['gpa_exx'].canvas.canvas_name = 'GPA_Exx'
+        self.preview_dict['gpa_exx'].im.set_clim(self.vmin, self.vmax)
+        self.preview_dict['gpa_exx'].im.set_cmap('hot')
+        self.preview_dict['gpa_exx'].show()
+        
+        eyy_dict = copy.deepcopy(img)
+        eyy_dict['data'] = eyy
+        self.preview_dict['gpa_eyy'] = PlotCanvas(eyy_dict, parent=self)
+        self.preview_dict['gpa_eyy'].setWindowTitle('Epsilon yy')
+        self.preview_dict['gpa_eyy'].canvas.canvas_name = 'GPA_Eyy'
+        self.preview_dict['gpa_eyy'].im.set_clim(self.vmin, self.vmax)
+        self.preview_dict['gpa_eyy'].im.set_cmap('hot')
+        self.preview_dict['gpa_eyy'].show()
+        
+        exy_dict = copy.deepcopy(img)
+        exy_dict['data'] = exy
+        self.preview_dict['gpa_exy'] = PlotCanvas(exy_dict, parent=self)
+        self.preview_dict['gpa_exy'].setWindowTitle('Epsilon xy')
+        self.preview_dict['gpa_exy'].canvas.canvas_name = 'GPA_Exy'
+        self.preview_dict['gpa_exy'].im.set_clim(self.vmin, self.vmax)
+        self.preview_dict['gpa_exy'].im.set_cmap('hot')
+        self.preview_dict['gpa_exy'].show()
+        
+        oxy_dict = copy.deepcopy(img)
+        oxy_dict['data'] = oxy
+        self.preview_dict['gpa_oxy'] = PlotCanvas(oxy_dict, parent=self)
+        self.preview_dict['gpa_oxy'].setWindowTitle('Omega')
+        self.preview_dict['gpa_oxy'].canvas.canvas_name = 'GPA_Oxy'
+        self.preview_dict['gpa_oxy'].im.set_clim(self.vmin, self.vmax)
+        self.preview_dict['gpa_oxy'].im.set_cmap('hot')
+        self.preview_dict['gpa_oxy'].show()
+    
+    def gpa_settings(self):
+        # Open a dialog to take settings
+        r = max(self.preview_dict['GPA_FFT'].mask_list[0].radius, self.preview_dict['GPA_FFT'].mask_list[1].radius)
+        dialog = gpaSettings(int(r), self.edgesmooth, vmin=self.vmin, vmax=self.vmax, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.r = dialog.masksize
+            self.edgesmooth = dialog.edgesmooth
+            self.vmin = dialog.vmin
+            self.vmax = dialog.vmax
+            
+        # Update masks 
+        for mask in self.preview_dict['GPA_FFT'].mask_list:
+            mask.set_radius(self.r)
+        
+        self.preview_dict['GPA_FFT'].canvas.draw_idle()
+                
+    def refine_mask(self):
+        window_size = 5
+        img = self.preview_dict['GPA_FFT'].get_current_img_from_canvas()
+        #r = max([mask.radius for mask in self.preview_dict['GPA_FFT'].mask_list])
+        for mask in self.preview_dict['GPA_FFT'].mask_list:
+            g = mask.center
+            g_refined = refine_center(img, g, window_size)
+            mask.center = g_refined
+            #mask.radius = r
+        self.preview_dict['GPA_FFT'].canvas.draw_idle()
+        
+        
 
         
 #======= Canvas to show image stacks==========================================
@@ -1363,6 +1617,9 @@ class PlotCanvas3d(PlotCanvas):
         flipud_stack = QAction('Flip vertical', self)
         flipud_stack.triggered.connect(self.flip_stack_vertical)
         stack_menu.addAction(flipud_stack)
+        resampling_stack = QAction('Resampling stack', self)
+        resampling_stack.triggered.connect(self.resampling_stack)
+        stack_menu.addAction(resampling_stack)
         align_stack_cc = QAction('Align stack with Cross-Correlation', self)
         align_stack_cc.triggered.connect(self.align_stack_cc)
         stack_menu.addAction(align_stack_cc)
@@ -1560,6 +1817,51 @@ class PlotCanvas3d(PlotCanvas):
             self.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
             self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
     
+    def resampling_stack(self):
+        # Open a dialog to take the scale factor. Reuse the rotate angle dialog
+        dialog = RotateImageDialog()
+        dialog.setWindowTitle("Resampling stack")
+        dialog.angle_input.setPlaceholderText('Enter rescaling factor')
+        # Display a message in the status bar
+        if dialog.exec_() == QDialog.Accepted:
+            rescale_factor = dialog.rotate_ang
+            try:
+                rescale_factor = float(rescale_factor)
+            except ValueError:
+                QMessageBox.critical(self, 'Input Error', 'Please enter a valid rescale factor.')
+                return
+            
+            
+            img = copy.deepcopy(self.canvas.data)
+            img_to_rebin = img['data']
+            rebinned_array = rescale(img_to_rebin, (1,rescale_factor, rescale_factor))
+            img['data'] = rebinned_array
+            
+            # Update axes
+            new_scale = self.scale / rescale_factor
+            _, new_y, new_x = rebinned_array.shape
+            img['axes'][0]['scale'] = new_scale
+            img['axes'][0]['size'] = new_y
+            img['axes'][1]['scale'] = new_scale
+            img['axes'][1]['size'] = new_x
+            
+            # Create a new PlotCanvs to display        
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + '_Resampled'
+            self.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+            self.preview_dict[preview_name].setWindowTitle(title + ' resampled')
+            self.preview_dict[preview_name].canvas.canvas_name = preview_name
+            self.preview_dict[preview_name].show()
+            
+            print(f'Resampled {title} by a factor of {rescale_factor}.')
+            
+            # Keep the history
+            self.preview_dict[preview_name].process['process'].append(f'Resampled by a factor of {rescale_factor}.')
+            self.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(self.preview_dict[preview_name].process)
+
+
+    
+    
     def align_stack_cc(self):        
         aligned_img = copy.deepcopy(self.canvas.data)
         img = aligned_img['data']
@@ -1714,7 +2016,14 @@ class PlotCanvas3d(PlotCanvas):
     def export_stack(self):
         data = self.canvas.data
         img_data = data['data'].astype('int16')
-
+        # Update the axes in case they have been changed, e.g., scale, size...
+        data['original_axes'][1]['size'] = data['axes'][0]['size']
+        data['original_axes'][2]['size'] = data['axes'][1]['size']
+        data['original_axes'][1]['scale'] = data['axes'][0]['scale']
+        data['original_axes'][2]['scale'] = data['axes'][1]['scale']
+        data['original_axes'][1]['units'] = data['axes'][0]['units']
+        data['original_axes'][2]['units'] = data['axes'][1]['units']
+        
         data_to_export = {'data': img_data, 'metadata': data['metadata'], 'axes': data['original_axes']}
         options = QFileDialog.Options()
         file_path, _ = QFileDialog.getSaveFileName(self.parent(), 
@@ -1769,11 +2078,18 @@ class PlotCanvasFFT(PlotCanvas):
     def __init__(self, img, parent=None):
         # img is the image dictionary, NOT FFT. FFT will be calculated in create_img()
         super().__init__(img, parent)
-        
         edit_menu = self.menubar.children()[2]
         mask_action = QAction('Mask and iFFT', self)
         mask_action.triggered.connect(self.mask)
         edit_menu.addAction(mask_action)
+        
+        # Remove GPA
+        actions = edit_menu.actions()
+        for action in actions:
+            if action.iconText() == 'Geometric Phase Analysis':
+                gpa_action = action
+                break
+        edit_menu.removeAction(gpa_action)
         
         
         analyze_menu = self.menubar.children()[3] #Analyze is at #3
@@ -1786,11 +2102,14 @@ class PlotCanvasFFT(PlotCanvas):
         filter_menu = self.menubar.children()[4]
         self.menubar.removeAction(filter_menu.menuAction())
         
-        self.marker = None  
         
-        self.n_mask = 0
+        
+        
         self.active_mask = None
         self.active_idx = None
+        
+        
+        
         
         # Add extra buttons
         self.buttons['mask_add'] = None
@@ -1798,10 +2117,6 @@ class PlotCanvasFFT(PlotCanvas):
         self.buttons['mask_ifft'] = None
         self.buttons['mask_cancel'] = None
         
-        self.fft_button_press_cid = None
-        self.fft_button_release_cid = None
-        self.fft_motion_notify_cid = None
-        self.fft_scroll_event_cid = None
         
     def set_scale_units(self):
         img_dict = self.canvas.data 
@@ -1902,9 +2217,11 @@ class PlotCanvasFFT(PlotCanvas):
         
 #======== Measure FFT function ==============================================
     def start_fft_measurement(self):
-        self.marker = None
-        if not self.measurement_active:
-            self.measurement_active = True
+                
+        if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
+            real_units = self.units.split('/')[-1]
+            self.measure_fft_dialog = MeasureFFTDialog(0, 0, real_units, self)
+            self.measure_fft_dialog.show()
             self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
             # Display a message in the status bar
             self.statusBar.showMessage("Click on a spot to measure")
@@ -1913,21 +2230,21 @@ class PlotCanvasFFT(PlotCanvas):
         if event.inaxes != self.axes:
             return
         # Clear previous results
-        self.cleanup_fft()
+        self.cleanup()
         image_data = self.canvas.data['data']
         image_size = image_data.shape
         x_click, y_click = int(event.xdata), int(event.ydata)
         # Define a window size around the clicked point to calculate the center of mass
         window_size = self.measure_fft_dialog.windowsize
         x_min = max(x_click - window_size, 0)
-        x_max = min(x_click + window_size, image_size[0])
+        x_max = min(x_click + window_size, image_size[1])
         y_min = max(y_click - window_size, 0)
-        y_max = min(y_click + window_size, image_size[1])
+        y_max = min(y_click + window_size, image_size[0])
         
         window = image_data[y_min:y_max, x_min:x_max]
         
         # Convert the window to binary with a threshold to make CoM more accurate
-        threshold = np.mean(window) + 2*np.std(window)
+        threshold = np.mean(window) + 1.5*np.std(window)
         binary_image = window > threshold
 
         # Calculate the center of mass within the window
@@ -1946,24 +2263,19 @@ class PlotCanvasFFT(PlotCanvas):
         self.distance_fft = 1/(distance_px * self.scale)
         
         # Calculate the angle from horizontal
-        #self.ang = calculate_angle_from_3_points((cx, cy), (x0,y0), (x0 - 100,y0))
         self.ang = calculate_angle_to_horizontal((x0,y0), (cx,cy))
         # display results in the dialog
         self.measure_fft_dialog.update_measurement(self.distance_fft, self.ang)
         
         
-    def cleanup_fft(self):
-        if self.marker:
-            self.marker.remove()
-            self.marker = None
-        self.fig.canvas.draw_idle()
+    
         
     def stop_fft_measurement(self):
-        if self.measurement_active:
-            self.measurement_active = False
-            self.cleanup_fft()  # Cleanup any existing measurements
-            self.fig.canvas.mpl_disconnect(self.button_press_cid)
-            self.button_press_cid = None
+        if self.mode_control['measure_fft']:
+            self.mode_control['measure_fft'] = False
+            self.cleanup()  # Cleanup any existing measurements
+            self.clear_cid()
+            
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
             self.fig.canvas.draw_idle()
@@ -1971,22 +2283,32 @@ class PlotCanvasFFT(PlotCanvas):
                     
         
     def measure_fft(self):
-        if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
-            real_units = self.units.split('/')[-1]
-            self.measure_fft_dialog = MeasureFFTDialog(0, 0, real_units, self)
-            self.measure_fft_dialog.show()
-            self.start_fft_measurement()
-            
-        else:
-            QMessageBox.warning(self, 'Measure FFT', 'Invalid calibration in FFT! Please calibrate the image and try again.')
+        self.marker = None
+        for key, value in self.mode_control.items():
+            if value:
+                self.mode_control[key] = False
+                
+        self.cleanup()
+        self.clear_cid()
+        self.clear_buttons()
+        self.mode_control['measure_fft'] = True
+        self.start_fft_measurement()
          
     
     def mask(self):
+        self.cleanup()
+        self.clear_cid()        
+        self.clear_buttons()
+        for key, value in self.mode_control.items():
+            if value:
+                self.mode_control[key] = False
+                
+        self.mode_control['mask'] = True
         self.mask_list = []
         self.sym_mask_list = []
-        
-        self.fft_button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.fft_on_press)
-        self.fft_button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.fft_on_release)
+       
+        self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.fft_on_press)
+        self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.fft_on_release)
 
         
         # Buttons for add, remove, cancel
@@ -2003,9 +2325,9 @@ class PlotCanvasFFT(PlotCanvas):
         self.buttons['mask_ifft'].setGeometry(240, 30, 80, 30)
         self.buttons['mask_ifft'].clicked.connect(self.ifft_filter)
         
-        for value in self.buttons.values():
+        for key, value in self.buttons.items():
             if value is not None:
-                value.show()
+                self.buttons[key].show()
         
         self.add_mask()
         
@@ -2017,7 +2339,7 @@ class PlotCanvasFFT(PlotCanvas):
     def add_mask(self):       
         # Default size and position
         x0, y0 = self.img_size[0]/4, self.img_size[1]/4
-        r0 = int(self.img_size[0]/100)
+        r0 = int(self.img_size[0]/100 /0.7)
         mask = Circle((x0,y0),radius=r0, color='red', fill=False)
         self.axes.add_artist(mask)
         self.mask_list.append(mask)
@@ -2027,19 +2349,20 @@ class PlotCanvasFFT(PlotCanvas):
             self.active_mask.set_color('orange')
         
         # Add another circle at symmetric position
-        
         sym_mask = Circle((self.img_size[0]-x0,self.img_size[1]-y0), radius=r0, color='yellow', fill=False)
         self.sym_mask_list.append(sym_mask)
         self.axes.add_artist(sym_mask)
         self.active_mask = mask
+        
         self.active_idx = self.mask_list.index(mask)
         self.canvas.draw_idle()
         
     def remove_mask(self):
         if self.active_mask is not None:
             self.mask_list.remove(self.active_mask)
-            self.sym_mask_list[self.active_idx].remove()
-            self.sym_mask_list.pop(self.active_idx)
+            if self.sym_mask_list:
+                self.sym_mask_list[self.active_idx].remove()
+                self.sym_mask_list.pop(self.active_idx)
             self.active_mask.remove()
             
             self.active_mask = None
@@ -2055,7 +2378,6 @@ class PlotCanvasFFT(PlotCanvas):
             self.active_mask.set_color('orange')
         x, y = event.xdata, event.ydata
         # Find the closest circle in the mask list
-        #min_dist = float('inf')
         for i, mask in enumerate(self.mask_list):
             cx, cy = mask.center
             d = measure_distance((x,y), (cx,cy))
@@ -2063,10 +2385,14 @@ class PlotCanvasFFT(PlotCanvas):
                 self.active_mask = mask
                 self.active_idx = i
                 break
+            else:
+                self.active_mask = None
+                self.active_idx = None
         # Set red color to the active circle
-        self.active_mask.set_color('red')        
-        self.fft_motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.fft_on_move)
-        self.fft_scroll_event_cid = self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+        if self.active_mask is not None:
+            self.active_mask.set_color('red')        
+            self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.fft_on_move)
+            self.scroll_event_cid = self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
         self.canvas.draw_idle()
         
     def fft_on_move(self, event):
@@ -2076,7 +2402,8 @@ class PlotCanvasFFT(PlotCanvas):
         x0, y0 = self.active_mask.center
         
         self.active_mask.center = x, y
-        self.sym_mask_list[self.active_idx].center = (self.img_size[0]-x, self.img_size[1]-y)
+        if self.sym_mask_list:
+            self.sym_mask_list[self.active_idx].center = (self.img_size[0]-x, self.img_size[1]-y)
         self.canvas.draw_idle()
         # if abs(x0-x) > self.img_size[0] /100 or abs(y0-y) > self.img_size[1] / 100:
         #     self.fig.canvas.draw()
@@ -2087,7 +2414,7 @@ class PlotCanvasFFT(PlotCanvas):
             return
         
         
-        self.fig.canvas.mpl_disconnect(self.fft_motion_notify_cid)
+        self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
         self.canvas.draw_idle()
                 
     def on_scroll(self, event):
@@ -2102,65 +2429,25 @@ class PlotCanvasFFT(PlotCanvas):
         else:
             return
         
-        self.active_mask.set_radius(new_radius)
-        self.sym_mask_list[self.active_idx].set_radius(new_radius)
+        all_mask_list = self.mask_list + self.sym_mask_list
+        for mask in all_mask_list:
+            mask.set_radius(new_radius)
+        # self.active_mask.set_radius(new_radius)
+        # if self.sym_mask_list:
+        #     self.sym_mask_list[self.active_idx].set_radius(new_radius)
 
         self.fig.canvas.draw_idle() 
         
             
-
-    
-    def cleanup_mask(self):
-        for i in range(len(self.mask_list)):
-            self.mask_list[i].remove()
-            self.sym_mask_list[i].remove()
-        self.mask_list = []
-        self.sym_mask_list = []
         
-        for value in self.buttons.values():
-            if value is not None:
-                value.hide()
-                value = None
-
-        self.active_mask = None
-        self.active_idx = None
-        #self.fig.canvas.mpl_disconnect(self.fft_motion_notify_cid)
-        self.fig.canvas.mpl_disconnect(self.fft_button_press_cid)
-        self.fig.canvas.mpl_disconnect(self.fft_button_release_cid)
-        self.fig.canvas.mpl_disconnect(self.fft_scroll_event_cid)
-        
-        self.canvas.draw_idle()
-        
-    def create_mask(self, edge_width=5):
-        
-        mask = np.zeros(self.img_size, dtype=float)
-        mask_lst = self.mask_list + self.sym_mask_list
-        for circle in mask_lst:
-            x_center, y_center = circle.center
-            radius = circle.get_radius()
-            # Create a grid of coordinates
-            Y, X = np.ogrid[:self.img_size[0], :self.img_size[1]]
-            
-            # Calculate the Euclidean distance from each grid point to the circle's center
-            distance = np.sqrt((X - x_center)**2 + (Y - y_center)**2)
-            
-            # Create the base circle mask: inside the circle is 1, outside is 0
-            inside_circle = (distance <= radius)
-            outside_circle = (distance >= radius + edge_width)
-            
-            # Transition zone
-            transition_zone = ~inside_circle & ~outside_circle
-            transition_mask = np.clip((radius + edge_width - distance) / edge_width, 0, 1)
-    
-            # Combine masks
-            mask[inside_circle] = 1
-            mask[transition_zone] = transition_mask[transition_zone]
-            
-        return mask
      
     def ifft_filter(self):
         if self.mask_list and self.sym_mask_list:
-            mask = self.create_mask()
+            mask_list = self.mask_list + self.sym_mask_list
+            center = [m.center for m in mask_list]
+            radius = [m.radius for m in mask_list]
+            mask = create_mask(self.img_size, center, radius)               
+            
             fft_data = self.canvas.data['fft']
             masked_fft = fft_data * mask
             filtered_img = ifft2(ifftshift(masked_fft)).real
@@ -2413,50 +2700,51 @@ class CustomSettingsDialog(QDialog):
         h_box = QHBoxLayout()
         h_box.addWidget(vminmax_label)
         h_box.addWidget(self.doubleslider)
+        layout.addLayout(h_box)
+
+        
+        h_layout_vmin = QHBoxLayout()
+        self.vmin_label = QLabel("vmin:")
+        self.vmin_input = QLineEdit()
+        self.vmin_input.resize(40, 10)
+        self.vmin_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.vmin_button = QPushButton('Set', self)
+        self.vmin_button.clicked.connect(self.set_vminmax)
+        h_layout_vmin.addWidget(self.vmin_label)
+        h_layout_vmin.addWidget(self.vmin_input)
+        h_layout_vmin.addWidget(self.vmin_button)
+        layout.addLayout(h_layout_vmin)
+
+        h_layout_vmax = QHBoxLayout()
+        self.vmax_label = QLabel("vmax:")
+        self.vmax_input = QLineEdit()
+        self.vmax_input.resize(40, 10)
+        self.vmax_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.vmax_button = QPushButton('Set', self)
+        self.vmax_button.clicked.connect(self.set_vminmax)
+        h_layout_vmax.addWidget(self.vmax_label)
+        h_layout_vmax.addWidget(self.vmax_input)
+        h_layout_vmax.addWidget(self.vmax_button)
+        layout.addLayout(h_layout_vmax)
+        
+        
         
         
         
         # Set current vmin and vmax
         if self.img:
             vmin, vmax = self.img.get_clim()
-            dmin = int(np.min(self.img._A))
-            if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
-                dmax = np.percentile(self.img._A, 99.9)
-            else:
-                dmax = np.percentile(self.img._A, 100)
-            #dmax = round(np.max(self.img._A))
+            dmin = np.percentile(self.img._A, 0.01)            
+            dmax = np.percentile(self.img._A, 99.9)
             self.doubleslider.setRange(dmin, dmax)
             self.doubleslider.setValue((vmin, vmax))
+            self.vmin_input.setText(f'{vmin:.2f}')
+            self.vmax_input.setText(f'{vmax:.2f}')
             
             self.original_settings['vmin/max'] = (vmin, vmax)
+            self.original_settings['dmin/max'] = (dmin, dmax)
         
-        layout.addLayout(h_box)
-            
-            
-        
-        # # vmin and vmax inputs
-        # h_layout_vmin = QHBoxLayout()
-        # self.vmin_label = QLabel("vmin (%):")
-        # self.vmin_input = QLineEdit()
-        # h_layout_vmin.addWidget(self.vmin_label)
-        # h_layout_vmin.addWidget(self.vmin_input)
-        # layout.addLayout(h_layout_vmin)
 
-        # h_layout_vmax = QHBoxLayout()
-        # self.vmax_label = QLabel("vmax (%):")
-        # self.vmax_input = QLineEdit()
-        # h_layout_vmax.addWidget(self.vmax_label)
-        # h_layout_vmax.addWidget(self.vmax_input)
-        # layout.addLayout(h_layout_vmax)
-
-        # Set current vmin and vmax
-        # if self.img:
-        #     vmin, vmax = self.img.get_clim()
-        #     # # Calculate vmin and vmax is at what percentile
-        #     vmin_percentile = stats.percentileofscore(self.img._A.data.flat, vmin)
-        #     vmax_percentile = stats.percentileofscore(self.img._A.data.flat, vmax)
-        #     self.vmin_input.setText(f'{vmin_percentile:.2f}')
-        #     self.vmax_input.setText(f'{vmax_percentile:.2f}')
         
 
         # Colormap dropdown
@@ -2467,7 +2755,8 @@ class CustomSettingsDialog(QDialog):
                      'gray', 'spring', 'summer', 'autumn', 'winter', 'cool',
                       'Wistia', 'hot',
                      'Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Lime', 'Purple',
-                     'Magenta', 'Pink', 'Blue', 'Maize'
+                     'Magenta', 'Pink', 'Blue', 'Maize',
+                     'jet', 'rainbow', 'turbo', 'hsv'
                      ]
         self.cmap_combobox.addItems(colormaps)
         h_layout_cmap.addWidget(self.cmap_label)
@@ -2542,8 +2831,33 @@ class CustomSettingsDialog(QDialog):
     def update_clim(self):
         # Apply vmin and vmax
         vmin, vmax = self.doubleslider.value()
+        self.vmin_input.setText(f'{vmin:.2f}')
+        self.vmax_input.setText(f'{vmax:.2f}')
         self.img.set_clim(vmin,vmax)
         self.ax.figure.canvas.draw_idle()
+    
+    def set_vminmax(self):
+        try:
+            vmin = float(self.vmin_input.text())
+            
+        except:
+            QMessageBox.warning(self, 'Invalid vmin', 'vmin must be a number!')
+            return
+        
+        try:
+            vmax = float(self.vmax_input.text())
+        except:
+            QMessageBox.warning(self, 'Invalid vmax', 'vmax must be a number!')
+            return
+        
+        if vmin < self.doubleslider.minimum():
+            self.doubleslider.setMinimum(vmin)
+        if vmax > self.doubleslider.maximum():
+            self.doubleslider.setMaximum(vmax)
+        self.doubleslider.setValue((vmin, vmax))
+        
+        
+        
         
     def update_colormap(self):
         # Apply colormap
@@ -2573,6 +2887,7 @@ class CustomSettingsDialog(QDialog):
         self.update_scalebar()
         
         # Reset vmin vmax
+        self.doubleslider.setRange(*self.original_settings['dmin/max'])
         self.doubleslider.setValue(self.original_settings['vmin/max'])
         self.update_clim()
         
@@ -3128,15 +3443,7 @@ class AlignStackDialog(QDialog):
         
         self.setWindowTitle('Align stack parameters')
         layout = QVBoxLayout()
-        # algorithm = QLabel('Alignment algorithm')
-        # self.cc = QRadioButton('Phase Cross-Correlation')
-        # self.cc.setChecked(True)
-        # self.of_ilk = QRadioButton('Optical Flow (iterative Lucas-Kanade)')
-        # self.of_tvl1 = QRadioButton('Optical Flow (TV-L1)')
-        # layout.addWidget(algorithm)
-        # layout.addWidget(self.cc)
-        # layout.addWidget(self.of_ilk)
-        # layout.addWidget(self.of_tvl1)
+  
         self.apply_window_check = QCheckBox('Apply a Hann window filter')
         self.apply_window_check.setChecked(True)
         self.crop_img_check = QCheckBox('Crop to common area')
@@ -3163,13 +3470,7 @@ class AlignStackDialog(QDialog):
         if not enable:
             self.crop_to_square_check.setChecked(False)
             
-    # def get_algorithm(self):
-    #     if self.cc.isChecked():
-    #         self.algorithm = "Phase Cross-Correlation"
-    #     elif self.of_ilk.isChecked():
-    #         self.algorithm = "Optical Flow iLK"
-    #     elif self.of_tvl1.isChecked():
-    #         self.algorithm = "Optical Flow TV-L1"
+ 
         
     def handle_ok(self):
         #self.get_algorithm()
@@ -3181,44 +3482,7 @@ class AlignStackDialog(QDialog):
             
         self.accept()
         
-        
-#================= Align Stack with Optical Flow dialogue =====================================
-# class AlignStackOFDialog(QDialog):
-#     def __init__(self, parent=None):
-#         super().__init__(parent)
-#         self.algorithm = None
-#         self.setWindowTitle('Align stack parameters')
-#         layout = QVBoxLayout()
-#         algorithm = QLabel('Alignment algorithm')
-#         self.of_ilk = QRadioButton('Optical Flow (iterative Lucas-Kanade)')
-#         self.of_ilk.setChecked(True)
-#         self.of_tvl1 = QRadioButton('Optical Flow (TV-L1)')
-#         layout.addWidget(algorithm)
-#         layout.addWidget(self.of_ilk)
-#         layout.addWidget(self.of_tvl1)
-#         self.apply_window_check = QCheckBox('Apply a Hann window filter')
-#         self.apply_window_check.setChecked(False)
-#         layout.addWidget(self.apply_window_check)
-        
-        
-#         # Dialog Buttons (OK and Cancel)
-#         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-#         buttons.accepted.connect(self.handle_ok)
-#         buttons.rejected.connect(self.reject)
-#         layout.addWidget(buttons)
-        
-#         self.setLayout(layout)
-        
-        
-#     def handle_ok(self):
-#         if self.of_ilk.isChecked():
-#             self.algorithm = "Optical Flow iLK"
-#         elif self.of_tvl1.isChecked():
-#             self.algorithm = "Optical Flow TV-L1"
-        
-#         self.apply_window = self.apply_window_check.isChecked()
-            
-#         self.accept()
+
                 
 
 
@@ -3575,6 +3839,99 @@ class MeasureFFTDialog(QDialog):
     def closeEvent(self, event):
          self.parent().stop_fft_measurement()
          
+#==============GPA setting dialog===================================
+class gpaSettings(QDialog):
+    def __init__(self, masksize, edgesmooth, vmin=-0.1, vmax=0.1, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('GPA Settings')
+        self.masksize = masksize
+        self.edgesmooth = edgesmooth
+        self.vmin = vmin
+        self.vmax = vmax
+        
+        layout = QVBoxLayout()
+        
+        masksize_layout = QHBoxLayout()
+        masksize_label = QLabel("Mask radius (px):")
+        self.masksize_input = QLineEdit()
+        self.masksize_input.setText(str(self.masksize))
+        self.masksize_input.setFixedSize(50, 20)
+        self.masksize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        masksize_layout.addWidget(masksize_label)
+        masksize_layout.addWidget(self.masksize_input)
+        layout.addLayout(masksize_layout)
+        
+        edgesmooth_layout = QHBoxLayout()
+        edgesmooth_label = QLabel("Edge smooth (0-1):")
+        self.edgesmooth_input = QLineEdit()
+        self.edgesmooth_input.setText(str(self.edgesmooth))
+        self.edgesmooth_input.setFixedSize(50, 20)
+        self.edgesmooth_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        edgesmooth_layout.addWidget(edgesmooth_label)
+        edgesmooth_layout.addWidget(self.edgesmooth_input)
+        layout.addLayout(edgesmooth_layout)
+        
+        range_layout = QVBoxLayout()
+        range_label = QLabel("Limit display range:")
+        setrang_layout = QHBoxLayout()
+        minlabel = QLabel("min:")
+        self.min_input = QLineEdit()
+        self.min_input.setText(str(self.vmin))
+        self.min_input.setFixedSize(50, 20)
+        self.min_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        maxlabel = QLabel("max:")
+        self.max_input = QLineEdit()
+        self.max_input.setText(str(self.vmax))
+        self.max_input.setFixedSize(50, 20)
+        self.max_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        setrang_layout.addWidget(minlabel)
+        setrang_layout.addWidget(self.min_input)
+        setrang_layout.addWidget(maxlabel)
+        setrang_layout.addWidget(self.max_input)
+        range_layout.addWidget(range_label)
+        range_layout.addLayout(setrang_layout)
+        layout.addLayout(range_layout)
+        
+        # Apply button
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
+        self.cancel_button.clicked.connect(self.reject)
+        self.ok_button = buttons.button(QDialogButtonBox.Ok)
+        self.ok_button.clicked.connect(self.handle_ok)
+        
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+        
+    
+        
+    def handle_ok(self):
+        try:
+            self.masksize = abs(int(self.masksize_input.text()))
+        except:
+            QMessageBox.warning(self, 'GPA Settings', 'Mask size must be integer!')
+            return
+        try:
+            self.edgesmooth = float(self.edgesmooth_input.text())
+        except:
+            QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
+            return  
+        if self.edgesmooth < 0 or self.edgesmooth > 1:
+            QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
+            return
+        try:
+            self.vmin = float(self.min_input.text())
+            self.vmax = float(self.max_input.text())
+        except:
+            QMessageBox.warning(self, 'GPA Settings', 'Invalid display range!')
+            return
+        if self.vmin > self.vmax:
+            QMessageBox.warning(self, 'GPA Settings', 'Invalid display range!')
+            return
+        
+        self.accept()
+        
+         
          
 #========================Batch conversion window ===================
 class BatchConverter(QWidget):
@@ -3705,7 +4062,7 @@ class BatchConverter(QWidget):
 # Open file button connected to OpenFile
 
     def openfile(self):
-        self.files, _ = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
+        self.files, self.filetype = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
                                                      "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
         if self.files:
             self.output_dir = getDirectory(self.files[0],s='/')
@@ -3767,10 +4124,9 @@ class BatchConverter(QWidget):
             for file in self.files:  
                 # convert_file(file,output_dir,f_type)
                 msg = "Converting '{}.{}'".format(getFileName(file),getFileType(file))
-                print(msg)
                 self.refresh_output(msg)
                 try:                
-                    convert_file(file,self.output_dir,self.f_type, scalebar = self.scale_bar,
+                    convert_file(file,self.filetype, self.output_dir,self.f_type, scalebar = self.scale_bar,
                                  apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
                                  apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
@@ -3779,17 +4135,14 @@ class BatchConverter(QWidget):
                                  )
                     
                     msg = "'{}.{}' has been converted".format(getFileName(file),getFileType(file))
-                    print(msg)
                     self.refresh_output(msg)
     
     
                 except:
                     msg = "'{}.{}' has been skipped".format(getFileName(file),getFileType(file))
-                    print(msg)
                     self.refresh_output(msg)
     
             self.refresh_output("Convertion finished!") 
-            print('Convertion finished!')
             
         
 
@@ -4044,27 +4397,27 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
         
         
         
-def load_file(file):
-    input_type = getFileType(file)
+def load_file(file, file_type):
  
     #Load emd file:
-    if input_type == 'emd':
+    if file_type == 'Velox emd Files (*.emd)':
         f = emd_reader(file, select_type = 'images')
  
     #Load dm file:
-    elif input_type in ['dm3', 'dm4']:
+    elif file_type == 'DigitalMicrograph Files (*.dm3 *.dm4)':
         f = dm_reader(file)
  
     #Load TIA file
-    elif input_type == 'ser':
+    elif file_type == 'TIA ser Files (*.ser)':
         f = tia_reader(file)
         
     #Load tif formats
-    elif input_type in ['tif', 'tiff']:
+    elif file_type == '16-bit Tiff Files (*.tif *.tiff)':
         f = tif_reader(file)
+       
         
     #Load image formats
-    elif input_type in ['png', 'jpg', 'jpeg', 'bmp']:
+    elif file_type == 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)':
         f = im_reader(file)
         for img in f:
             # Only for 2d images
@@ -4077,7 +4430,7 @@ def load_file(file):
         
         
     #Load pickle dictionary
-    elif input_type == 'pkl':
+    elif file_type == 'Pickle Dictionary Files (*.pkl)':
         with open(file, 'rb') as file:
             f = []
             f.append(pickle.load(file))
@@ -4119,12 +4472,12 @@ def rgb2gray(im):
     return gray
 
 
-def convert_file(file, output_dir, f_type, **kwargs):
+def convert_file(file, filetype, output_dir, f_type, **kwargs):
     #f_type: The file type to be saved. e.g., '.tif', '.png', '.jpg' 
     #
     f_name = getFileName(file)
     
-    f = load_file(file)    
+    f = load_file(file, filetype)    
     
     if len(f) != 0: #Valid input containing at least one image
         if f[0]['data'].ndim == 3:
@@ -4261,18 +4614,200 @@ def line(p1, p2):
     B = (p2[0] - p1[0])
     k = A /B   
     return k, -k * p1[0] + p1[1]    
+
+# Simple GPA function
+def calc_strains(img, g1, g2, r, edge_blur=0.3):
+    """
+    Calculate strain with geometric phase analysis (gpa) [1].
+    Some codes adapted from TEMMETA package
+
+    Parameters
+    ----------
+    img : numpy array of realspace image
+    g1 : tuple
+        coordinates of mask 1 in FFT (pixel units)
+    g2 : tuple
+        coordinates of mask 2 in FFT (pixel units)
+    r : int
+        Size of the circular mask to place over the reflection
+    edge_blur : float, optional
+        Fraction of pixels at the edge that will be smoothed by a cosine function.
+        edge_pixel = r * edge_blur
+
+    Returns
+    -------
+    im_exx : numpy array
+        The epsilon_xx strain component (extension in x)
+    im_eyy : numpy array
+        The epsilon_yy strain component (extension in y)
+    im_exy : numpy array
+        Epsilon_yx = (epsilon_yx), the shear strain
+    im_oxy : numpy array
+        omega_xy = -omega_yx, the rotation component
+
+    Notes
+    -----
+    See the details in [1] for additional information about the variables
+    and way the strain is calculated.
+
+    References
+    ----------
+    [1] M. Hÿtch, E. Snoeck, R. Kilaas, Ultramicroscopy 74 (1998) 131–146.
+    """
+    # calculate the fft and mask only on one side
+    x1, y1 = g1
+    x2, y2 = g2
+    
+    im_y, im_x = img.shape
+    
+    
+    fft = fftshift(fft2(img))
+    m1 = create_mask((im_y, im_x), [(x1, y1)], [r], edge_blur)
+    m2 = create_mask((im_y, im_x), [(x2, y2)], [r], edge_blur)
+    
+    fft_m1 = fft * m1
+    fft_m2 = fft * m2
+    # calculate complex valued ifft
+    ifft_m1 = ifft2(ifftshift(fft_m1))
+    ifft_m2 = ifft2(ifftshift(fft_m2))
+    # raw phase images
+    phifft_m1 = np.angle(ifft_m1)
+    phifft_m2 = np.angle(ifft_m2)
+    # calculate g's in 1/pixel units
+    cx, cy = im_x // 2, im_y // 2
+    
+    gx1 = (x1 - cx) / im_x
+    gy1 = (y1 - cy) / im_y
+    gx2 = (x2 - cx) / im_x
+    gy2 = (y2 - cy) / im_y
+    x = np.arange(im_x)
+    y = np.arange(im_y)
+    X, Y = np.meshgrid(x, y)
+
+    # corrected phase images 
+    P1 = phifft_m1 - 2*np.pi*(gx1*X+gy1*Y)
+    P2 = phifft_m2 - 2*np.pi*(gx2*X+gy2*Y)
+    # calculate derivatives
+    dP1dy = calc_derivative(P1, 0) 
+    dP1dx = calc_derivative(P1, 1)
+    dP2dy = calc_derivative(P2, 0)
+    dP2dx = calc_derivative(P2, 1)
+    
+    # calculate strains, first we need lattice points a1 and a2
+    G = np.array([[gx1, gx2],
+                  [gy1, gy2]])
+    [a1x, a2x], [a1y, a2y] = np.linalg.inv(G.T)
+    # the strain components
+    exx = -1/(2*np.pi)*(a1x*dP1dx+a2x*dP2dx)
+    exy = -1/(2*np.pi)*(a1x*dP1dy+a2x*dP2dy)
+    eyx = -1/(2*np.pi)*(a1y*dP1dx+a2y*dP2dx)
+    eyy = -1/(2*np.pi)*(a1y*dP1dy+a2y*dP2dy)
+    
+    exy = (exy + eyx) / 2
+    oxy = (exy - eyx) / 2
+
+    return exx, eyy, exy, oxy
+
+def create_mask(img_size, center, radius, edge_blur=0.3):
+    '''
+    Generate a circle mask from a given point and radius
+    img_size: tuple of original (FFT) image size
+    center: list of tuple of the mask center
+    radius: lisf of float of the radius in pixel, length must be equal to center
+    edge_width: fload of the smoothed edge in pixel
+    '''      
+    # Create a grid of coordinates
+    Y, X = np.ogrid[:img_size[0], :img_size[1]]
+    mask = np.zeros(img_size, dtype=float) 
+    
+    for i in range(len(center)):
+        x_center, y_center = center[i]
+        r = radius[i]
+        # Calculate the Euclidean distance from each grid point to the circle's center
+        distance = np.sqrt((X - x_center)**2 + (Y - y_center)**2)
+        
+        edge_width = int(r * edge_blur)
+    
+        # Create the base circle mask: inside the circle is 1, outside is 0
+        inside_circle = (distance <= r - edge_width)
+        outside_circle = (distance >= r)
+    
+        # Transition zone
+        transition_zone = ~inside_circle & ~outside_circle
+        
+        # Smooth edge with a cosine function
+        transition_distance = (distance - r) / edge_width
+        transition_mask = 0.5 * (1 + np.cos(np.pi * transition_distance))
+    
+        # Combine masks
+        mask[inside_circle] = 1
+        mask[transition_zone] = transition_mask[transition_zone]
+
+    return mask
+
+# Refine the center of the g with center of mass
+def refine_center(img, g, r):
+    '''
+    Refine the g vector center with center of mass
+    g: tuple of (x, y)
+    r: radius for window size
+    '''
+    window_size = r
+    x = int(g[0])
+    y = int(g[1])
+    x_min = max(x - window_size, 0)
+    x_max = min(x + window_size, img.shape[1])
+    y_min = max(y - window_size, 0)
+    y_max = min(y + window_size, img.shape[0])
+
+    window = img[y_min:y_max, x_min:x_max]
+
+    # Convert the window to binary with a threshold to make CoM more accurate
+    threshold = np.mean(window) + 1.5 * np.std(window)
+    binary_image = window > threshold
+
+    # Calculate the center of mass within the window
+    cy, cx = center_of_mass(binary_image)
+    cx += x_min
+    cy += y_min
+    return cx, cy
+
+def calc_derivative(arr, axis):
+    """
+    Calculate the derivative of a phase image.
+    """
+    s1 = np.exp(-1j*arr)
+    s2 = np.exp(1j*arr)
+    d1 = np.gradient(s2, axis=axis) 
+    #nd = np.min(d1.shape)
+    dP1x = s1 * d1
+    return dP1x.imag
                
 #====Application entry==================================
 QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 
+# Splash screen for windows app
+# import pyi_splash
+
+# # Update the text on the splash screen
+# pyi_splash.update_text("Loading...")
+
+
+# # Close the splash screen. It does not matter when the call
+# # to this function is made, the splash screen remains open until
+# # this function is called or the Python program is terminated.
+# pyi_splash.close()
     
 
-def main():
-    
-   
+def main():   
     app = QApplication(sys.argv)
     
-    
+    # Setup window icon for windows app
+    # if getattr(sys, 'frozen', False):
+    #     applicationPath = sys._MEIPASS
+    # elif __file__:
+    #     applicationPath = os.path.dirname(__file__)
+    # app.setWindowIcon(QIcon(os.path.join(applicationPath, "Icon.ico")))
     
     temcom = UI_TemCompanion()
     temcom.show()
@@ -4280,6 +4815,7 @@ def main():
 
 
 if __name__ == "__main__":
+    
 
     
     main()

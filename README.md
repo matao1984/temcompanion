@@ -62,6 +62,13 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v1.1
+- New Features: Geometric phase analysis
+- New function: resampling (both up and down)
+- Improved mode switching between measure, line profile, etc.
+- Manual input vmin vmax together with the slider bar
+- Fixed some tif images cannot be imported with missing modules
+  
 ### v1.0
 - Significant update with redesigned UI. Now it is separated from the old EMD-converter.
 - Batch converter function calls the old Emd-converter and runs batch conversion.

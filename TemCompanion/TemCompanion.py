@@ -66,10 +66,10 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
-                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
-                             QSplashScreen)
+                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton
+                             )
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap, QIcon
+from PyQt5.QtGui import QImage, QIcon
 from superqt import QDoubleRangeSlider
 
 import sys
@@ -5372,19 +5372,19 @@ def main():
     # app.setWindowIcon(QIcon(os.path.join(applicationPath, "Icon.ico")))
     
     # Splash screen
-    splash_pix = QPixmap('icon2.png')
-    splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
-    splash.show()
-    app.processEvents()
+    # splash_pix = QPixmap('icon2.png')
+    # splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
+    # splash.show()
+    # app.processEvents()
     
-    splash.showMessage("TemCompanion is loading modules...")
+    # splash.showMessage("TemCompanion is loading modules...")
 
-    app.processEvents()
+    # app.processEvents()
     
     temcom = UI_TemCompanion()
     temcom.show()
     
-    splash.finish(temcom)
+    # splash.finish(temcom)
     sys.exit(app.exec_())
     
 

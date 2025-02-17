@@ -34,16 +34,18 @@ Currently available functions include:
 * View and set the pixel scale.
 * Measure distance and angle interactively by drawing a line on images.
 * Extract line profiles interactively.
+* Simple math on two images or stacks: addition, subtraction, multiplication, division, and inversion.
 * Compute a fast Fourier transform directly or with a Hann window applied.
 * Compute live FFT from a selected area that can be adjusted interactively.
 * Apply masks on FFT and compute masked inverse FFT.
-* Measure d-spacing from FFT spots. The center of FFT peaks is fitted with a center of mass function. The angle from horizontal direction is also measured.
+* Measure d-spacing from FFT or diffraction patterns. The spot position is fitted with a center of mass function. The angle from horizontal direction is also measured.
 * Apply Wiener, ABS, non-linear, Butterworth, and Gaussian filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
 * View the axes information and metadata of the TEM data file.
 * The processing history by TemCompanion is saved in the metadata tree under "process" entry.
 * Align image stack with both phase cross-correlation (rigid) and optical flow (non rigid).
 * Copy displayed images directly and paste to power point, etc.
 * Run geometric phase analysis on HR(S)TEM images.
+* Reconstruct iDPC and dDPC images from quadrant detector images or stacks (either raw A, B, C, D images or A-C, B-D images). The rotation angle can be guessed by either minimum curl or maximum contrast algorithms.
 
 
 ### 3.3 Output formats
@@ -62,6 +64,13 @@ Velox saves all types of data, including simple images, image stacks, SI data, D
 A paper is in preparation. Please also consider citing/acknowledging the [``rsciio``](https://hyperspy.org/rosettasciio/index.html#citing-rosettasciio).
 
 ## 6. Change history
+
+### v1.2
+- New feature: Measure diffraction pattern
+- New feature: Simple math of add, subtract, multiply, divide, inverse on two images or stacks
+- New feature: Calculate iDPC and dDPC from 4 or 2 images or stacks with a given angle. The rotation angle can be guessed by either min curl or max contrast.
+- Bug fix: units in some data are not recogonized due to extra space, such as '1 / nm'.
+- Added save as type: 32-bit float TIFF
 
 ### v1.1
 - New Features: Geometric phase analysis

@@ -732,7 +732,7 @@ class PlotCanvas(QMainWindow):
                 # Create a new PlotCanvas to display
                 title = self.windowTitle()
                 preview_name = self.canvas.canvas_name + '_cropped'
-                UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+                UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self.parent())
                 UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
                 UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
                 UI_TemCompanion.preview_dict[preview_name].show()
@@ -804,7 +804,7 @@ class PlotCanvas(QMainWindow):
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self.parent())
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
@@ -823,7 +823,7 @@ class PlotCanvas(QMainWindow):
         # Create a new PlotCanvs to display        
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_Flipped_LR'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -843,7 +843,7 @@ class PlotCanvas(QMainWindow):
         # Create a new PlotCanvs to display        
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_Flipped_UD'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -886,7 +886,7 @@ class PlotCanvas(QMainWindow):
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_Resampled'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self)
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self.parent())
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
@@ -933,7 +933,7 @@ class PlotCanvas(QMainWindow):
         img_wf['data'] = wf
         preview_name = self.canvas.canvas_name + '_Wiener Filtered'
         
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_wf, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_wf, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -956,7 +956,7 @@ class PlotCanvas(QMainWindow):
         absf = apply_filter(img_absf['data'], 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
         img_absf['data'] = absf
         preview_name = self.canvas.canvas_name + '_ABS Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_absf, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_absf, parent=self.parent())
                
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
@@ -983,7 +983,7 @@ class PlotCanvas(QMainWindow):
         nl = apply_filter(img_nl['data'], 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
         img_nl['data'] = nl
         preview_name = self.canvas.canvas_name + '_NL Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_nl, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_nl, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
@@ -1007,7 +1007,7 @@ class PlotCanvas(QMainWindow):
         bw = apply_filter(img_bw['data'], 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
         img_bw['data'] = bw
         preview_name = self.canvas.canvas_name + '_Bw Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_bw, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_bw, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
@@ -1027,7 +1027,7 @@ class PlotCanvas(QMainWindow):
         gaussian = apply_filter(img_gaussian['data'], 'Gaussian', cutoff_ratio=cutoff_gaussian)
         img_gaussian['data'] = gaussian
         preview_name = self.canvas.canvas_name + '_Gaussian Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_gaussian,parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_gaussian,parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
@@ -1167,9 +1167,9 @@ class PlotCanvas(QMainWindow):
                 
             # Plot the new image
             if img1['data'].ndim == 2:
-                plot = PlotCanvas(img1, self)
+                plot = PlotCanvas(img1, self.parent())
             elif img1['data'].ndim == 3:
-                plot = PlotCanvas3d(img1, self)
+                plot = PlotCanvas3d(img1, self.parent())
             preview_name = signal1 + '_processed'
             plot.canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name] = plot
@@ -1928,7 +1928,7 @@ class PlotCanvas3d(PlotCanvas):
         # Create a new PlotCanvs to display        
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_Flipped_LR'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -1948,7 +1948,7 @@ class PlotCanvas3d(PlotCanvas):
         # Create a new PlotCanvs to display        
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_Flipped_UD'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -2009,7 +2009,7 @@ class PlotCanvas3d(PlotCanvas):
                 # Create a new PlotCanvas to display
                 title = self.windowTitle()
                 preview_name = self.canvas.canvas_name + '_cropped'
-                UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+                UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self.parent())
                 UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
                 UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
                 UI_TemCompanion.preview_dict[preview_name].show()
@@ -2059,7 +2059,7 @@ class PlotCanvas3d(PlotCanvas):
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self.parent())
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
@@ -2101,7 +2101,7 @@ class PlotCanvas3d(PlotCanvas):
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_Resampled'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self)
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(img, parent=self.parent())
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
@@ -2189,7 +2189,7 @@ class PlotCanvas3d(PlotCanvas):
                     
             # Create a new PlotCanvas to display
             preview_name = self.canvas.canvas_name + '_aligned by cc'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self)
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self.parent())
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
@@ -2236,7 +2236,7 @@ class PlotCanvas3d(PlotCanvas):
                 
         # Create a new PlotCanvas to display
         preview_name = self.canvas.canvas_name + '_aligned by OF'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -2253,7 +2253,7 @@ class PlotCanvas3d(PlotCanvas):
         # Create a new PlotCanvs to display     
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + '_integrated'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(integrated_img, parent=self)
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(integrated_img, parent=self.parent())
         UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
@@ -2277,13 +2277,13 @@ class PlotCanvas3d(PlotCanvas):
         
         data_to_export = {'data': img_data, 'metadata': data['metadata'], 'axes': data['original_axes']}
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getSaveFileName(self.parent(), 
+        file_path, selection = QFileDialog.getSaveFileName(self.parent(), 
                                                    "Save as tiff stack", 
                                                    "", 
                                                    "TIFF Files (*.tiff)", 
                                                    options=options)
         if file_path:
-           tif_writer(file_path, data_to_export) 
+            tif_writer(file_path, data_to_export) 
 
         
     
@@ -2293,7 +2293,7 @@ class PlotCanvas3d(PlotCanvas):
         file_path, selected_type = QFileDialog.getSaveFileName(self.parent(), 
                                                    "Save Figure", 
                                                    "", 
-                                                   "TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg)", 
+                                                   "16-bit TIFF Files (*.tiff);;32-bit TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg)", 
                                                    options=options)
         if file_path:
             # Implement custom save logic here
@@ -2302,7 +2302,7 @@ class PlotCanvas3d(PlotCanvas):
             file_type = getFileType(file_path)
             f_name = getFileName(file_path)
             output_dir = getDirectory(file_path,s='/')
-            output_dir = output_dir + f_name + '/'
+            #output_dir = output_dir + f_name + '/'
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
             img_to_save = {}
@@ -2313,9 +2313,13 @@ class PlotCanvas3d(PlotCanvas):
                     print('Invalid image data')
                     return
             if file_type == 'tiff':
+                if selected_type == "16-bit TIFF Files (*.tiff)":
+                    dtype = 'int16'
+                elif selected_type == "32-bit TIFF Files (*.tiff)":
+                    dtype = 'float32'
                 for i in range(img_to_save['data'].shape[0]):
-                    img = {'data': img_to_save['data'][i].astype('int16'), 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
-                    save_as_tif16(img, f_name + f'_{i}', output_dir)
+                    img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
+                    save_as_tif16(img, f_name + f'_{i}', output_dir, dtype=dtype)
                     print(f'Exported series to {output_dir} as {file_type}.')
                     
             elif selected_type in ['Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
@@ -2648,7 +2652,7 @@ class PlotCanvasFFT(PlotCanvas):
             # Create a new plot canvas and display
             mask_center = [(int(circle.center[0]), int(circle.center[1])) for circle in self.mask_list]
             preview_name = self.canvas.canvas_name + f'_iFFT_{mask_center}'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(filtered_img_dict,parent=self)
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(filtered_img_dict,parent=self.parent())
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
@@ -4327,9 +4331,9 @@ class DPCDialog(QDialog):
         iDPC_img = copy.deepcopy(A)
         iDPC_img['data'] = reconstruct_iDPC(DPCx, DPCy, rotation=float(self.rot.text()), cutoff=float(self.hp_cutoff.text()))
         if iDPC_img['data'].ndim == 2:
-            plot = PlotCanvas(iDPC_img)
+            plot = PlotCanvas(iDPC_img, parent=self.parent())
         elif iDPC_img['data'].ndim == 3:
-            plot = PlotCanvas3d(iDPC_img)
+            plot = PlotCanvas3d(iDPC_img, parent=self.parent())
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_iDPC'
         plot.setWindowTitle(preview_name)
         plot.canvas.canvas_name = preview_name
@@ -4349,9 +4353,9 @@ class DPCDialog(QDialog):
         dDPC_img = copy.deepcopy(A)
         dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=float(self.rot.text()))
         if dDPC_img['data'].ndim == 2:
-            plot = PlotCanvas(dDPC_img)
+            plot = PlotCanvas(dDPC_img, parent=self.parent())
         elif dDPC_img['data'].ndim == 3:
-            plot = PlotCanvas3d(dDPC_img)
+            plot = PlotCanvas3d(dDPC_img, parent=self.parent())
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_dDPC'
         plot.setWindowTitle(preview_name)
         plot.canvas.canvas_name = preview_name

@@ -1069,7 +1069,10 @@ class PlotCanvas(QMainWindow):
             self.scalebar.remove()
             
         # Strip spaces in some cases
-        self.units = ''.join(self.units.split(' '))
+        try:
+            self.units = ''.join(self.units.split(' '))
+        except:
+            pass
         
         if self.units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
             self.scalebar_settings['dimension'] = 'si-length' # Real space image
@@ -2451,6 +2454,8 @@ class PlotCanvasFFT(PlotCanvas):
         # Clear the image canvas
         
         self.axes.clear()
+        self.marker = None
+        self.center_marker = None
         self.scalebar = None
         
         # Reset the measurement marker if exists

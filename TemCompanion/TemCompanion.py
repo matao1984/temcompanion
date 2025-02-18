@@ -509,7 +509,7 @@ class PlotCanvas(QMainWindow):
         
         
     def closeEvent(self, event):
-        UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name)
+        UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
     
         
 
@@ -1154,19 +1154,48 @@ class PlotCanvas(QMainWindow):
             signal1 = dialog.signal1
             signal2 = dialog.signal2
             operation = dialog.operation
-            img1 = copy.deepcopy(find_img_by_title(signal1).canvas.data)
-            img2 = copy.deepcopy(find_img_by_title(signal2).canvas.data)
+            try:
+                img1 = copy.deepcopy(find_img_by_title(signal1).canvas.data)
+            except:
+                QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the signal 1 is a valid image!')
+                return
+            try:
+                img2 = copy.deepcopy(find_img_by_title(signal2).canvas.data)
+            except:
+                QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the signal 2 is a valid image!')
+                return
             
             if operation == 'Add':
-                img1['data'] = img1['data'] + img2['data']
+                try:
+                    img1['data'] = img1['data'] + img2['data']
+                except:
+                    QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the images are in the same size!')
+                    return
             if operation == 'Subtract':
-                img1['data'] = img1['data'] - img2['data']
+                try:
+                    img1['data'] = img1['data'] - img2['data']
+                except:
+                    QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the images are in the same size!')
+                    return
             if operation == 'Multiply':
-                img1['data'] = img1['data'] * img2['data']
+                try:
+                    img1['data'] = img1['data'] * img2['data']
+                except:    
+                    QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the images are in the same size!')
+                    return
             if operation == 'Divide':
-                img1['data'] = img1['data'] / img2['data']
+                try:
+                    img1['data'] = img1['data'] / img2['data']
+                except:
+                    QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the images are in the same size!')
+                    return
             if operation == 'Inverse':
-                img1['data'] = -img1['data']
+                try:
+                    img1['data'] = -img1['data']
+                except:
+                    QMessageBox.warning(self, 'Simple Math', 'Operation not possible. Make sure the signal 1 is a valid image!')
+                    return
+
                 
             # Plot the new image
             if img1['data'].ndim == 2:
@@ -1229,10 +1258,10 @@ class PlotCanvas(QMainWindow):
         
         # For line profile mode
         if self.mode_control['lineprofile']:
-            preview_name = "Line Profile"
+            preview_name = self.windowTitle() + "_Line Profile"
             
             UI_TemCompanion.preview_dict[preview_name] = PlotCanvasLineProfile(parent=self)
-            UI_TemCompanion.preview_dict[preview_name].plot_name = preview_name            
+            UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name            
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].show()
             
@@ -1354,7 +1383,8 @@ class PlotCanvas(QMainWindow):
             # Define a line with two points and display the line profile
             p0 = round(self.start_point[0]), round(self.start_point[1])
             p1 = round(self.end_point[0]), round(self.end_point[1])
-            UI_TemCompanion.preview_dict['Line Profile'].plot_lineprofile(p0, p1,self.linewidth)
+            preview_name = self.windowTitle() + "_Line Profile"
+            UI_TemCompanion.preview_dict[preview_name].plot_lineprofile(p0, p1,self.linewidth)
             
             
             
@@ -2375,7 +2405,7 @@ class PlotCanvasFFT(PlotCanvas):
     def closeEvent(self, event):       
         if self.parent().mode_control['Live_FFT']:
             self.parent().stop_live_fft()
-        UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name)
+        UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
         
         
     def set_scale_units(self):
@@ -2788,8 +2818,9 @@ class PlotCanvasLineProfile(QMainWindow):
             
             
         def closeEvent(self, event):
-            self.parent().stop_line_profile()
-            event.accept()
+            if self.parent().mode_control['lineprofile']:
+                self.parent().stop_line_profile()
+            UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
             
         def plotsetting(self):
             self.mpl_toolbar.edit_parameters()

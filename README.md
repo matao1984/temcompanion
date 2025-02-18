@@ -4,7 +4,7 @@ TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM
 TemCompanion was written by Dr. Tao Ma. For questions, suggestions, bug reports, feature requests, etc, please send a message to matao1984@gmail.com.
 
 ## 1. Installation
-_New! The stand alone Win64 and MacOS ARM bundles are available. Download from here:
+__New! The stand alone Win64 and MacOS ARM bundles are available. Download from here:__
 https://github.com/matao1984/temcompanion/releases/tag/v1.2
 
 The tool requires Python 3 environment. I recommend to install Anaconda which is the most straightforward way. Download and install the Python 3 version of Anaconda from here: https://www.anaconda.com/.

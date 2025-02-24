@@ -51,12 +51,18 @@
 # Manual input vmin vmax together with the slider bar
 # Fixed some tif images cannot be imported with missing modules
 
-# 2025-02-16
+# 2025-02-16 v1.2
 # New feature: Measure diffraction pattern
 # New feature: Simple math of add, subtract, multiply, divide, inverse on two images or stacks
 # New feature: Calculate iDPC and dDPC from 4 or 2 images or stacks with a given angle. The rotation angle can be guessed by either min curl or max contrast.
 # Bug fix: units in some data are not recogonized due to extra space, such as '1 / nm'.
 # Added save as type: 32-bit float TIFF
+
+# 2025-02-28 v1.2.1
+# Support drag and drop file(s) into the main UI or the batch converter
+# Figure keeps the aspect ratio upon resizing (for the most of the cases)
+# A mini colorbar can be added to the top right corner 
+
 
 
 from PyQt5 import QtCore, QtWidgets
@@ -69,7 +75,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton
                              )
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
-from PyQt5.QtGui import QImage, QIcon
+from PyQt5.QtGui import QImage, QIcon, QDropEvent, QDragEnterEvent
 from superqt import QDoubleRangeSlider
 
 import sys
@@ -106,7 +112,7 @@ from skimage.transform import warp, rescale
 
 
 
-ver = '1.2'
+ver = '1.2.1'
 rdate = '2025-02-15'
 
 #===================Redirect output to the main window===============================
@@ -143,11 +149,39 @@ class UI_TemCompanion(QWidget):
         sys.stdout = self.stream
         sys.stderr = self.stream
         
+        # Drag and drop file function
+        self.setAcceptDrops(True)
         
         self.print_info()
+        
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
     
-    
-   
+    def dropEvent(self, event: QDropEvent):
+        file = event.mimeData().urls()[0].toLocalFile()
+        if file:
+            self.file = file
+            ext = getFileType(file)
+            if ext == 'emd':
+                self.file_type = 'Velox emd Files (*.emd)'
+            elif ext in ['dm3', 'dm4']:
+                self.file_type = 'DigitalMicrograph Files (*.dm3 *.dm4)'
+            elif ext == 'ser':
+                self.file_type = 'TIA ser Files (*.ser)'
+            elif ext in ['tif', 'tiff']:
+                self.file_type = 'Tiff Files (*.tif *.tiff)'
+            elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
+                self.file_type = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+            elif ext == 'pkl':
+                self.file_type = 'Pickle Dictionary Files (*.pkl)'
+            else:
+                QMessageBox.warning(self, 'Open File', 'Unsupported file formats!')
+                return
+            self.preview()
+            event.acceptProposedAction()
     def append_text(self, text):
         # Append text to the QTextEdit
         self.outputBox.moveCursor(self.outputBox.textCursor().End)  # Move cursor to the end
@@ -281,7 +315,7 @@ See the "About" for more details. Buy me a lunch if you like it!
 
     def openfile(self):
         self.file, self.file_type = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;16-bit Tiff Files (*.tif *.tiff);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
         if self.file:
             self.preview()
            
@@ -397,6 +431,7 @@ See the "About" for more details. Buy me a lunch if you like it!
                 preview_im.setWindowTitle(preview_name)
                 preview_im.canvas.canvas_name = preview_name
                 self.preview_dict[preview_name] = preview_im
+                #self.preview_dict[preview_name].create_colorbar()
                 self.preview_dict[preview_name].show() 
                 
                 print(f'Opened successfully: {f_name + ": " + title}.')
@@ -408,15 +443,27 @@ See the "About" for more details. Buy me a lunch if you like it!
 class PlotCanvas(QMainWindow):
     def __init__(self, img, parent=None):
         super().__init__(parent)
+        
+        
+        self.img_size = img['data'].shape
               
         # Create main frame for image
         self.main_frame = QWidget()
-        self.fig = Figure((4,4),dpi=150) 
+        self.aspect_ratio = self.img_size[-2]/self.img_size[-1]
+        fig_x = 4
+        fig_y = fig_x * self.aspect_ratio
+        self.fig = Figure((fig_x, fig_y),dpi=150) 
         self.axes = self.fig.add_subplot(111)
         self.axes.set_title('Image')
         self.axes.title.set_visible(False)
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setParent(self.main_frame)
+        sizepolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        #sizepolicy.setHeightForWidth(True)
+        
+        self.canvas.setSizePolicy(sizepolicy)
+        # Attach the image dict to canvas
+        self.canvas.data = img
         
                
         
@@ -424,11 +471,8 @@ class PlotCanvas(QMainWindow):
         self.canvas.setFocusPolicy( QtCore.Qt.ClickFocus )
         self.canvas.setFocus()
 
-        # Attach the image dict to canvas
-        self.canvas.data = img
-        self.img_size = img['data'].shape
-        self.canvas.img_idx = None  
-        self.selector = None
+        
+        
         
         # Default settings for scale bar
         self.scalebar_settings = {'scalebar': True,
@@ -437,7 +481,7 @@ class PlotCanvas(QMainWindow):
                                   'scale_loc': 'top',
                                   'sep': 2}
         self.scalebar = None
-        
+        self.colorbar = None
         
         # Variables for the measure function
         self.line = None
@@ -445,6 +489,9 @@ class PlotCanvas(QMainWindow):
         self.end_point = None
         self.active_point = None
         self.inactive_point = None
+        
+        self.canvas.img_idx = None  # For 3d slicing
+        self.selector = None # For cropping
         
         self.text = None # Measurement result text
         
@@ -506,10 +553,29 @@ class PlotCanvas(QMainWindow):
 
         # Display a message in the status bar
         self.statusBar.showMessage("Ready")
-        
+
         
     def closeEvent(self, event):
         UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
+    
+    def resizeEvent(self, event):
+        # width = event.size().width()
+        # height = event.size().height()
+        width = self.canvas.size().width()
+        height = self.canvas.size().height()
+
+        # Calculate new sizes preserving aspect ratio
+        if width * self.aspect_ratio > height:
+            # Height is the limiting factor
+            fig_height = height
+            fig_width = int(height / self.aspect_ratio)
+        else:
+            # Width is the limiting factor
+            fig_width = width
+            fig_height = int(width * self.aspect_ratio)
+
+        self.canvas.resize(fig_width, fig_height)
+        
     
         
 
@@ -1091,7 +1157,23 @@ class PlotCanvas(QMainWindow):
                              color=self.scalebar_settings['color'])
         self.axes.add_artist(self.scalebar)
         
+    def create_colorbar(self):
+        self.remove_colorbar()
+        img = self.axes.get_images()[0]
+        cax = self.axes.inset_axes([0.95,0.8,0.03,0.16])
+        vmin, vmax = img.get_clim()
+        ticks = [vmin, vmax]
+        self.colorbar = self.fig.colorbar(self.im, cax=cax, ticks=ticks, orientation='vertical', ticklocation='left')
+        self.colorbar.ax.tick_params(size=0)
+        self.canvas.draw_idle()
         
+    def remove_colorbar(self):
+        if self.colorbar is not None:
+            self.colorbar.remove()
+            self.colorbar = None
+            self.canvas.draw_idle()
+
+            
     
     def show_info(self):
         # Show image infomation function here
@@ -1806,6 +1888,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.canvas_name = preview_name_exx
         UI_TemCompanion.preview_dict[preview_name_exx].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_exx].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_exx].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_exx].show()
         
         eyy_dict = copy.deepcopy(img)
@@ -1816,6 +1899,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.canvas_name = preview_name_eyy
         UI_TemCompanion.preview_dict[preview_name_eyy].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_eyy].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_eyy].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_eyy].show()
         
         exy_dict = copy.deepcopy(img)
@@ -1826,6 +1910,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.canvas_name = preview_name_exy
         UI_TemCompanion.preview_dict[preview_name_exy].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_exy].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_exy].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_exy].show()
         
         oxy_dict = copy.deepcopy(img)
@@ -1836,6 +1921,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.canvas_name = preview_name_oxy
         UI_TemCompanion.preview_dict[preview_name_oxy].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_oxy].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_oxy].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_oxy].show()
     
     def gpa_settings(self):
@@ -1879,8 +1965,7 @@ class PlotCanvas(QMainWindow):
 #======= Canvas to show image stacks==========================================
 class PlotCanvas3d(PlotCanvas):
     def __init__(self, img, parent=None):
-        super().__init__(img, parent)
-        
+        super().__init__(img, parent)        
         # Redefine image size 
         self.img_size = img['data'].shape[1], img['data'].shape[2]
         
@@ -2748,6 +2833,10 @@ class PlotCanvasLineProfile(QMainWindow):
             close_action.setShortcut('ctrl+x')
             close_action.triggered.connect(self.close)
             file_menu.addAction(close_action)
+            close_all_action = QAction('$Close All', self)
+            close_all_action.setShortcut('ctrl+shift+x')
+            close_all_action.triggered.connect(self.close_all)
+            file_menu.addAction(close_all_action)
             
             measure_menu = menubar.addMenu('Measure')
             measure_horizontal = QAction('Measure horizontal', self)
@@ -2771,6 +2860,11 @@ class PlotCanvasLineProfile(QMainWindow):
             settings_menu.addAction(plotsettings_action)
             
             self.menubar = menubar
+        
+        def close_all(self):
+            plots = list(UI_TemCompanion.preview_dict.keys())
+            for plot in plots:
+                UI_TemCompanion.preview_dict[plot].close()
             
         def copy_plot(self):
             buf = io.BytesIO()
@@ -2898,10 +2992,18 @@ class PlotCanvasLineProfile(QMainWindow):
 class CustomSettingsDialog(QDialog):
     def __init__(self, ax, parent=None):
         super().__init__(parent)
+        
         self.setWindowTitle("Image Settings")
         self.ax = ax
-        self.img = ax.get_images()[0] if ax.get_images() else None
+        #self.img = ax.get_images()[0] if ax.get_images() else None
+        self.img = self.parent().plotcanvas.im
         self.scalebar_settings = self.parent().plotcanvas.scalebar_settings
+        
+        self.colorbar = QCheckBox('Colorbar', self)
+        if self.parent().plotcanvas.colorbar is not None:
+            self.colorbar.setChecked(True)
+        else:
+            self.colorbar.setChecked(False)
         
         self.original_settings = {}
         self.original_settings['scalebar'] = copy.copy(self.scalebar_settings)
@@ -2912,6 +3014,7 @@ class CustomSettingsDialog(QDialog):
         vminmax_label = QLabel('vmin/max')
         self.doubleslider = QDoubleRangeSlider(Qt.Orientation.Horizontal)
         self.doubleslider.valueChanged.connect(self.update_clim)
+        self.colorbar.stateChanged.connect(self.set_colorbar)
         
         h_box = QHBoxLayout()
         h_box.addWidget(vminmax_label)
@@ -2977,6 +3080,7 @@ class CustomSettingsDialog(QDialog):
         self.cmap_combobox.addItems(colormaps)
         h_layout_cmap.addWidget(self.cmap_label)
         h_layout_cmap.addWidget(self.cmap_combobox)
+        h_layout_cmap.addWidget(self.colorbar)
         layout.addLayout(h_layout_cmap)
 
         # Set current colormap
@@ -2988,6 +3092,7 @@ class CustomSettingsDialog(QDialog):
         # Update colormap if changed
         self.cmap_combobox.currentTextChanged.connect(self.update_colormap)
         
+
         
             
         # Scalebar customization
@@ -3050,7 +3155,16 @@ class CustomSettingsDialog(QDialog):
         self.vmin_input.setText(f'{vmin:.2f}')
         self.vmax_input.setText(f'{vmax:.2f}')
         self.img.set_clim(vmin,vmax)
+        if self.colorbar.isChecked():
+            self.parent().plotcanvas.colorbar.set_ticks([vmin,vmax])
         self.ax.figure.canvas.draw_idle()
+    
+    def set_colorbar(self):
+        if self.colorbar.isChecked():
+            self.parent().plotcanvas.create_colorbar()
+        else:
+            self.parent().plotcanvas.remove_colorbar()
+    
     
     def set_vminmax(self):
         try:
@@ -3197,14 +3311,14 @@ class CustomToolbar(NavigationToolbar):
                     # Save with matplotlib. Need to calculate the dpi to keep the original size
                     figsize = self.canvas.figure.get_size_inches()
                     img_size = img_to_save['data'].shape
+                    # dpi = 150
+                    # figx_inch = img_size[1] / dpi
+                    # figy_inch = img_size[0] / dpi
+                    # self.canvas.figure.set_size_inches(figx_inch, figy_inch)
+                    # self.canvas.setFixedSize(img_size[1], img_size[0])
                     dpi = float(sorted(img_size/figsize, reverse=True)[0])
-                    
-                    # Hide all the buttons if active
-                    # for key, value in self.plotcanvas.buttons.items():
-                    #     if value is not None:
-                    #         self.plotcanvas.buttons[key].hide()
-                    
-                    
+
+                                        
                     self.canvas.figure.savefig(self.file_path, dpi=dpi, format=self.file_type)
                     
                     # Bring back the hiden buttons
@@ -4419,10 +4533,10 @@ class BatchConverter(QWidget):
         self.files = None
         self.output_dir = None 
         self.get_filter_parameters()
-        
+        self.setAcceptDrops(True)
         
 
-        
+      
 
 
     def setupUi(self):
@@ -4540,7 +4654,7 @@ class BatchConverter(QWidget):
 
     def openfile(self):
         self.files, self.filetype = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
         if self.files:
             self.output_dir = getDirectory(self.files[0],s='/')
             self.outputdirbox.setText(self.output_dir)
@@ -4550,6 +4664,26 @@ class BatchConverter(QWidget):
                 QApplication.processEvents()
         else: 
             self.files = None # Canceled, set back to None
+            
+    
+    
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event: QDropEvent):
+        files = [url.toLocalFile() for url in event.mimeData().urls()]
+        if files:
+            self.files = files
+            self.output_dir = getDirectory(self.files[0],s='/')
+            self.outputdirbox.setText(self.output_dir)
+            self.openfilebox.setText('')
+            for file in self.files:
+                self.openfilebox.append(file)
+                QApplication.processEvents()
+            event.acceptProposedAction() 
                 
 
 
@@ -4602,6 +4736,24 @@ class BatchConverter(QWidget):
                 # convert_file(file,output_dir,f_type)
                 msg = "Converting '{}.{}'".format(getFileName(file),getFileType(file))
                 self.refresh_output(msg)
+                
+                ext = getFileType(file)
+                if ext == 'emd':
+                    self.filetype = 'Velox emd Files (*.emd)'
+                elif ext in ['dm3', 'dm4']:
+                    self.filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
+                elif ext == 'ser':
+                    self.filetype = 'TIA ser Files (*.ser)'
+                elif ext in ['tif', 'tiff']:
+                    self.filetype = 'Tiff Files (*.tif *.tiff)'
+                elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
+                    self.filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+                elif ext == 'pkl':
+                    self.filetype = 'Pickle Dictionary Files (*.pkl)'
+                else:
+                    QMessageBox.warning(self, 'Open File', 'Unsupported file formats!')
+                    return
+                
                 try:                
                     convert_file(file,self.filetype, self.output_dir,self.f_type, scalebar = self.scale_bar,
                                  apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
@@ -4788,6 +4940,8 @@ def add_scalebar_to_pil(im, scale, unit):
         outline_width = 1
     draw.rectangle(sb, fill = 'white', outline = 'black', width = outline_width)
     # Add text
+    if unit == None:
+        unit = 'px'
     text = str(sb_len) + ' ' + unit
     fontsize = int(im_x / 20)
     font = ImageFont.load_default(fontsize)
@@ -4889,7 +5043,7 @@ def load_file(file, file_type):
         f = tia_reader(file)
         
     #Load tif formats
-    elif file_type == '16-bit Tiff Files (*.tif *.tiff)':
+    elif file_type == 'Tiff Files (*.tif *.tiff)':
         f = tif_reader(file)
        
         
@@ -4972,10 +5126,9 @@ def convert_file(file, filetype, output_dir, f_type, **kwargs):
                     title = ''
                         
                 new_name = f_name + '_' + title
-                try:
-                    save_file_as(img, new_name, output_dir, f_type=f_type, **kwargs)
-                except:
-                    pass
+                
+                save_file_as(img, new_name, output_dir, f_type=f_type, **kwargs)
+                
                 
         else:
             #DCFI images, convert into a folder
@@ -5002,10 +5155,9 @@ def convert_file(file, filetype, output_dir, f_type, **kwargs):
                                'metadata': metadata
                         }
                     new_name = title + '_{}'.format(idx)
-                    try: 
-                       save_file_as(new_img, new_name, new_dir, f_type, **kwargs)
-                    except: 
-                       pass
+                    
+                    save_file_as(new_img, new_name, new_dir, f_type, **kwargs)
+                    
                            
 def calculate_angle_from_3_points(A, B, C):
     '''

@@ -29,10 +29,10 @@ Currently, TemCompanion is programmed to support:
 - FEI TIA format (*.ser)
 - Gatan DigitalMicrograph format (*.dm3, *.dm4)
 - TIFF format (*.tiff, *.tif)
-- - TemCompanion will try to read the pixel calibration if exists
+ - TemCompanion will try to read the pixel calibration if exists
 - Common image formats (*.tiff, *.jpg, *.png, etc) ,
-- - TemCompanion will try to convert the image into RGB and ignore calibration. 
--
+ - TemCompanion will try to convert the image into RGB and ignore calibration. 
+
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
 ### 3.2 List of available functions

@@ -68,6 +68,13 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v1.2.1
+- Support drag and drop file(s) into the main UI or the batch converter
+- Figure tries to keep the aspect ratio upon resizing (for the most of the cases)
+- A mini colorbar can be added to the top right corner
+- Minor bug fixes...
+
+  
 ### v1.2
 - New feature: Measure diffraction pattern
 - New feature: Simple math of add, subtract, multiply, divide, inverse on two images or stacks

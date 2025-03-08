@@ -58,11 +58,17 @@
 # Bug fix: units in some data are not recogonized due to extra space, such as '1 / nm'.
 # Added save as type: 32-bit float TIFF
 
-# 2025-02-28 v1.2.1
+# 2025-02-24 v1.2.1
 # Support drag and drop file(s) into the main UI or the batch converter
 # Figure keeps the aspect ratio upon resizing (for the most of the cases)
 # A mini colorbar can be added to the top right corner 
 
+# 2025-03-06 v1.2.2
+# Add right click menu
+# Add save as 8-bit tiff and color tiff
+# Stack can also be exported as 8-bit tiff and color tiff, png, and jpg
+# Added check for the image sizes when computing DPC to prevent crashing
+# Fixed letter /mu in micrometer scale bar cannot display correctly.
 
 
 from PyQt5 import QtCore, QtWidgets
@@ -112,8 +118,8 @@ from skimage.transform import warp, rescale
 
 
 
-ver = '1.2.1'
-rdate = '2025-02-15'
+ver = '1.2.2'
+rdate = '2025-03-07'
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -395,10 +401,12 @@ See the "About" for more details. Buy me a lunch if you like it!
         
 # ====================== Open file for preview ===============================
     def preview(self):
-        
-        f = load_file(self.file, self.file_type)
-        f_name = getFileName(self.file)
-        
+        try:
+            f = load_file(self.file, self.file_type)
+            f_name = getFileName(self.file)
+        except:
+            print(f'Cannot open {self.file}, make sure it is not in use or corrupted!')
+            return        
     
         for i in range(len(f)):
             img = f[i]
@@ -431,7 +439,6 @@ See the "About" for more details. Buy me a lunch if you like it!
                 preview_im.setWindowTitle(preview_name)
                 preview_im.canvas.canvas_name = preview_name
                 self.preview_dict[preview_name] = preview_im
-                #self.preview_dict[preview_name].create_colorbar()
                 self.preview_dict[preview_name].show() 
                 
                 print(f'Opened successfully: {f_name + ": " + title}.')
@@ -459,7 +466,6 @@ class PlotCanvas(QMainWindow):
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setParent(self.main_frame)
         sizepolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        #sizepolicy.setHeightForWidth(True)
         
         self.canvas.setSizePolicy(sizepolicy)
         # Attach the image dict to canvas
@@ -470,6 +476,7 @@ class PlotCanvas(QMainWindow):
         # Set the click to focus to receive key press event
         self.canvas.setFocusPolicy( QtCore.Qt.ClickFocus )
         self.canvas.setFocus()
+        
 
         
         
@@ -553,6 +560,10 @@ class PlotCanvas(QMainWindow):
 
         # Display a message in the status bar
         self.statusBar.showMessage("Ready")
+        
+        # Right click menu
+        self.main_frame.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.main_frame.customContextMenuRequested.connect(self.show_context_menu)
 
         
     def closeEvent(self, event):
@@ -625,8 +636,6 @@ class PlotCanvas(QMainWindow):
         resampling_action = QAction('Resampling', self)
         resampling_action.triggered.connect(self.resampling)
         edit_menu.addAction(resampling_action)
-        
-        
         simplemath_action = QAction('Simple math', self)
         simplemath_action.triggered.connect(self.simplemath)
         edit_menu.addAction(simplemath_action)
@@ -713,6 +722,125 @@ class PlotCanvas(QMainWindow):
         info_menu.addAction(about_action)
         
         self.menubar = menubar
+        
+    def show_context_menu(self, pos):
+        context_menu = QtWidgets.QMenu(self)
+        
+        # File menu
+        file_menu = context_menu.addMenu('File')
+        save_action = QAction('Save as')
+        save_action.triggered.connect(self.mpl_toolbar.save_figure)
+        file_menu.addAction(save_action)
+        copy_action = QAction('Copy Image to Clipboard')
+        copy_action.triggered.connect(self.copy_img)
+        file_menu.addAction(copy_action)
+        imagesetting_action = QAction('Image Settings')
+        imagesetting_action.triggered.connect(self.mpl_toolbar.edit_parameters)
+        file_menu.addAction(imagesetting_action)
+        close_action = QAction('Close')
+        close_action.triggered.connect(self.close)
+        file_menu.addAction(close_action)
+        
+        # Edit menu and actions
+        edit_menu = context_menu.addMenu('Process')
+        crop_action = QAction('Crop')
+        crop_action.triggered.connect(self.crop)
+        edit_menu.addAction(crop_action)
+        rotate_action = QAction('Rotate')
+        rotate_action.triggered.connect(self.rotate)
+        edit_menu.addAction(rotate_action)
+        fliplr_action = QAction('Flip horizontal')
+        fliplr_action.triggered.connect(self.flip_horizontal)
+        edit_menu.addAction(fliplr_action)
+        flipud_action = QAction('Flip vertical',self)
+        flipud_action.triggered.connect(self.flip_vertical)
+        edit_menu.addAction(flipud_action)
+        resampling_action = QAction('Resampling')
+        resampling_action.triggered.connect(self.resampling)
+        edit_menu.addAction(resampling_action)
+        simplemath_action = QAction('Simple math', self)
+        simplemath_action.triggered.connect(self.simplemath)
+        edit_menu.addAction(simplemath_action)
+        
+        # FFT menu
+        fft_menu = context_menu.addMenu('FFT')
+        fft_action = QAction('FFT')
+        fft_action.triggered.connect(self.fft)
+        fft_menu.addAction(fft_action)
+        windowedfft_action = QAction('Windowed FFT')
+        windowedfft_action.triggered.connect(self.windowedfft)
+        fft_menu.addAction(windowedfft_action)
+        livefft_action = QAction('Live FFT')
+        livefft_action.triggered.connect(self.live_fft)
+        fft_menu.addAction(livefft_action)
+        
+        
+        # Analyze menu and actions
+        analyze_menu = context_menu.addMenu('Analyze')
+        setscale_action = QAction('Set Scale')
+        setscale_action.triggered.connect(self.setscale)
+        analyze_menu.addAction(setscale_action)
+        measure_action = QAction('Measure')
+        measure_action.triggered.connect(self.measure)
+        analyze_menu.addAction(measure_action)
+        measure_fft_action = QAction('Measure Diffraction/FFT')
+        measure_fft_action.triggered.connect(self.measure_fft)        
+        analyze_menu.addAction(measure_fft_action)        
+        lineprofile_action = QAction('Line Profile')
+        lineprofile_action.triggered.connect(self.lineprofile)
+        analyze_menu.addAction(lineprofile_action)
+        gpa_action = QAction('Geometric Phase Analysis')
+        gpa_action.triggered.connect(self.gpa)
+        analyze_menu.addAction(gpa_action)
+        
+        
+
+        # Filter menu and actions
+        filter_menu = context_menu.addMenu('Filter')
+        filtersetting_action = QAction('Filter Settings')
+        filtersetting_action.triggered.connect(UI_TemCompanion.filter_settings)
+        filter_menu.addAction(filtersetting_action)
+        
+        wiener_action = QAction('Apply Wiener')
+        wiener_action.triggered.connect(self.wiener_filter)
+        filter_menu.addAction(wiener_action)
+        absf_action = QAction('Apply ABSF')
+        absf_action.triggered.connect(self.absf_filter)
+        filter_menu.addAction(absf_action)
+        non_linear_action = QAction('Apply Non-Linear')
+        non_linear_action.triggered.connect(self.non_linear_filter)
+        filter_menu.addAction(non_linear_action)
+        bw_action = QAction('Apply Butterworth low pass')
+        bw_action.triggered.connect(self.bw_filter)
+        filter_menu.addAction(bw_action)
+        gaussian_action = QAction('Apply Gaussian low pass')
+        gaussian_action.triggered.connect(self.gaussion_filter)
+        filter_menu.addAction(gaussian_action)
+
+        # Info menu
+        info_menu = context_menu.addMenu('Info')
+        axes_action = QAction('Image Axes')
+        axes_action.triggered.connect(self.show_axes)
+        info_menu.addAction(axes_action)
+        info_action = QAction('View Metadata')
+        info_action.triggered.connect(self.show_info)
+        info_menu.addAction(info_action)
+        
+
+        context_menu.exec_(self.mapToGlobal(pos))
+
+        
+
+    def print_figure(self):
+        print("Print action triggered")
+    
+    def save_figure(self):
+         print("Save action triggered")
+
+    def open_settings(self):
+        print("Settings action triggered")
+        
+        
         
     def get_current_img_from_canvas(self):
         current_ax = self.canvas.figure.get_axes()[0]
@@ -1428,7 +1556,7 @@ class PlotCanvas(QMainWindow):
         x1, y1 = event.xdata, event.ydata
         
         # Only update and redraw if the mouse movement is significant
-        if abs(x1 - x0) > self.img_size[0] * 0.01 or abs(y1 - y0) > self.img_size[1] * 0.01:  # Example threshold
+        if abs(x1 - x0) > self.img_size[1] * 0.01 or abs(y1 - y0) > self.img_size[0] * 0.01:  # Example threshold
             self.line.set_data([x0, x1], [y0, y1])
             self.fig.canvas.draw_idle()
         
@@ -1624,6 +1752,7 @@ class PlotCanvas(QMainWindow):
         if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
             real_units = self.units.split('/')[-1]
             self.measure_fft_dialog = MeasureFFTDialog(0, 0, real_units, self)
+            self.measure_fft_dialog.setWindowFlags(self.measure_fft_dialog.windowFlags() | Qt.WindowStaysOnTopHint)
             self.measure_fft_dialog.show()
             self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
             # Display a message in the status bar
@@ -2411,7 +2540,7 @@ class PlotCanvas3d(PlotCanvas):
         file_path, selected_type = QFileDialog.getSaveFileName(self.parent(), 
                                                    "Save Figure", 
                                                    "", 
-                                                   "16-bit TIFF Files (*.tiff);;32-bit TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg)", 
+                                                   "16-bit TIFF Files (*.tiff);;32-bit TIFF Files (*.tiff);;8-bit TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg);;Color TIFF Files (*.tiff);;Color PNG Files (*.png);;Color JPEG Files (*.jpg)", 
                                                    options=options)
         if file_path:
             # Implement custom save logic here
@@ -2430,21 +2559,39 @@ class PlotCanvas3d(PlotCanvas):
                 else:
                     print('Invalid image data')
                     return
-            if file_type == 'tiff':
-                if selected_type == "16-bit TIFF Files (*.tiff)":
-                    dtype = 'int16'
-                elif selected_type == "32-bit TIFF Files (*.tiff)":
-                    dtype = 'float32'
+                
+            if selected_type == "16-bit TIFF Files (*.tiff)":
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
-                    save_as_tif16(img, f_name + f'_{i}', output_dir, dtype=dtype)
+                    save_as_tif16(img, f_name + f'_{i}', output_dir, dtype='int16')
                     print(f'Exported series to {output_dir} as {file_type}.')
                     
-            elif selected_type in ['Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
+            elif selected_type == "32-bit TIFF Files (*.tiff)":
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
-                    save_with_pil(img, f_name + f'_{i}', output_dir, file_type, scalebar=UI_TemCompanion.scale_bar) 
+                    save_as_tif16(img, f_name + f'_{i}', output_dir, dtype='float32')
+                    print(f'Exported series to {output_dir} as {file_type}.')
+                    
+            elif selected_type in ['8-bit TIFF Files (*.tiff)', 'Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
+                for i in range(img_to_save['data'].shape[0]):
+                    img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
+                    save_with_pil(img, f_name + f'_{i}', output_dir, file_type, scalebar=self.scalebar_settings['scalebar']) 
                     print(f'Exported series to {output_dir} as {file_type}')
+                    
+            else: # Save with matplotlib
+                figsize = self.canvas.figure.get_size_inches()
+                img_size = img_to_save['data'][0].shape
+                dpi = float(sorted(img_size/figsize, reverse=True)[0])  
+                
+                # Hide the slider
+                self.canvas.figure.axes[1].set_visible(False)
+                for i in range(img_to_save['data'].shape[0]):
+                    self.slider.set_val(i)
+                    self.canvas.figure.savefig(output_dir + f_name + f'_{i}' +'.' + file_type, dpi=dpi, format=file_type)
+                    print(f'Exported series to {output_dir} as {file_type}')
+                self.canvas.figure.axes[1].set_visible(True)
+                    
+            
 
 #========== PlotCanvas for FFT ================================================
 class PlotCanvasFFT(PlotCanvas):
@@ -2800,6 +2947,7 @@ class PlotCanvasLineProfile(QMainWindow):
             
             self.selector = None
             self.text = None
+            self.clear_button = None
             
             #self.plot_lineprofile(p1, p2)
             
@@ -2811,6 +2959,10 @@ class PlotCanvasLineProfile(QMainWindow):
             self.main_frame.setLayout(vbox)
             self.setCentralWidget(self.main_frame)
             self.create_menubar()
+            
+            # Right click menu
+            self.main_frame.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.main_frame.customContextMenuRequested.connect(self.show_context_menu)
             
             # Buttons
             self.buttons = {'measure_clear': None}
@@ -2860,6 +3012,40 @@ class PlotCanvasLineProfile(QMainWindow):
             settings_menu.addAction(plotsettings_action)
             
             self.menubar = menubar
+            
+        def show_context_menu(self,pos):
+            context_menu = QtWidgets.QMenu(self)
+            
+            file_menu = context_menu.addMenu('File')
+            save_action = QAction('Save as')
+            save_action.triggered.connect(self.mpl_toolbar.save_figure)
+            file_menu.addAction(save_action)
+            copy_action = QAction('Copy Plot to Clipboard')
+            copy_action.triggered.connect(self.copy_plot)
+            file_menu.addAction(copy_action)
+            close_action = QAction('Close')
+            close_action.triggered.connect(self.close)
+            file_menu.addAction(close_action)
+            
+            
+            measure_menu = context_menu.addMenu('Measure')
+            measure_horizontal = QAction('Measure horizontal', self)            
+            measure_horizontal.triggered.connect(self.measure_horizontal)
+            measure_menu.addAction(measure_horizontal)
+            measure_vertical = QAction('Measure vertical', self)            
+            measure_vertical.triggered.connect(self.measure_vertical)
+            measure_menu.addAction(measure_vertical)
+            
+            settings_menu = context_menu.addMenu('Settings')
+            linewidth_setting_action = QAction('&Set line width')
+            linewidth_setting_action.triggered.connect(self.linewidth_setting)
+            settings_menu.addAction(linewidth_setting_action)
+            plotsettings_action = QAction('Plot Settings')
+            plotsettings_action.triggered.connect(self.plotsetting)
+            settings_menu.addAction(plotsettings_action)
+            
+            context_menu.exec_(self.mapToGlobal(pos))
+
         
         def close_all(self):
             plots = list(UI_TemCompanion.preview_dict.keys())
@@ -2951,12 +3137,18 @@ class PlotCanvasLineProfile(QMainWindow):
             self.canvas.draw_idle()
             
         def cleanup(self):
-            self.selector.set_active(False)
-            self.selector.set_visible(False)
-            self.selector = None            
-            self.clear_button.hide()
-            self.text.remove()
-            self.text = None
+            if self.selector is not None:
+                self.selector.set_active(False)
+                self.selector.set_visible(False)
+                self.selector = None   
+            if self.text is not None:
+                self.text.remove()
+                self.text = None
+            
+            if self.clear_button is not None:
+                self.clear_button.hide()
+                self.clear_button = None
+            
             self.fig.canvas.draw_idle()
             
         def measure_horizontal(self):            
@@ -3275,7 +3467,7 @@ class CustomToolbar(NavigationToolbar):
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(self.parent(), 
                                                    "Save Figure", 
                                                    "", 
-                                                   "16-bit TIFF Files (*.tiff);;32-bit TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg);;Color PNG Files (*.png);;Color JPEG Files (*.jpg);;Pickle Dictionary Files (*.pkl)", 
+                                                   "16-bit TIFF Files (*.tiff);;32-bit TIFF Files (*.tiff);;8-bit Grayscale TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg);;Color TIFF Files (*.tiff);;Color PNG Files (*.png);;Color JPEG Files (*.jpg);;Pickle Dictionary Files (*.pkl)", 
                                                    options=options)
         if self.file_path:
             # Implement custom save logic here
@@ -3305,26 +3497,15 @@ class CustomToolbar(NavigationToolbar):
                 elif self.selected_type == '32-bit TIFF Files (*.tiff)':
                     save_as_tif16(img_to_save, self.f_name, self.output_dir, dtype='float32')
                     
-                elif self.selected_type in ['Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
+                elif self.selected_type in ['8-bit Grayscale TIFF Files (*.tiff)','Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
                     save_with_pil(img_to_save, self.f_name, self.output_dir, self.file_type, scalebar=self.plotcanvas.scalebar_settings['scalebar']) 
                 else:
                     # Save with matplotlib. Need to calculate the dpi to keep the original size
                     figsize = self.canvas.figure.get_size_inches()
                     img_size = img_to_save['data'].shape
-                    # dpi = 150
-                    # figx_inch = img_size[1] / dpi
-                    # figy_inch = img_size[0] / dpi
-                    # self.canvas.figure.set_size_inches(figx_inch, figy_inch)
-                    # self.canvas.setFixedSize(img_size[1], img_size[0])
-                    dpi = float(sorted(img_size/figsize, reverse=True)[0])
-
-                                        
+                    dpi = float(sorted(img_size/figsize, reverse=True)[0])                                        
                     self.canvas.figure.savefig(self.file_path, dpi=dpi, format=self.file_type)
                     
-                    # Bring back the hiden buttons
-                    # for key, value in self.plotcanvas.buttons.items():
-                    #     if value is not None:
-                    #         self.plotcanvas.buttons[key].show()
                 if isinstance(self.canvas.img_idx, int):
                     self.canvas.figure.axes[1].set_visible(True)
                 
@@ -4431,15 +4612,23 @@ class DPCDialog(QDialog):
             B = copy.deepcopy(find_img_by_title(imB).canvas.data)
             C = copy.deepcopy(find_img_by_title(imC).canvas.data)
             D = copy.deepcopy(find_img_by_title(imD).canvas.data)
-            DPCx = A['data'] - C['data']
-            DPCy = B['data'] - D['data']
+            if A['data'].shape == B['data'].shape and B['data'].shape == C['data'].shape and C['data'].shape == D['data'].shape:
+                DPCx = A['data'] - C['data']
+                DPCy = B['data'] - D['data']
+            else:
+                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                return None, None, None
         else:
             imX = self.imX.currentText()
             imY = self.imY.currentText()
             A = copy.deepcopy(find_img_by_title(imX).canvas.data)
             B = copy.deepcopy(find_img_by_title(imY).canvas.data)
-            DPCx = A['data']
-            DPCy = B['data']
+            if A['data'].shape == B['data'].shape:
+                DPCx = A['data']
+                DPCy = B['data']
+            else:
+                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                return None, None, None
         return A, DPCx, DPCy
     
     def prepare_current_images(self):
@@ -4452,31 +4641,45 @@ class DPCDialog(QDialog):
             B = find_img_by_title(imB).get_img_dict_from_canvas()
             C = find_img_by_title(imC).get_img_dict_from_canvas()
             D = find_img_by_title(imD).get_img_dict_from_canvas()
-            DPCx = A['data'] - C['data']
-            DPCy = B['data'] - D['data']
+            if A['data'].shape == B['data'].shape and B['data'].shape == C['data'].shape and C['data'].shape == D['data'].shape:
+                DPCx = A['data'] - C['data']
+                DPCy = B['data'] - D['data']
+            else:
+                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                return None, None, None
         else:
             imX = self.imX.currentText()
             imY = self.imY.currentText()
             A = find_img_by_title(imX).get_img_dict_from_canvas()
             B = find_img_by_title(imY).get_img_dict_from_canvas()
-            DPCx = A['data']
-            DPCy = B['data']
+            if A['data'].shape == B['data'].shape:
+                DPCx = A['data']
+                DPCy = B['data']
+            else:
+                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                return None, None, None
         return A, DPCx, DPCy
         
     def guess_rotation_max_contrast(self):
         _, DPCx, DPCy = self.prepare_current_images()
+        if DPCx is None:
+            return
         ang1, ang2 = find_rotation_ang_max_contrast(DPCx, DPCy)
         text = f'Two possible rotation angles are {ang1} deg and {ang2} deg. Choose the one that gives the correct contrast!'
         QMessageBox.information(self, 'Rotation angle', text)
         
     def guess_rotation_min_curl(self):
         _, DPCx, DPCy = self.prepare_current_images()
+        if DPCx is None:
+            return
         ang = find_rotation_ang_min_curl(DPCx, DPCy)
         text = f'The possible rotation angle that gives the minimum curl is {ang} deg.'
         QMessageBox.information(self, 'Rotation angle', text)
 
     def reconstruct_iDPC(self):
         A, DPCx, DPCy = self.prepare_images()
+        if DPCx is None:
+            return
         
         iDPC_img = copy.deepcopy(A)
         iDPC_img['data'] = reconstruct_iDPC(DPCx, DPCy, rotation=float(self.rot.text()), cutoff=float(self.hp_cutoff.text()))
@@ -4499,6 +4702,8 @@ class DPCDialog(QDialog):
     
     def reconstruct_dDPC(self):
         A, DPCx, DPCy = self.prepare_images()
+        if DPCx is None:
+            return
             
         dDPC_img = copy.deepcopy(A)
         dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=float(self.rot.text()))
@@ -4691,8 +4896,9 @@ class BatchConverter(QWidget):
 # Output directory button connected to SetDir
 
     def set_dir(self):
-        self.output_dir = str(QFileDialog.getExistingDirectory(self, "Select Directory") + '/')
-        if self.output_dir:
+        output_dir = QFileDialog.getExistingDirectory(self, "Select Directory")
+        if output_dir:
+            self.output_dir = str(output_dir) + '/'
             self.outputdirbox.setText(self.output_dir)
             QApplication.processEvents()
             
@@ -4923,6 +5129,9 @@ def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True,
 
 def add_scalebar_to_pil(im, scale, unit):
     '''Add a scalebar to a PIL image'''
+    # Handle micrometer sign
+    if unit == 'µm':
+        unit = u'\u03bc' + 'm'
     im_x, im_y = im.size
     fov_x = im_x * scale
     # Find a good integer length for the scalebar 
@@ -4944,14 +5153,12 @@ def add_scalebar_to_pil(im, scale, unit):
         unit = 'px'
     text = str(sb_len) + ' ' + unit
     fontsize = int(im_x / 20)
-    font = ImageFont.load_default(fontsize)
-    # try: 
-    #     font = ImageFont.truetype("arial.ttf", fontsize)
-    # except:
-    #     try: 
-    #         font = ImageFont.truetype("Helvetica.ttc", fontsize)
-    #     except:
-    #         font = ImageFont.load_default()
+    # Choose a good font according to the os
+    if default_font:
+        font = ImageFont.truetype(default_font, fontsize)
+    else:
+        font = ImageFont.load_default(fontsize)
+
     txt_x, txt_y = (sb_start_x * 1.1, sb_start_y - fontsize * 1.1 - im_y/80)
     # Add outline to the text
     dx = im_x / 800
@@ -5537,20 +5744,46 @@ def find_img_by_title(title):
     for canvas in UI_TemCompanion.preview_dict.values():
         if canvas.canvas.canvas_name == title:
             return canvas
-               
-#====Application entry==================================
-QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 
+def find_system_font():
+    if os.name == 'nt': # Windows
+        font_path = os.path.join(os.environ['SystemRoot'], 'Fonts', 'segoeui.ttf')
+        if os.path.exists(font_path):
+            return font_path
+
+    elif os.name == 'posix':
+        if 'Darwin' in os.uname().sysname:  # macOS
+            font_paths = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSDisplay.ttf']
+            for path in font_paths:
+                if os.path.exists(path):
+                    return path
+        else:
+            font_paths = [
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+            '/usr/share/fonts/truetype/freefont/FreeSans.ttf']
+            
+            for path in font_paths:
+                if os.path.exists(path):
+                    return path
+                   
+#====Application entry==================================
 # Splash screen for windows app
 # import pyi_splash
 
-# # Update the text on the splash screen
+QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+default_font = find_system_font()
+
+
+
+
+# Update the text on the splash screen
 # pyi_splash.update_text("Loading...")
 
 
-# # Close the splash screen. It does not matter when the call
-# # to this function is made, the splash screen remains open until
-# # this function is called or the Python program is terminated.
+# Close the splash screen. It does not matter when the call
+# to this function is made, the splash screen remains open until
+# this function is called or the Python program is terminated.
 # pyi_splash.close()
 
 def main():    
@@ -5563,15 +5796,6 @@ def main():
     #     applicationPath = os.path.dirname(__file__)
     # app.setWindowIcon(QIcon(os.path.join(applicationPath, "Icon.ico")))
     
-    # Splash screen
-    # splash_pix = QPixmap('icon2.png')
-    # splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
-    # splash.show()
-    # app.processEvents()
-    
-    # splash.showMessage("TemCompanion is loading modules...")
-
-    # app.processEvents()
     
     temcom = UI_TemCompanion()
     temcom.show()

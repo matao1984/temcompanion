@@ -77,6 +77,13 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v1.2.2
+- Add right click menu
+- Add save as 8-bit tiff and color tiff
+- Stack can also be exported as 8-bit tiff and color tiff, png, and jpg
+- Added check for the image sizes when computing DPC to prevent crashing
+- Fixed letter $/mu$ in micrometer scale bar cannot display correctly.
+
 ### v1.2.1
 - Support drag and drop file(s) into the main UI or the batch converter
 - Figure tries to keep the aspect ratio upon resizing (for the most of the cases)

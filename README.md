@@ -80,6 +80,7 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 ### v1.2.3
 - Fixed an incorrect definition of high pass filter in DPC reconstruction that caused the UI to crash on non-square images.
 - Fixed dDPC output was set to 'int16' instead of 'float32'.
+- Add support for *.mrc file (image stack only). If the metadata txt file exists, it will be loaded as well.
 
 ### v1.2.2
 - Add right click menu

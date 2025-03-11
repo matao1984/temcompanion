@@ -70,6 +70,11 @@
 # Added check for the image sizes when computing DPC to prevent crashing
 # Fixed letter /mu in micrometer scale bar cannot display correctly.
 
+# 2025-03-11 v1.2.3
+# Fixed an incorrect definition of high pass filter in DPC reconstruction that 
+# caused the UI to crash on non-square images.
+# Fixed dDPC output was set to 'int16' instead of 'float32'.
+# Add support for *.mrc file (image stack only). If the metadata txt file exists, it will be loaded as well.
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -118,8 +123,8 @@ from skimage.transform import warp, rescale
 
 
 
-ver = '1.2.2'
-rdate = '2025-03-07'
+ver = '1.2.3'
+rdate = '2025-03-11'
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -179,6 +184,8 @@ class UI_TemCompanion(QWidget):
                 self.file_type = 'TIA ser Files (*.ser)'
             elif ext in ['tif', 'tiff']:
                 self.file_type = 'Tiff Files (*.tif *.tiff)'
+            elif ext == 'mrc':
+                self.file_type = 'MRC Files (*.mrc)'
             elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
                 self.file_type = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
             elif ext == 'pkl':
@@ -321,7 +328,7 @@ See the "About" for more details. Buy me a lunch if you like it!
 
     def openfile(self):
         self.file, self.file_type = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;MRC Files (*.mrc);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
         if self.file:
             self.preview()
            
@@ -434,6 +441,9 @@ See the "About" for more details. Buy me a lunch if you like it!
                         img['axes'][1]['index_in_array'] = 1
                     
                     preview_im = PlotCanvas3d(img, parent=self)
+                else:
+                    QMessageBox.warning(self,'Load file error','Cannot preview the file(s). Currently, only 2D and 3D data are supported!')
+                    return
                     
                 
                 preview_im.setWindowTitle(preview_name)
@@ -1270,8 +1280,12 @@ class PlotCanvas(QMainWindow):
         
         if self.units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
             self.scalebar_settings['dimension'] = 'si-length' # Real space image
+            if self.units == 'um':
+                self.units = 'µm' 
         elif self.units in ['1/m', '1/cm', '1/mm', '1/um', '1/µm', '1/nm', '1/pm']:
             self.scalebar_settings['dimension']  = 'si-length-reciprocal' # Diffraction
+            if self.units == '1/um':
+                self.units = '1/µm'
         else: # Cannot parse the unit correctly, reset to pixel scale
             self.units = 'px'
             self.scale = 1
@@ -5009,6 +5023,7 @@ from rsciio.tia import file_reader as tia_reader
 from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_reader as im_reader
+from rsciio.mrc import file_reader as mrc_reader
 #from rsciio.image import file_writer as im_writer
 import math
 
@@ -5130,8 +5145,8 @@ def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True,
 def add_scalebar_to_pil(im, scale, unit):
     '''Add a scalebar to a PIL image'''
     # Handle micrometer sign
-    if unit == 'µm':
-        unit = u'\u03bc' + 'm'
+    if unit in ['µm', 'um']:
+        unit = u'\u03bc' + 'm' # Normal \mu letter 
     im_x, im_y = im.size
     fov_x = im_x * scale
     # Find a good integer length for the scalebar 
@@ -5252,7 +5267,9 @@ def load_file(file, file_type):
     #Load tif formats
     elif file_type == 'Tiff Files (*.tif *.tiff)':
         f = tif_reader(file)
-       
+    #Load MRC TIFF stack
+    elif file_type == 'MRC Files (*.mrc)':
+        f = mrc_reader(file)
         
     #Load image formats
     elif file_type == 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)':
@@ -5648,7 +5665,7 @@ def reconstruct_iDPC(DPCx, DPCy, rotation=0, cutoff=0.02):
         d2[0,0] = np.inf
         iDPC_fft = d1 / d2
         # Apply a Gaussian high pass filter
-        g = gaussian_high_pass((im_x, im_y), cutoff)
+        g = gaussian_high_pass((im_y, im_x), cutoff)
         iDPC_fft = iDPC_fft * g
         iDPC = np.real(ifft2(iDPC_fft))
         #iDPC -= np.min(iDPC)
@@ -5690,8 +5707,8 @@ def reconstruct_dDPC(DPCx, DPCy, rotation, inverse = False):
         dDPC = np.zeros(DPCx.shape)
         for i in range(im_z):
             dDPC[i,:,:] = reconstruct_dDPC(DPCx[i], DPCy[i], rotation, inverse)
-    dDPC_int16 = dDPC.astype('int16')
-    return dDPC_int16
+    #dDPC_int16 = dDPC.astype('int16')
+    return dDPC
 
 def find_rotation_ang_max_contrast(DPCx, DPCy, step=1):
     '''Try to find the scan rotation offset of DPC signals by maximizing the contrast
@@ -5799,8 +5816,8 @@ def main():
     
     temcom = UI_TemCompanion()
     temcom.show()
-    
-    # splash.finish(temcom)
+    temcom.raise_()
+    temcom.activateWindow()
     sys.exit(app.exec_())
     
 

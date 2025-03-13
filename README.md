@@ -30,8 +30,12 @@ Currently, TemCompanion is programmed to support:
 - Gatan DigitalMicrograph format (*.dm3, *.dm4)
 - TIFF format (*.tiff, *.tif)
     - TemCompanion will try to read the pixel calibration if exists
+- MRC format (*.mrc)
+    - This should be a stack of 2d images, e.g., tomography data. If the txt metadata file exists, it will be loaded as well.
 - Common image formats (*.tiff, *.jpg, *.png, etc) ,
-    - TemCompanion will try to convert the image into RGB and ignore calibration. 
+    - TemCompanion will try to convert the image into RGB and ignore calibration.
+- Image series
+    - TemCompanion will search the given folder for the supported files with the same extention as the selected file. A dialog will then pop up that allows to reorder and delete files to be loaded. Then all files will be loaded as a 3D image stack.
 
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
@@ -54,6 +58,9 @@ Currently available functions include:
 * Apply Wiener, ABS, non-linear, Butterworth, and Gaussian filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
 * View the axes information and metadata of the TEM data file.
 * The processing history by TemCompanion is saved in the metadata tree under "process" entry.
+* Import image series from a folder.
+* Crop, rotate, flip, resampling, and export stack images.
+* Reorder and delete frames of a stack.
 * Align image stack with both phase cross-correlation (rigid) and optical flow (non rigid).
 * Copy displayed images directly and paste to power point, etc.
 * Run geometric phase analysis on HR(S)TEM images.

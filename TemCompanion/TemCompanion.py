@@ -75,6 +75,9 @@
 # caused the UI to crash on non-square images.
 # Fixed dDPC output was set to 'int16' instead of 'float32'.
 # Add support for *.mrc file (image stack only). If the metadata txt file exists, it will be loaded as well.
+# New feature: import image series of the same type in one folder
+# New feature: "Sort stack" function to reorder and delete frames in a stack
+# Change copy image shortcut to ctrl+alt+c or cmd+option+c and release ctrl+c/cmd+c to system copy shortcut
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -83,7 +86,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
-                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton
+                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
+                             QListWidget, QListWidgetItem
                              )
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
 from PyQt5.QtGui import QImage, QIcon, QDropEvent, QDragEnterEvent
@@ -328,7 +332,7 @@ See the "About" for more details. Buy me a lunch if you like it!
 
     def openfile(self):
         self.file, self.file_type = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;MRC Files (*.mrc);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;MRC Files (*.mrc);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl);;Image Series (*.*)")
         if self.file:
             self.preview()
            
@@ -413,7 +417,10 @@ See the "About" for more details. Buy me a lunch if you like it!
             f_name = getFileName(self.file)
         except:
             print(f'Cannot open {self.file}, make sure it is not in use or corrupted!')
-            return        
+            return  
+        
+        if f == None:
+            return
     
         for i in range(len(f)):
             img = f[i]
@@ -611,7 +618,7 @@ class PlotCanvas(QMainWindow):
         save_action.triggered.connect(self.mpl_toolbar.save_figure)
         file_menu.addAction(save_action)
         copy_action = QAction('&Copy Image to Clipboard', self)
-        copy_action.setShortcut('ctrl+c')
+        copy_action.setShortcut('ctrl+alt+c')
         copy_action.triggered.connect(self.copy_img)
         file_menu.addAction(copy_action)
         imagesetting_action = QAction('&Image Settings',self)
@@ -2134,6 +2141,9 @@ class PlotCanvas3d(PlotCanvas):
         resampling_stack = QAction('Resampling stack', self)
         resampling_stack.triggered.connect(self.resampling_stack)
         stack_menu.addAction(resampling_stack)
+        sort_stack = QAction('Sort stack', self)
+        sort_stack.triggered.connect(self.sort_stack)
+        stack_menu.addAction(sort_stack)
         align_stack_cc = QAction('Align stack with Cross-Correlation', self)
         align_stack_cc.triggered.connect(self.align_stack_cc)
         stack_menu.addAction(align_stack_cc)
@@ -2374,7 +2384,36 @@ class PlotCanvas3d(PlotCanvas):
             UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
 
 
-    
+    def sort_stack(self):
+        sorted_img = copy.deepcopy(self.canvas.data)
+        img = sorted_img['data']
+        img_n, img_y, img_x = img.shape
+        stack = [f'Frame {n:03d}' for n in range(img_n)]
+        dialog = ListReorderDialog(stack)
+        if dialog.exec_() == QDialog.Accepted:
+            sorted_order = dialog.ordered_items_idx
+            img_n = len(sorted_order)
+            sorted_data = np.zeros((img_n, img_y, img_x))
+            for i in range(img_n):
+                sorted_data[i] = img[sorted_order[i]]
+            sorted_img['data'] = sorted_data
+            sorted_img['original_axes'][0]['size'] = img_n    
+        else:
+            return
+        
+        # Create a new PlotCanvs to display        
+        title = self.windowTitle()
+        preview_name = self.canvas.canvas_name + '_sorted'
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(sorted_img, parent=self.parent())
+        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
+        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
+        UI_TemCompanion.preview_dict[preview_name].show()
+        
+        print(f'{title} has been sorted.')
+        
+        # Keep the history
+        UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Sorted by the order of {sorted_order}.')
+        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
     
     def align_stack_cc(self):        
         aligned_img = copy.deepcopy(self.canvas.data)
@@ -2545,6 +2584,8 @@ class PlotCanvas3d(PlotCanvas):
                                                    options=options)
         if file_path:
             tif_writer(file_path, data_to_export) 
+            
+            print(f'{file_path} has been exported.')
 
         
     
@@ -2577,19 +2618,19 @@ class PlotCanvas3d(PlotCanvas):
             if selected_type == "16-bit TIFF Files (*.tiff)":
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
-                    save_as_tif16(img, f_name + f'_{i}', output_dir, dtype='int16')
+                    save_as_tif16(img, f_name + f'_{i:03d}', output_dir, dtype='int16')
                     print(f'Exported series to {output_dir} as {file_type}.')
                     
             elif selected_type == "32-bit TIFF Files (*.tiff)":
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
-                    save_as_tif16(img, f_name + f'_{i}', output_dir, dtype='float32')
+                    save_as_tif16(img, f_name + f'_{i:03d}', output_dir, dtype='float32')
                     print(f'Exported series to {output_dir} as {file_type}.')
                     
             elif selected_type in ['8-bit TIFF Files (*.tiff)', 'Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
-                    save_with_pil(img, f_name + f'_{i}', output_dir, file_type, scalebar=self.scalebar_settings['scalebar']) 
+                    save_with_pil(img, f_name + f'_{i:03d}', output_dir, file_type, scalebar=self.scalebar_settings['scalebar']) 
                     print(f'Exported series to {output_dir} as {file_type}')
                     
             else: # Save with matplotlib
@@ -2601,7 +2642,7 @@ class PlotCanvas3d(PlotCanvas):
                 self.canvas.figure.axes[1].set_visible(False)
                 for i in range(img_to_save['data'].shape[0]):
                     self.slider.set_val(i)
-                    self.canvas.figure.savefig(output_dir + f_name + f'_{i}' +'.' + file_type, dpi=dpi, format=file_type)
+                    self.canvas.figure.savefig(output_dir + f_name + f'_{i:03d}' +'.' + file_type, dpi=dpi, format=file_type)
                     print(f'Exported series to {output_dir} as {file_type}')
                 self.canvas.figure.axes[1].set_visible(True)
                     
@@ -4739,7 +4780,90 @@ class DPCDialog(QDialog):
         UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
         
         
+#======================== list reorder dialog =========================
+class ListReorderDialog(QDialog):
+    def __init__(self, items):
+        super().__init__()
         
+        self.ordered_items_idx = []
+        self.item_to_index = {item: idx for idx, item in enumerate(items)}
+        
+        self.setWindowTitle('Reorder image stack')
+        self.setGeometry(100, 100, 300, 400)
+
+        # Layout
+        layout = QVBoxLayout()
+
+        # QListWidget setup
+        self.listWidget = QListWidget(self)
+        self.listWidget.setDragDropMode(QListWidget.InternalMove)
+
+        # Add items to the QListWidget
+        reordered = sorted(items)
+        for item in reordered:
+            listItem = QListWidgetItem(item)
+            self.listWidget.addItem(listItem)
+
+        # Add QListWidget to the layout
+        layout.addWidget(self.listWidget)
+
+        # OK button to confirm and close
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        
+
+        # Set the layout for the dialog
+        self.setLayout(layout)
+    
+    def contextMenuEvent(self, event):
+        # Check if there is an item at the current mouse position
+        item = self.listWidget.itemAt(self.listWidget.mapFromGlobal(event.globalPos()))
+        if item:
+            # Create context menu
+            menu = QMenu(self)
+            delete_action = QAction('Delete', self)
+            delete_action.triggered.connect(lambda: self.deleteItem(item))
+            menu.addAction(delete_action)
+            
+            move_to_top_action = QAction('Move to Top', self)
+            move_to_top_action.triggered.connect(lambda: self.moveToTop(item))
+            menu.addAction(move_to_top_action)
+
+            move_to_bottom_action = QAction('Move to Bottom', self)
+            move_to_bottom_action.triggered.connect(lambda: self.moveToBottom(item))
+            menu.addAction(move_to_bottom_action)
+
+            # Show context menu
+            menu.exec_(event.globalPos())
+
+    def deleteItem(self, item):
+        # Remove the item from the list widget
+        self.listWidget.takeItem(self.listWidget.row(item))
+        
+    def moveToTop(self, item):
+        # Get the row of the current item and remove it
+        row = self.listWidget.row(item)
+        self.listWidget.takeItem(row)
+        # Insert it at the top
+        self.listWidget.insertItem(0, item)
+    
+    def moveToBottom(self, item):
+        # Get the row of the current item and remove it
+        row = self.listWidget.row(item)
+        self.listWidget.takeItem(row)
+        # Insert it at the bottom
+        self.listWidget.addItem(item)    
+        
+
+    def handle_ok(self):
+        for index in range(self.listWidget.count()):
+            item_text = self.listWidget.item(index).text()
+            original_index = self.item_to_index[item_text]
+            self.ordered_items_idx.append(original_index)
+            self.accept()        
         
         
          
@@ -5267,6 +5391,10 @@ def load_file(file, file_type):
     #Load tif formats
     elif file_type == 'Tiff Files (*.tif *.tiff)':
         f = tif_reader(file)
+        
+    
+                
+    
     #Load MRC TIFF stack
     elif file_type == 'MRC Files (*.mrc)':
         f = mrc_reader(file)
@@ -5289,6 +5417,84 @@ def load_file(file, file_type):
         with open(file, 'rb') as file:
             f = []
             f.append(pickle.load(file))
+            
+            
+    #Load image series from a folder
+    #Will load all the tiff files whose size matches the selected one found in the folder and stack them together
+    elif file_type == 'Image Series (*.*)':
+        tif_dir = getDirectory(file, s='/')
+        f = []
+        file_list = []
+        ext = getFileType(file)
+        # set correct file_type
+        if ext == 'emd':
+            file_type = 'Velox emd Files (*.emd)'
+        elif ext in ['dm3', 'dm4']:
+            file_type = 'DigitalMicrograph Files (*.dm3 *.dm4)'
+        elif ext == 'ser':
+            file_type = 'TIA ser Files (*.ser)'
+        elif ext in ['tif', 'tiff']:
+            file_type = 'Tiff Files (*.tif *.tiff)'
+        elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
+            file_type = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+        elif ext == 'pkl':
+            file_type = 'Pickle Dictionary Files (*.pkl)'
+        else:
+            print('Unsupported file formats for image series!')
+            return
+        
+        # Iterate over all files in the specified directory
+        for filename in os.listdir(tif_dir):
+            # Check if the file matches the pattern
+            if filename.endswith(f'.{ext}'):
+                # Construct the full file path
+                file_path = os.path.join(tif_dir, filename)
+                # Ensure it is a file
+                if os.path.isfile(file_path):
+                    file_list.append(file_path)
+                    
+        # A dialog to reorder the loaded images
+        stack_list = [getFileName(img_file) for img_file in file_list]
+        dialog = ListReorderDialog(stack_list)
+        if dialog.exec_() == QDialog.Accepted:
+            reorder = dialog.ordered_items_idx
+            reordered_file = [file_list[idx] for idx in reorder]
+        else:
+            return
+        
+        reordered_img = []
+        for img_file in reordered_file:
+            try:
+                img = load_file(img_file, file_type)  
+                reordered_img.append(img[0])
+            except:
+                pass
+        
+        stack_dict = reordered_img[0]
+        img_size = stack_dict['data'].shape
+        if len(img_size) != 2:
+            print('Invalid image size! Images must be 2-dimensional!')
+            return
+        stack_array = []
+        for img_dict in reordered_img:
+            if img_dict['data'].shape == img_size:
+                stack_array.append(img_dict['data'])
+        stack = np.stack(stack_array)
+        
+        stack_dict['data'] = stack
+        # reformat the axes
+        z_axis = {'size': stack_dict['data'].shape[0],
+                  'index_in_array': 0,
+                  'name': 'z',
+                  'scale': 1,
+                  'offset': 0.0,
+                  'units': None,
+                  'navigate': True
+            }
+        stack_dict['axes'].insert(0, z_axis)
+        stack_dict['axes'][1]['index_in_array'] = 1
+        stack_dict['axes'][2]['index_in_array'] = 2
+        f = [stack_dict]
             
     # Validate the content of f
     f_valid = []

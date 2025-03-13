@@ -5,7 +5,7 @@ TemCompanion was written by Dr. Tao Ma. For questions, suggestions, bug reports,
 
 ## 1. Installation
 __New! The stand alone Win64 and MacOS ARM bundles are available. Download from here:__
-https://github.com/matao1984/temcompanion/releases/tag/v1.2
+[https://github.com/matao1984/temcompanion/releases](https://github.com/matao1984/temcompanion/releases)
 
 The tool requires Python 3 environment. I recommend to install Anaconda which is the most straightforward way. Download and install the Python 3 version of Anaconda from here: https://www.anaconda.com/.
 

@@ -81,6 +81,9 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 - Fixed an incorrect definition of high pass filter in DPC reconstruction that caused the UI to crash on non-square images.
 - Fixed dDPC output was set to 'int16' instead of 'float32'.
 - Add support for *.mrc file (image stack only). If the metadata txt file exists, it will be loaded as well.
+- New feature: import image series of the same type in one folder
+- New feature: "Sort stack" function to reorder and delete frames in a stack
+- Change copy image shortcut to ctrl+alt+c or cmd+option+c and release ctrl+c/cmd+c to system copy shortcut
 
 ### v1.2.2
 - Add right click menu

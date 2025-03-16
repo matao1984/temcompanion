@@ -43,7 +43,9 @@ Written in pure python, TemCompanion can also be installed through python 3 envi
 The ``pip`` should prepare all the dependencies and install the tool automatically.
 
 ## 2. Usage
-Simply type ``temcom`` in the Anaconda prompt console. A GUI will pop up. Load the data through the "Open Files" button, view the images with the "Preview" button. All the processing and analysis functions are available in the preview window. Each preview window can be individually saved and converted to the common image formats. The tool will still work for batch convertion as ``EMD Converter`` does.
+The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through either the menu bar or right click on the image canvas. Each preview window can be individually processed, saved, and converted to the common image formats. 
+
+Also available is a batch converter, which can be called by clicking the "Batch Convert" button. A separate window will pop up which works as the old ``EMD Converter`` does. The batch converter also supports drag-and-drop actions and the loaded data and be a mix of different supported formats. 
 
 ## 3. Formats
 ### 3.1 Input formats
@@ -62,41 +64,29 @@ Currently, TemCompanion is programmed to support:
 
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
-### 3.2 List of available functions
-Currently available functions include:
-* Preview any image type signals. If the input file contains multiple image frames, a slider bar is added on the image to navigate.
-* Rotate image: positive angles would rotate the image counterclockwise and vice versa. The image will expand upon rotation.
-* Crop image: crop to any size with a GUI rectangle selection.
-* Adjust vmin/vmax for display.
-* Apply a color map to images.
-* Add a scalebar and customize its color, location, etc.
-* View and set the pixel scale.
-* Measure distance and angle interactively by drawing a line on images.
-* Extract line profiles interactively.
-* Simple math on two images or stacks: addition, subtraction, multiplication, division, and inversion.
-* Compute a fast Fourier transform directly or with a Hann window applied.
-* Compute live FFT from a selected area that can be adjusted interactively.
-* Apply masks on FFT and compute masked inverse FFT.
-* Measure d-spacing from FFT or diffraction patterns. The spot position is fitted with a center of mass function. The angle from horizontal direction is also measured.
-* Apply Wiener, ABS, non-linear, Butterworth, and Gaussian filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
-* View the axes information and metadata of the TEM data file.
-* The processing history by TemCompanion is saved in the metadata tree under "process" entry.
-* Import image series from a folder.
-* Crop, rotate, flip, resampling, and export stack images.
-* Reorder and delete frames of a stack.
-* Align image stack with both phase cross-correlation (rigid) and optical flow (non rigid).
-* Copy displayed images directly and paste to power point, etc.
-* Run geometric phase analysis on HR(S)TEM images.
-* Reconstruct iDPC and dDPC images from quadrant detector images or stacks (either raw A, B, C, D images or A-C, B-D images). The rotation angle can be guessed by either minimum curl or maximum contrast algorithms.
 
-
-### 3.3 Output formats
+### 3.2 Output formats
+- TIFF format
 When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ. 
 
-All image data and operations are handled as python dictionaries, which can be saved with ``pickle`` as *.pkl files. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc.
+
+- 8-bit grayscale images (TIFF, PNG, JPG)
+The image data will be rescaled to 8-bit integers and saved as grayscale images. The conversion is done by pillow. The pixel calibration is not saved. A scale bar can be added if the "scale bar" option is checked in the image settings.
+
+- Color images (TIFF, PNG, JPG)
+If a color map is applied, the image should be saved in RGB format. This conversion is done by Matplotlib. The output image should look exactly the same as in the preview window. Note that some non squre images would appear with a padded white edge, which will be saved as well. It is difficult to program in the way that it fits all different aspect ratios of the input images. But by resizing the preview window it can sometimes readjust to remove the white borders.
+
+- Pickle format
+All image data and operations are handled internally as python dictionaries, which can be saved with ``pickle`` as *.pkl files. When selecting this format, the entire python dictionaries including all the data arrays, axes information, and metadata will be saved. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc.
+
+Note that the saving function only saves the displayed image. If working on an image stack, use the "Export as tiff stack" or "Save as series" in the stack functions to save all the frames.
+
+## 4. Descriptions of functions
+### 4.1 Basic processing functions
+- Crop:
+Crop the image by dragging a box. Alternatively, "Manual input" button allows to define the exact cropping range.
 
 
-Other image formats including png and jpg, both gray scale and color, are lossy conversion, which means the original data are manipulated (e.g., data are normalized and rescaled to 8-bit gray scale). These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be burnt on if the "Scale bar" option is checked.  
 
 
 ## 4. About the emd format

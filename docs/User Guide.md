@@ -82,11 +82,32 @@ All image data and operations are handled internally as python dictionaries, whi
 Note that the saving function only saves the displayed image. If working on an image stack, use the "Export as tiff stack" or "Save as series" in the stack functions to save all the frames.
 
 ## 4. Descriptions of functions
+
 ### 4.1 Basic processing functions
 - Crop:
 Crop the image by dragging a box. Alternatively, "Manual input" button allows to define the exact cropping range.
+- Rotate:
+Rotate the image by the given angle in degree. A positive angle will rotate the image counterclockwise; a negative angle will rotate clockwise. The rotated image will be padded with 0 and no cropping is performed.
+- Flip:
+Flip the current image either horizontally or vertically.
+- Resampling:
+Resample the image by a given factor. e.g., A factor of 2 will upsample a 1024x1024 image to 2048x2048; and a factor of 0.5 will downsample it to 512x512.
+- Simple math:
+Perform simple math on two opened images. Supported operations are: addition, subtraction, multiplication, division, and inversion. If inversion is selected, only the signal 1 will be processed and the signal 2 will be ignored.
 
+### 4.2 Fast Fourier transforms
+- FFT
+Perform FFT on the current image and display in a separate window. If the image is non square, the FFT is computed from the biggest square cropped from the image.
+- Windowed FFT
+Apply and Hann window before computing the FFT to remove the edge effect.
+- Live FFT
+Compute FFT from a selected square box on the image. The box can be dragged and resized and the FFT will update automatically.
+- Mask and iFFT (only available on FFT)
+Apply one or a few pairs of circular masks on the FFT spots and compute inverse FFT. The red circle is the active mask and can be dragged by mouse or resized by scrolling. The yellow circle is the mirrored mask of the red and will update automatically. More masks can be added with the "Add" button. When another pair of masks is added, which will be set to active mask automatically, the previous active mask will turn to orange color. The orange masks can be reactivated by clicking on them. When the "iFFT" button is clicked, an image will be computed from the masked region using inverse FFT. The edge of the masks is smoothed by a cosine function to remove the edge effect.
 
+### 4.3 Analyse functions
+- Set scale
+Redefine the pixel calibration. The acceptable units for real space images are: m, cm, mm, um, $\mum$, nm, pm. The units for reciprocal space images are 1/(real space unit).
 
 
 ## 4. About the emd format

@@ -107,7 +107,7 @@ Apply one or a few pairs of circular masks on the FFT spots and compute inverse 
 
 ### 4.3 Analyse functions
 - Set scale
-Redefine the pixel calibration. The acceptable units for real space images are: m, cm, mm, um, $\mu$m, nm, pm. The units for reciprocal space images are 1/(real space unit).
+Redefine the pixel calibration. The acceptable units for real space images are: m, cm, mm, um, `$\mu$`m, nm, pm. The units for reciprocal space images are 1/(real space unit).
 
 
 ## 4. About the emd format

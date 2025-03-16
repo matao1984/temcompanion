@@ -85,29 +85,58 @@ Note that the saving function only saves the displayed image. If working on an i
 
 ### 4.1 Basic processing functions
 - Crop:
+
 Crop the image by dragging a box. Alternatively, "Manual input" button allows to define the exact cropping range.
+
 - Rotate:
+
 Rotate the image by the given angle in degree. A positive angle will rotate the image counterclockwise; a negative angle will rotate clockwise. The rotated image will be padded with 0 and no cropping is performed.
+
 - Flip:
+
 Flip the current image either horizontally or vertically.
+
 - Resampling:
+
 Resample the image by a given factor. e.g., A factor of 2 will upsample a 1024x1024 image to 2048x2048; and a factor of 0.5 will downsample it to 512x512.
+
 - Simple math:
+
 Perform simple math on two opened images. Supported operations are: addition, subtraction, multiplication, division, and inversion. If inversion is selected, only the signal 1 will be processed and the signal 2 will be ignored.
 
 ### 4.2 Fast Fourier transforms
-- FFT
+- FFT:
+
 Perform FFT on the current image and display in a separate window. If the image is non square, the FFT is computed from the biggest square cropped from the image.
-- Windowed FFT
+
+- Windowed FFT"
+
 Apply and Hann window before computing the FFT to remove the edge effect.
-- Live FFT
+
+- Live FFT:
+
 Compute FFT from a selected square box on the image. The box can be dragged and resized and the FFT will update automatically.
-- Mask and iFFT (only available on FFT)
+
+- Mask and iFFT (only available on FFT):
+
 Apply one or a few pairs of circular masks on the FFT spots and compute inverse FFT. The red circle is the active mask and can be dragged by mouse or resized by scrolling. The yellow circle is the mirrored mask of the red and will update automatically. More masks can be added with the "Add" button. When another pair of masks is added, which will be set to active mask automatically, the previous active mask will turn to orange color. The orange masks can be reactivated by clicking on them. When the "iFFT" button is clicked, an image will be computed from the masked region using inverse FFT. The edge of the masks is smoothed by a cosine function to remove the edge effect.
 
 ### 4.3 Analyse functions
-- Set scale
+- Set scale:
+
 Redefine the pixel calibration. The acceptable units for real space images are: m, cm, mm, um, μm, nm, pm. The units for reciprocal space images are 1/(real space unit).
+
+- Measure:
+
+Draw a line on the image to measure the distance and angle. The distance will be calculated with the pixel calibration. The angle is between the line and the horizontal direction. The line position and length can be changed by dragging the end points.
+
+- Measure diffraction/FFT:
+
+This function allows the quick measurement of diffraction/FFT spots by a mouse click. The peak position will be fitted with a center-of-mass function starting from the clicked position within a window defined in the dialog. Then its calibrated distance to the center will be calculated and converted back to the real space distance. To measure the diffraction patterns correctly, the center of the diffraction patterns needs to be defined. This can be done by clicking the "Define center" button. This method accepts either one or two points input by mouse clicks. If the center point is visible on the image, it can be assigned by just clicking on it with mouse. The program will try to fit the peak position with the center-of-mass function with the defined window size. If the center point is not visible, e.g., a beam stop was used, the center can be defined from two symmetric points. The mid point of the two points will be defined as the center.
+
+- Line profile:
+
+Draw a line on the image, and the intensity profile along the line will be extracted and plotted. The line position and length can be changed by dragging the end points. On the line profile plot, the line width can be defined in the "Settings -> Set line width" menu. It is also possible to measure the plot through the "Measure" menu.
 
 
 ## 4. About the emd format

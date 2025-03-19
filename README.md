@@ -84,6 +84,10 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v1.2.4
+- Fixed incorrect data type handling in stack operations that causes app crash
+- Add save metadata option for batch conversion
+
 ### v1.2.3
 - Fixed an incorrect definition of high pass filter in DPC reconstruction that caused the UI to crash on non-square images.
 - Fixed dDPC output was set to 'int16' instead of 'float32'.

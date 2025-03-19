@@ -79,6 +79,10 @@
 # New feature: "Sort stack" function to reorder and delete frames in a stack
 # Change copy image shortcut to ctrl+alt+c or cmd+option+c and release ctrl+c/cmd+c to system copy shortcut
 
+# 2025-03-19 v1.2.4
+# Fixed incorrect data type handling in stack operations that causes app crash
+# Add save metadata option for batch conversion
+
 from PyQt5 import QtCore, QtWidgets
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout, 
@@ -127,8 +131,8 @@ from skimage.transform import warp, rescale
 
 
 
-ver = '1.2.3'
-rdate = '2025-03-11'
+ver = '1.2.4'
+rdate = '2025-03-19'
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -2271,7 +2275,7 @@ class PlotCanvas3d(PlotCanvas):
                 # Valid area is selected               
                 img = copy.deepcopy(self.canvas.data)
                 cropped_img = img['data'][:,int(y0):int(y1), int(x0):int(x1)]                
-                img['data'] = cropped_img.astype('int16')
+                img['data'] = cropped_img
                 # Update axes size
                 img['axes'][0]['size'] = img['data'].shape[1]
                 img['axes'][1]['size'] = img['data'].shape[2]
@@ -2321,7 +2325,7 @@ class PlotCanvas3d(PlotCanvas):
             img = copy.deepcopy(self.canvas.data)
             img_to_rotate = img['data']
             rotated_array = rotate(img_to_rotate,ang,(2,1))
-            img['data'] = rotated_array.astype('int16')
+            img['data'] = rotated_array
             
             # Update axes
             img['axes'][0]['size'] = img['data'].shape[0]
@@ -2481,7 +2485,7 @@ class PlotCanvas3d(PlotCanvas):
                     print(f'Further cropped to square from {new_start}:{new_end}.')
                     
                 aligned_img['data'] = img_crop
-                aligned_img['data'] = aligned_img['data'].astype('int16')
+                aligned_img['data'] = aligned_img['data']
                 # Update axes size
                 aligned_img['axes'][0]['size'] = aligned_img['data'].shape[1]
                 aligned_img['axes'][1]['size'] = aligned_img['data'].shape[2]
@@ -2531,7 +2535,7 @@ class PlotCanvas3d(PlotCanvas):
             
             img[n+1,:,:] = warp(img_to_shift, vector_field, mode='constant') 
         
-            aligned_img['data'] = img.astype('int16')
+            aligned_img['data'] = img
         print('Stack alignment finished!')
                 
         # Create a new PlotCanvas to display
@@ -2548,7 +2552,7 @@ class PlotCanvas3d(PlotCanvas):
     
     def integrate_stack(self):
         data = np.mean(self.canvas.data['data'], axis=0)
-        integrated_img = {'data': data.astype('int16'), 'axes': self.canvas.data['axes'], 'metadata': self.canvas.data['metadata'],
+        integrated_img = {'data': data, 'axes': self.canvas.data['axes'], 'metadata': self.canvas.data['metadata'],
                           'original_metadata': self.canvas.data['original_metadata']}
         # Create a new PlotCanvs to display     
         title = self.windowTitle()
@@ -2566,7 +2570,7 @@ class PlotCanvas3d(PlotCanvas):
     
     def export_stack(self):
         data = self.canvas.data
-        img_data = data['data'].astype('int16')
+        img_data = data['data'].astype('float32')
         # Update the axes in case they have been changed, e.g., scale, size...
         data['original_axes'][1]['size'] = data['axes'][0]['size']
         data['original_axes'][2]['size'] = data['axes'][1]['size']
@@ -2619,19 +2623,19 @@ class PlotCanvas3d(PlotCanvas):
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
                     save_as_tif16(img, f_name + f'_{i:03d}', output_dir, dtype='int16')
-                    print(f'Exported series to {output_dir} as {file_type}.')
+                    print(f'Exported to {output_dir}/{f_name}_{i:03d}.')
                     
             elif selected_type == "32-bit TIFF Files (*.tiff)":
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
                     save_as_tif16(img, f_name + f'_{i:03d}', output_dir, dtype='float32')
-                    print(f'Exported series to {output_dir} as {file_type}.')
+                    print(f'Exported to {output_dir}/{f_name}_{i:03d}.')
                     
             elif selected_type in ['8-bit TIFF Files (*.tiff)', 'Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
                 for i in range(img_to_save['data'].shape[0]):
                     img = {'data': img_to_save['data'][i], 'axes': img_to_save['axes'], 'metadata': img_to_save['metadata']}
                     save_with_pil(img, f_name + f'_{i:03d}', output_dir, file_type, scalebar=self.scalebar_settings['scalebar']) 
-                    print(f'Exported series to {output_dir} as {file_type}')
+                    print(f'Exported to {output_dir}/{f_name}_{i:03d}.')
                     
             else: # Save with matplotlib
                 figsize = self.canvas.figure.get_size_inches()
@@ -2643,7 +2647,7 @@ class PlotCanvas3d(PlotCanvas):
                 for i in range(img_to_save['data'].shape[0]):
                     self.slider.set_val(i)
                     self.canvas.figure.savefig(output_dir + f_name + f'_{i:03d}' +'.' + file_type, dpi=dpi, format=file_type)
-                    print(f'Exported series to {output_dir} as {file_type}')
+                    print(f'Exported to {output_dir}/{f_name}_{i:03d}.')
                 self.canvas.figure.axes[1].set_visible(True)
                     
             
@@ -2792,7 +2796,115 @@ class PlotCanvasFFT(PlotCanvas):
         self.canvas.draw_idle()
         
     
+# Redefine right click menu
+    def show_context_menu(self, pos):
+        context_menu = QtWidgets.QMenu(self)
         
+        # File menu
+        file_menu = context_menu.addMenu('File')
+        save_action = QAction('Save as')
+        save_action.triggered.connect(self.mpl_toolbar.save_figure)
+        file_menu.addAction(save_action)
+        copy_action = QAction('Copy Image to Clipboard')
+        copy_action.triggered.connect(self.copy_img)
+        file_menu.addAction(copy_action)
+        imagesetting_action = QAction('Image Settings')
+        imagesetting_action.triggered.connect(self.mpl_toolbar.edit_parameters)
+        file_menu.addAction(imagesetting_action)
+        close_action = QAction('Close')
+        close_action.triggered.connect(self.close)
+        file_menu.addAction(close_action)
+        
+        # Edit menu and actions
+        edit_menu = context_menu.addMenu('Process')
+        crop_action = QAction('Crop')
+        crop_action.triggered.connect(self.crop)
+        edit_menu.addAction(crop_action)
+        rotate_action = QAction('Rotate')
+        rotate_action.triggered.connect(self.rotate)
+        edit_menu.addAction(rotate_action)
+        fliplr_action = QAction('Flip horizontal')
+        fliplr_action.triggered.connect(self.flip_horizontal)
+        edit_menu.addAction(fliplr_action)
+        flipud_action = QAction('Flip vertical',self)
+        flipud_action.triggered.connect(self.flip_vertical)
+        edit_menu.addAction(flipud_action)
+        resampling_action = QAction('Resampling')
+        resampling_action.triggered.connect(self.resampling)
+        edit_menu.addAction(resampling_action)
+        simplemath_action = QAction('Simple math', self)
+        simplemath_action.triggered.connect(self.simplemath)
+        edit_menu.addAction(simplemath_action)
+        
+        # FFT menu
+        fft_menu = context_menu.addMenu('FFT')
+        fft_action = QAction('FFT')
+        fft_action.triggered.connect(self.fft)
+        fft_menu.addAction(fft_action)
+        windowedfft_action = QAction('Windowed FFT')
+        windowedfft_action.triggered.connect(self.windowedfft)
+        fft_menu.addAction(windowedfft_action)
+        livefft_action = QAction('Live FFT')
+        livefft_action.triggered.connect(self.live_fft)
+        fft_menu.addAction(livefft_action)
+        mask_action = QAction('Mask and iFFT')
+        mask_action.triggered.connect(self.mask)
+        fft_menu.addAction(mask_action)
+        
+        
+        # Analyze menu and actions
+        analyze_menu = context_menu.addMenu('Analyze')
+        setscale_action = QAction('Set Scale')
+        setscale_action.triggered.connect(self.setscale)
+        analyze_menu.addAction(setscale_action)
+        measure_action = QAction('Measure')
+        measure_action.triggered.connect(self.measure)
+        analyze_menu.addAction(measure_action)
+        measure_fft_action = QAction('Measure Diffraction/FFT')
+        measure_fft_action.triggered.connect(self.measure_fft)        
+        analyze_menu.addAction(measure_fft_action)        
+        lineprofile_action = QAction('Line Profile')
+        lineprofile_action.triggered.connect(self.lineprofile)
+        analyze_menu.addAction(lineprofile_action)
+        # gpa_action = QAction('Geometric Phase Analysis')
+        # gpa_action.triggered.connect(self.gpa)
+        # analyze_menu.addAction(gpa_action)
+        
+        
+    
+        # Filter menu and actions
+        # filter_menu = context_menu.addMenu('Filter')
+        # filtersetting_action = QAction('Filter Settings')
+        # filtersetting_action.triggered.connect(UI_TemCompanion.filter_settings)
+        # filter_menu.addAction(filtersetting_action)
+        
+        # wiener_action = QAction('Apply Wiener')
+        # wiener_action.triggered.connect(self.wiener_filter)
+        # filter_menu.addAction(wiener_action)
+        # absf_action = QAction('Apply ABSF')
+        # absf_action.triggered.connect(self.absf_filter)
+        # filter_menu.addAction(absf_action)
+        # non_linear_action = QAction('Apply Non-Linear')
+        # non_linear_action.triggered.connect(self.non_linear_filter)
+        # filter_menu.addAction(non_linear_action)
+        # bw_action = QAction('Apply Butterworth low pass')
+        # bw_action.triggered.connect(self.bw_filter)
+        # filter_menu.addAction(bw_action)
+        # gaussian_action = QAction('Apply Gaussian low pass')
+        # gaussian_action.triggered.connect(self.gaussion_filter)
+        # filter_menu.addAction(gaussian_action)
+    
+        # Info menu
+        info_menu = context_menu.addMenu('Info')
+        axes_action = QAction('Image Axes')
+        axes_action.triggered.connect(self.show_axes)
+        info_menu.addAction(axes_action)
+        info_action = QAction('View Metadata')
+        info_action.triggered.connect(self.show_info)
+        info_menu.addAction(info_action)
+        
+    
+        context_menu.exec_(self.mapToGlobal(pos))
         
         
 
@@ -4111,7 +4223,7 @@ class MetadataViewer(QMainWindow):
             # Implement custom save logic here
             if self.selected_type == 'JSON Files (*.json)':
                 with open(self.file_path,'w') as f:
-                    json.dump(self.metadata, f)
+                    json.dump(self.metadata, f, indent=4)
                     
             if self.selected_type == 'Pickle Dictionary Files (*.pkl)':
                 with open(self.file_path, 'wb') as f:
@@ -4898,12 +5010,12 @@ class BatchConverter(QWidget):
         self.openfilebox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 
         
-        self.filterButton = QtWidgets.QPushButton("Filter\nSettings",self)
-        self.filterButton.setFixedSize(80, 60)
+        self.filterButton = QtWidgets.QPushButton("Also Apply Filters",self)
+        self.filterButton.setFixedSize(160, 60)
         self.filterButton.setObjectName("filterButton")
         self.filterButton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         
-        self.convertlabel = QtWidgets.QLabel('Convert To',self)
+        self.convertlabel = QtWidgets.QLabel('Select the output format: ',self)
         
         self.convertlabel.setObjectName("ConvertTo")
         
@@ -4923,10 +5035,14 @@ class BatchConverter(QWidget):
         self.outputdirbox.setObjectName("OutPutDirBox")
         self.outputdirbox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         
-        self.checkscalebar = QtWidgets.QCheckBox("Add scale bar to images",self)
         
+        self.checkscalebar = QtWidgets.QCheckBox("Add scale bar to images",self)       
         self.checkscalebar.setChecked(True)
         self.checkscalebar.setObjectName("checkscalebar")
+        
+        self.metadatacheck = QCheckBox("Export metadata", self)
+        self.metadatacheck.setChecked(False)
+        self.metadatacheck.setObjectName("metadatacheck")
         
         self.convertButton = QtWidgets.QPushButton("Convert \nAll",self)
         self.convertButton.setFixedSize(80, 60)
@@ -4949,8 +5065,10 @@ class BatchConverter(QWidget):
         layout2_1_1.addWidget(self.convertlabel)
         layout2_1_1.addWidget(self.formatselect)
         
-        layout2_1.addLayout(layout2_1_1)
+        
+        #layout2_1.addLayout(layout2_1_1)
         layout2_1.addWidget(self.checkscalebar)
+        layout2_1.addWidget(self.metadatacheck)
         layout2.addLayout(layout2_1)
         layout2.addWidget(self.filterButton)
         layout2.addStretch(1)
@@ -4961,6 +5079,7 @@ class BatchConverter(QWidget):
         layout4.addWidget(self.convertButton)
         layout4.addWidget(self.convertbox)
         layout.addLayout(layout1)
+        layout.addLayout(layout2_1_1)
         layout.addLayout(layout2)
         layout.addLayout(layout3)
         layout.addLayout(layout4)
@@ -5073,7 +5192,7 @@ class BatchConverter(QWidget):
             cutoff_bw = float(self.filter_parameters['Bw-cutoff'])
             cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
             
-       
+            save_metadata = self.metadatacheck.isChecked()
             
             
             for file in self.files:  
@@ -5099,7 +5218,7 @@ class BatchConverter(QWidget):
                     return
                 
                 try:                
-                    convert_file(file,self.filetype, self.output_dir,self.f_type, scalebar = self.scale_bar,
+                    convert_file(file,self.filetype, self.output_dir,self.f_type, save_metadata=save_metadata, scalebar = self.scale_bar,
                                  apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
                                  apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
@@ -5115,7 +5234,7 @@ class BatchConverter(QWidget):
                     msg = "'{}.{}' has been skipped".format(getFileName(file),getFileType(file))
                     self.refresh_output(msg)
     
-            self.refresh_output("Convertion finished!") 
+            self.refresh_output("Conversion finished!") 
             
         
 
@@ -5363,11 +5482,19 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
     if f_type == 'tiff':
         # For tiff format, save directly as 16-bit with calibration, no scalebar
         # No manipulation of data but just set to int16
-        save_as_tif16(input_file, f_name, output_dir, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
+        if all(i.is_integer() for i in input_file['data'].flat):
+            dtype = 'int16'
+        else:
+            dtype = 'float32'
+        save_as_tif16(input_file, f_name, output_dir, dtype=dtype, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
 
     else:
         if f_type == 'tiff + png':
-            save_as_tif16(input_file, f_name, output_dir, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
+            if all(i.is_integer() for i in input_file['data'].flat):
+                dtype = 'int16'
+            else:
+                dtype = 'float32'
+            save_as_tif16(input_file, f_name, output_dir, dtype=dtype, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
             f_type = 'png'
             
         save_with_pil(input_file, f_name, output_dir, f_type, scalebar=scale_bar, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
@@ -5479,6 +5606,8 @@ def load_file(file, file_type):
         for img_dict in reordered_img:
             if img_dict['data'].shape == img_size:
                 stack_array.append(img_dict['data'])
+            else:
+                print(f"{img_dict['metadata']['General']['original_filename']} has been skipped due to invalid image size!")
         stack = np.stack(stack_array)
         
         stack_dict['data'] = stack
@@ -5534,7 +5663,7 @@ def rgb2gray(im):
     return gray
 
 
-def convert_file(file, filetype, output_dir, f_type, **kwargs):
+def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwargs):
     #f_type: The file type to be saved. e.g., '.tif', '.png', '.jpg' 
     #
     f_name = getFileName(file)
@@ -5559,10 +5688,22 @@ def convert_file(file, filetype, output_dir, f_type, **kwargs):
                 
                 save_file_as(img, new_name, output_dir, f_type=f_type, **kwargs)
                 
+                if save_metadata:
+                    metadata = img['metadata']
+                    try:
+                        extra_metadata = img['original_metadata']
+                        metadata.update(extra_metadata)
+                    except:
+                        pass
+                    with open(output_dir + new_name + '.json', 'w') as j_file:
+                        json.dump(metadata, j_file, indent=4)
+                
                 
         else:
             #DCFI images, convert into a folder
             new_dir = output_dir + f_name + '/'
+            if not os.path.exists(new_dir):
+                os.makedirs(new_dir)
             for img in f:
                 data = img['data']
                 metadata = img['metadata']
@@ -5574,9 +5715,20 @@ def convert_file(file, filetype, output_dir, f_type, **kwargs):
                 
                 #Modify the axes
                 axes = img['axes']
-                axes.pop(0)
-                axes[0]['index_in_array'] = 0
-                axes[1]['index_in_array'] = 1
+                if len(axes) == 3:
+                    axes.pop(0)
+                    axes[0]['index_in_array'] = 0
+                    axes[1]['index_in_array'] = 1
+                
+                if save_metadata:
+                    try:
+                        metadata_to_save = metadata.copy()
+                        extra_metadata = img['original_metadata']
+                        metadata_to_save.update(extra_metadata)
+                    except:
+                        pass
+                    with open(new_dir + title + '_metadata.json', 'w') as j_file:
+                        json.dump(metadata_to_save, j_file, indent=4)
                 
                 
                 for idx in range(stack_num):
@@ -5587,6 +5739,8 @@ def convert_file(file, filetype, output_dir, f_type, **kwargs):
                     new_name = title + '_{}'.format(idx)
                     
                     save_file_as(new_img, new_name, new_dir, f_type, **kwargs)
+                    
+                    
                     
                            
 def calculate_angle_from_3_points(A, B, C):

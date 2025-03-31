@@ -84,6 +84,9 @@ A paper is in preparation. Please also consider citing/acknowledging the [``rsci
 
 ## 6. Change history
 
+### v1.2.5
+- Improved rendering speed for interactive measuring and line profile by using blitting
+
 ### v1.2.4
 - Fixed incorrect data type handling in stack operations that causes app crash
 - Add save metadata option for batch conversion

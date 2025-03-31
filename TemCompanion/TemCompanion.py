@@ -83,6 +83,9 @@
 # Fixed incorrect data type handling in stack operations that causes app crash
 # Add save metadata option for batch conversion
 
+# 2025-03-31 v1.2.5
+# Improved interactive measuring and line profile by using blitting
+
 from PyQt5 import QtCore, QtWidgets
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout, 
@@ -131,8 +134,8 @@ from skimage.transform import warp, rescale
 
 
 
-ver = '1.2.4'
-rdate = '2025-03-19'
+ver = '1.2.5'
+rdate = '2025-03-31'
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -517,6 +520,10 @@ class PlotCanvas(QMainWindow):
         self.end_point = None
         self.active_point = None
         self.inactive_point = None
+        self.background = None
+        
+        # Connect zoom/pan events
+        self.zoom_cid = self.fig.canvas.mpl_connect('draw_event', self.update_background)
         
         self.canvas.img_idx = None  # For 3d slicing
         self.selector = None # For cropping
@@ -573,6 +580,7 @@ class PlotCanvas(QMainWindow):
         
         # Create figure and menubar
         self.create_img()
+        self.update_background()
         self.create_menubar()
         
         # Create a status bar
@@ -1277,7 +1285,12 @@ class PlotCanvas(QMainWindow):
         # Update vmin/vmax
         self.im.set_clim(vmin, vmax)    
         self.fig.tight_layout(pad=0)
+        
         self.fig.canvas.draw()
+        
+        
+    def update_background(self, event=None):
+        self.background = self.fig.canvas.copy_from_bbox(self.axes.bbox)
         
     def create_scalebar(self):
         if self.scalebar is not None:
@@ -1466,10 +1479,11 @@ class PlotCanvas(QMainWindow):
                 self.buttons[key] = None
     
     def measure(self):
-        # Turn off all active modes
+        # Turn off all active modes   
         self.cleanup()
         self.clear_cid()
         self.clear_buttons()
+        
         
         for key, value in self.mode_control.items():
             if value:
@@ -1485,6 +1499,7 @@ class PlotCanvas(QMainWindow):
         self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.on_button_release)
         # Display a message in the status bar
         self.statusBar.showMessage("Draw a line with mouse to measure. Drag with mouse if needed.")
+        
         if self.buttons['distance_finish'] is None and self.mode_control['measurement']:
             self.buttons['distance_finish'] = QPushButton('Finish', parent=self.canvas)
             self.buttons['distance_finish'].move(30, 30)
@@ -1508,6 +1523,7 @@ class PlotCanvas(QMainWindow):
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
             
+            
             self.cleanup()  # Cleanup any existing measurements
             self.clear_cid() # Disconnect all the cid and set them to None
             self.clear_buttons()         
@@ -1516,6 +1532,7 @@ class PlotCanvas(QMainWindow):
     def stop_line_profile(self):
         if self.mode_control['lineprofile']:
             self.mode_control['lineprofile'] = False
+           
             self.cleanup()  # Cleanup any existing measurements
             self.clear_cid() # Disconnect all the cid and set them to None
             
@@ -1570,7 +1587,7 @@ class PlotCanvas(QMainWindow):
             self.active_point, self.inactive_point = closer_point((event.xdata, event.ydata), self.start_point, self.end_point)
             self.motion_notify_cid = self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
             
-        self.fig.canvas.draw_idle()
+        #self.fig.canvas.draw_idle()
 
     def on_mouse_move(self, event):
         if self.line is None or self.start_point is None or self.inactive_point is None:
@@ -1583,7 +1600,11 @@ class PlotCanvas(QMainWindow):
         # Only update and redraw if the mouse movement is significant
         if abs(x1 - x0) > self.img_size[1] * 0.01 or abs(y1 - y0) > self.img_size[0] * 0.01:  # Example threshold
             self.line.set_data([x0, x1], [y0, y1])
-            self.fig.canvas.draw_idle()
+            
+            #self.fig.canvas.draw_idle()
+            self.fig.canvas.restore_region(self.background)
+            self.axes.draw_artist(self.line)
+            self.fig.canvas.blit(self.axes.bbox)
         
 
     def on_button_release(self, event):
@@ -1610,8 +1631,9 @@ class PlotCanvas(QMainWindow):
             self.text = self.axes.text(text_x, text_y, f'{distance_units:.3f} {self.units}; {angle:.2f} degrees',
                            color='yellow', rotation=angle)
             self.text.set_rotation_mode('anchor')
-            self.canvas.draw_idle()
-            #self.measure_dialog.update_measurement(distance_units, angle)
+            self.axes.draw_artist(self.text)
+            self.fig.canvas.blit(self.axes.bbox)
+            
             
         # Handle line profile
         if self.mode_control['lineprofile'] and self.start_point is not None and self.end_point is not None:
@@ -1891,8 +1913,10 @@ class PlotCanvas(QMainWindow):
         # Add marker to plot
         self.marker,  = self.axes.plot(cx, cy, 'r+', markersize=10)
         self.center_marker, = self.axes.plot(self.center[0], self.center[1], 'yx', markersize=10)
-
-        self.fig.canvas.draw_idle()
+        
+        self.axes.draw_artist(self.marker)
+        self.fig.canvas.blit(self.axes.bbox)
+        #self.fig.canvas.draw_idle()
         
         # Calculate the d-spacing
         self.distance_fft = 1 / measure_distance((cx,cy), self.center, scale=self.scale)

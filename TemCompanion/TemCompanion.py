@@ -86,6 +86,13 @@
 # 2025-03-31 v1.2.5
 # Improved interactive measuring and line profile by using blitting
 
+# 2025-05-01  v1.2.6
+# Fixed app crash when measuring on live FFT
+# Fixed windowed FFT not working on non calibrated images
+# Automatic window positioning with functions
+# Add selecting reference area for GPA
+# Add adaptive GPA with wfr algorithm
+
 from PyQt5 import QtCore, QtWidgets
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout, 
@@ -94,7 +101,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
-                             QListWidget, QListWidgetItem
+                             QListWidget, QListWidgetItem, QButtonGroup
                              )
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
 from PyQt5.QtGui import QImage, QIcon, QDropEvent, QDragEnterEvent
@@ -128,14 +135,13 @@ from hrtem_filter import filters
 from scipy.fft import fft2, fftshift, ifft2, ifftshift, fftfreq
 from skimage.filters import window
 from skimage.measure import profile_line
-from scipy.ndimage import rotate, shift
+from scipy.ndimage import rotate, shift, fourier_gaussian
 from skimage.registration import phase_cross_correlation, optical_flow_ilk
-from skimage.transform import warp, rescale
+from skimage.transform import warp, rescale, resize
 
 
-
-ver = '1.2.5'
-rdate = '2025-03-31'
+ver = '1.2.6'
+rdate = '2025-05-01'
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -463,7 +469,9 @@ See the "About" for more details. Buy me a lunch if you like it!
                 preview_im.setWindowTitle(preview_name)
                 preview_im.canvas.canvas_name = preview_name
                 self.preview_dict[preview_name] = preview_im
+                
                 self.preview_dict[preview_name].show() 
+                self.preview_dict[preview_name].position_window('center')
                 
                 print(f'Opened successfully: {f_name + ": " + title}.')
             except:
@@ -543,7 +551,8 @@ class PlotCanvas(QMainWindow):
                              'lineprofile': False,
                              'measure_fft': False,
                              'mask': False,
-                             'Live_FFT': False
+                             'Live_FFT': False,
+                             'GPA': False
             }
 
         # Connect event handlers
@@ -593,6 +602,7 @@ class PlotCanvas(QMainWindow):
         # Right click menu
         self.main_frame.setContextMenuPolicy(Qt.CustomContextMenu)
         self.main_frame.customContextMenuRequested.connect(self.show_context_menu)
+        
 
         
     def closeEvent(self, event):
@@ -615,6 +625,40 @@ class PlotCanvas(QMainWindow):
             fig_height = int(width * self.aspect_ratio)
 
         self.canvas.resize(fig_width, fig_height)
+        
+    
+    def position_window(self, pos='center'):
+        # Set the window pop up position
+        # Possible positions are:
+        # 'center': screen center
+        # 'center left': left side with the right edge on the screen center
+        # 'center right': right side with the left edge on the screen
+        # 'next to parent': the left edge next to its parent window
+        
+        # Get screen resolution
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        frame_size = self.frameGeometry()
+        
+        if pos == 'center':
+            x = (screen_geometry.width() - frame_size.width()) // 2
+            y = (screen_geometry.height() - frame_size.height()) // 2
+            
+        if pos == 'center left':
+            x = screen_geometry.width() // 2 - frame_size.width()
+            y = (screen_geometry.height() - frame_size.height()) // 2
+        
+        if pos == 'center right':
+            x = screen_geometry.width() // 2 
+            y = (screen_geometry.height() - frame_size.height()) // 2
+        if pos == 'next to parent':
+            if self.parent() is not None:
+                parent = self.parent()
+                parent_geometry = parent.frameGeometry()
+                x = parent_geometry.x() + parent_geometry.width()
+                y = parent_geometry.y()
+                
+        self.move(x, y)
+            
         
     
         
@@ -857,17 +901,6 @@ class PlotCanvas(QMainWindow):
         
 
         context_menu.exec_(self.mapToGlobal(pos))
-
-        
-
-    def print_figure(self):
-        print("Print action triggered")
-    
-    def save_figure(self):
-         print("Save action triggered")
-
-    def open_settings(self):
-        print("Settings action triggered")
         
         
         
@@ -960,6 +993,10 @@ class PlotCanvas(QMainWindow):
                 UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
                 UI_TemCompanion.preview_dict[preview_name].show()
                 
+                # Positioning
+                self.position_window('center left')
+                UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+                
                 print('Cropped {} by {}:{}, {}:{}'.format(title, int(x0), int(x1),int(y0), int(y1)))
                 
                 # Write process history in the original_metadata
@@ -1033,6 +1070,10 @@ class PlotCanvas(QMainWindow):
             UI_TemCompanion.preview_dict[preview_name].show()
             print(f'Rotated {title} by {ang} degrees counterclockwise.')
             
+            # Positioning
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+            
             # Keep the history
             UI_TemCompanion.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
             UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -1053,6 +1094,10 @@ class PlotCanvas(QMainWindow):
         
         print(f'Flipped {title} horizontally.')
         
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+        
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Flipped horizontally')
         UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -1072,6 +1117,10 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'Flipped {title} vertically.')
+        
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Flipped vertically')
@@ -1115,6 +1164,10 @@ class PlotCanvas(QMainWindow):
             UI_TemCompanion.preview_dict[preview_name].show()
             
             print(f'Resampled {title} by a factor of {rescale_factor}.')
+            
+            # Positioning
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
             
             # Keep the history
             UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Resampled by a factor of {rescale_factor}.')
@@ -1162,7 +1215,9 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'Applied Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}.')
-
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Wiener filter applied with delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(delta_wf,order_wf,cutoff_wf))
@@ -1188,6 +1243,10 @@ class PlotCanvas(QMainWindow):
         # Print results output
         msg = f'ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}.'
         print(msg)
+        
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('ABS filter applied with delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(delta_absf,order_absf,cutoff_absf))
@@ -1215,6 +1274,10 @@ class PlotCanvas(QMainWindow):
         # Print results output
         msg = f'Applied Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}.'
         print(msg)
+        
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
 
         
         # Keep the history
@@ -1237,7 +1300,11 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'Applied Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}.')
-
+        
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+        
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Butterworth filter applied with Bw-order = {}, Bw-cutoff = {}'.format(order_bw,cutoff_bw))
         UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -1257,7 +1324,10 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'Applied Gaussian filter to {title} with cutoff = {cutoff_gaussian}.')
-
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+        
         
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Gaussian filter applied with cutoff = {}'.format(cutoff_gaussian))
@@ -1455,6 +1525,7 @@ class PlotCanvas(QMainWindow):
             UI_TemCompanion.preview_dict[preview_name] = plot
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].show()
+            UI_TemCompanion.preview_dict[preview_name].position_window('center')
             # Keep the history
             if operation == 'Inverse':
                 UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Inversed signal of {signal1}')
@@ -1514,6 +1585,10 @@ class PlotCanvas(QMainWindow):
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name            
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].show()
+            
+            # Positioning
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('next to parent')
             
 
     def stop_distance_measurement(self):
@@ -1703,34 +1778,44 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
         
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('next to parent')
+        
+        
+        
     
     def windowedfft(self):
-        if self.units not in ['m','cm','mm','um','nm','pm']:
-            QMessageBox.warning(self, 'FFT', 'FFT unavailable! Make sure it is a real space image with a valid scale in real space unit!')
-        else:
-            img_dict = self.get_img_dict_from_canvas()
-            # Crop to a square if not
-            data = img_dict['data']
-            if data.shape[0] != data.shape[1]:
-                data = filters.crop_to_square(data)
-                new_size = data.shape[0]
-                for ax in img_dict['axes']:
-                    ax['size'] = new_size
-            w = window('hann', data.shape)
-            img_dict['data'] = data * w
-            # FFT calculation is handled in the PlotCanvasFFT class
-            
-            preview_name = self.canvas.canvas_name + '_Windowed FFT'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvasFFT(img_dict, parent=self)
-            UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-            UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
-            UI_TemCompanion.preview_dict[preview_name].show()
+        # if self.units not in ['m','cm','mm','um','nm','pm']:
+        #     QMessageBox.warning(self, 'FFT', 'FFT unavailable! Make sure it is a real space image with a valid scale in real space unit!')
+        # else:
+        img_dict = self.get_img_dict_from_canvas()
+        # Crop to a square if not
+        data = img_dict['data']
+        if data.shape[0] != data.shape[1]:
+            data = filters.crop_to_square(data)
+            new_size = data.shape[0]
+            for ax in img_dict['axes']:
+                ax['size'] = new_size
+        w = window('hann', data.shape)
+        img_dict['data'] = data * w
+        # FFT calculation is handled in the PlotCanvasFFT class
+        
+        preview_name = self.canvas.canvas_name + '_Windowed FFT'
+        UI_TemCompanion.preview_dict[preview_name] = PlotCanvasFFT(img_dict, parent=self)
+        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
+        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
+        UI_TemCompanion.preview_dict[preview_name].show()
+        
+        # Positioning
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('next to parent')
             
     def live_fft(self):
         self.mode_control['Live_FFT'] = True
         ax = self.canvas.figure.get_axes()[0]
         # Display a message in the status bar
-        self.statusBar.showMessage("Drag the square to ROI compute FFT. Resize if needed.")
+        self.statusBar.showMessage("Drag the square on ROI to compute FFT. Resize if needed.")
         
 
         
@@ -1759,6 +1844,10 @@ class PlotCanvas(QMainWindow):
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
+            
+            # Positioning
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('next to parent')
         
     def fft_select(self, eclick, erelease):
         # Keep the box square
@@ -1801,6 +1890,12 @@ class PlotCanvas(QMainWindow):
             self.measure_fft_dialog = MeasureFFTDialog(0, 0, real_units, self)
             self.measure_fft_dialog.setWindowFlags(self.measure_fft_dialog.windowFlags() | Qt.WindowStaysOnTopHint)
             self.measure_fft_dialog.show()
+            
+            # Positioning
+            #self.position_window('center left')
+            self.measure_fft_dialog.position_window('next to parent')
+            
+            
             self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
             # Display a message in the status bar
             self.statusBar.showMessage("Click on a spot to measure")
@@ -1997,22 +2092,57 @@ class PlotCanvas(QMainWindow):
         img['data'] = data * w
         # FFT calculation is handled in the PlotCanvasFFT class
         
+        self.mode_control['Live_FFT'] = True
+        ax = self.canvas.figure.get_axes()[0]
+        # Display a message in the status bar
+        self.statusBar.showMessage("Drag the square on the reference region. Resize if needed.")
+        
+        
+        self.selector = RectangleSelector(ax, onselect=self.gpa_select, interactive=True, useblit=True,
+                                          drag_from_anywhere=True, use_data_coordinates=True,
+                                          button=[1],ignore_event_outside=True
+                                          )
+        self.current_data = self.get_current_img_from_canvas()
+        self.live_img = copy.deepcopy(img)
+        im_x, im_y = img['data'].shape
+        fft_size = im_x
+        x_min = 0
+        x_max = x_min + fft_size
+        y_min = 0
+        y_max = y_min + fft_size
+        
+        self.selector.extents = (x_min, x_max, y_min, y_max)
+        
+        self.selector.set_active(True)
+        self.fig.canvas.draw_idle()
+        
         title = self.windowTitle()
         preview_name = self.canvas.canvas_name + "_GPA_FFT"
-        preview_fft = PlotCanvasFFT(img, parent=self)
+        preview_fft = PlotCanvasFFT(self.live_img, parent=self)
+        
         UI_TemCompanion.preview_dict[preview_name] = preview_fft
+        
         preview_fft.canvas.canvas_name = preview_name
         preview_fft.setWindowTitle('Windowed FFT of ' + title)
         preview_fft.show()
+        self.position_window('center left')
+        preview_fft.position_window('next to parent')
         
         # Add two masks on the FFT
+        # Some default values
         self.r = 10
         self.edgesmooth = 0.3
+        self.stepsize = 4
+        self.sigma = 10
         self.vmin = -0.1
         self.vmax = 0.1
+        self.algorithm = 'standard'
+        
         
         preview_fft.mask()
+        
         preview_fft.add_mask()
+        
         preview_fft.statusBar.showMessage('Drag the masks on two noncolinear strong spots. Scroll to resize')
         m1 = preview_fft.mask_list[0]
         m1.center = self.img_size[1]*0.75, self.img_size[0]*0.25
@@ -2024,6 +2154,7 @@ class PlotCanvas(QMainWindow):
         for circle in preview_fft.sym_mask_list:
             circle.remove()
         preview_fft.sym_mask_list = []
+        preview_fft.mode_control['GPA'] = True
         
         # Redefine buttons
         preview_fft.clear_buttons()
@@ -2039,7 +2170,34 @@ class PlotCanvas(QMainWindow):
         preview_fft.buttons['GPA_refine'].setGeometry(170, 80, 150, 30)
         preview_fft.buttons['GPA_refine'].clicked.connect(self.refine_mask)
         preview_fft.buttons['GPA_refine'].show()
+        preview_fft.buttons['Add_mask'] = QPushButton('Add mask', preview_fft)
+        preview_fft.buttons['Add_mask'].setGeometry(310, 80, 100, 30)
+        preview_fft.buttons['Add_mask'].clicked.connect(preview_fft.add_mask)
+        preview_fft.buttons['Add_mask'].show()
+        preview_fft.buttons['Remove_mask'] = QPushButton('Remove mask', preview_fft)
+        preview_fft.buttons['Remove_mask'].setGeometry(400, 80, 110, 30)
+        preview_fft.buttons['Remove_mask'].clicked.connect(preview_fft.remove_mask)
+        preview_fft.buttons['Remove_mask'].show()
         preview_fft.canvas.draw_idle()
+        
+    def gpa_select(self, eclick, erelease):
+        # Keep the box square
+        x_min, x_max, y_min, y_max = eclick.xdata, erelease.xdata, eclick.ydata, erelease.ydata
+        x_min = int(x_min)
+        x_max = int(x_max)
+        y_min = int(y_min)
+        y_max = int(y_max)
+        dx = x_max - x_min
+        dy = y_max - y_min
+        if dx != dy:
+            d = min(dx, dy)
+            x_max = x_min + d
+            y_max = y_min + d
+            self.selector.extents = (x_min, x_max, y_min, y_max)
+        self.live_img['data'] = self.current_data[y_min:y_max,x_min:x_max]
+        # Update the FFT
+        preview_name = self.canvas.canvas_name + "_GPA_FFT"
+        UI_TemCompanion.preview_dict[preview_name].update_img(self.live_img['data'], gpa=True, windowed=True)
         
     def run_gpa(self):
         img = self.get_img_dict_from_canvas()
@@ -2050,12 +2208,22 @@ class PlotCanvas(QMainWindow):
             for ax in img['axes']:
                 ax['size'] = new_size
         
-        # Get the center and radius of the two masks
+        # Get the center and radius of the masks
         preview_name_fft = self.canvas.canvas_name + "_GPA_FFT"
-        g1 = UI_TemCompanion.preview_dict[preview_name_fft].mask_list[0].center
-        g2 = UI_TemCompanion.preview_dict[preview_name_fft].mask_list[1].center
+        g = [m.center for m in UI_TemCompanion.preview_dict[preview_name_fft].mask_list]
+        if len(g) < 2:
+            QMessageBox.warning(self, 'Run GPA', 'At least 2 g vectors are needed!')
+            return
+        
+        # g1 = UI_TemCompanion.preview_dict[preview_name_fft].mask_list[0].center
+        # g2 = UI_TemCompanion.preview_dict[preview_name_fft].mask_list[1].center
         r = max(UI_TemCompanion.preview_dict[preview_name_fft].mask_list[0].radius, UI_TemCompanion.preview_dict[preview_name_fft].mask_list[1].radius)
-        exx, eyy, exy, oxy = calc_strains(data, g1, g2, r, edge_blur=self.edgesmooth)
+        
+        exx, eyy, exy, oxy = GPA(data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
+        # if self.algorithm == 'standard':
+        #     exx, eyy, exy, oxy = simpleGPA(data, g1, g2, r, edge_blur=self.edgesmooth)
+        # elif self.algorithm == 'adaptive':
+        #     exx, eyy, exy, oxy = adaptiveGPA(data, g1, g2, sigma=r, window_size=r, step=int(r/5))
         
         # Display the strain tensors
         exx_dict = copy.deepcopy(img)
@@ -2065,7 +2233,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_exx].setWindowTitle('Epsilon xx')
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.canvas_name = preview_name_exx
         UI_TemCompanion.preview_dict[preview_name_exx].im.set_clim(self.vmin, self.vmax)
-        UI_TemCompanion.preview_dict[preview_name_exx].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_exx].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_exx].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_exx].show()
         
@@ -2076,7 +2244,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_eyy].setWindowTitle('Epsilon yy')
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.canvas_name = preview_name_eyy
         UI_TemCompanion.preview_dict[preview_name_eyy].im.set_clim(self.vmin, self.vmax)
-        UI_TemCompanion.preview_dict[preview_name_eyy].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_eyy].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_eyy].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_eyy].show()
         
@@ -2087,7 +2255,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_exy].setWindowTitle('Epsilon xy')
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.canvas_name = preview_name_exy
         UI_TemCompanion.preview_dict[preview_name_exy].im.set_clim(self.vmin, self.vmax)
-        UI_TemCompanion.preview_dict[preview_name_exy].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_exy].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_exy].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_exy].show()
         
@@ -2098,7 +2266,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_oxy].setWindowTitle('Omega')
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.canvas_name = preview_name_oxy
         UI_TemCompanion.preview_dict[preview_name_oxy].im.set_clim(self.vmin, self.vmax)
-        UI_TemCompanion.preview_dict[preview_name_oxy].im.set_cmap('hot')
+        UI_TemCompanion.preview_dict[preview_name_oxy].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_oxy].create_colorbar()
         UI_TemCompanion.preview_dict[preview_name_oxy].show()
     
@@ -2106,12 +2274,17 @@ class PlotCanvas(QMainWindow):
         # Open a dialog to take settings
         preview_name = self.canvas.canvas_name + '_GPA_FFT'
         r = max(UI_TemCompanion.preview_dict[preview_name].mask_list[0].radius, UI_TemCompanion.preview_dict[preview_name].mask_list[1].radius)
-        dialog = gpaSettings(int(r), self.edgesmooth, vmin=self.vmin, vmax=self.vmax, parent=self)
+        step = max(r*2//5, 2)
+        dialog = gpaSettings(int(r), self.edgesmooth, step, self.sigma, self.algorithm, vmin=self.vmin, vmax=self.vmax, parent=self)
         if dialog.exec_() == QDialog.Accepted:
             self.r = dialog.masksize
             self.edgesmooth = dialog.edgesmooth
+            self.stepsize = dialog.stepsize
+            self.sigma = dialog.sigma
             self.vmin = dialog.vmin
             self.vmax = dialog.vmax
+            self.algorithm = dialog.gpa
+            
             
         # Update masks 
         for mask in UI_TemCompanion.preview_dict[preview_name].mask_list:
@@ -2234,6 +2407,9 @@ class PlotCanvas3d(PlotCanvas):
         
         print(f'Flipped the entire stack of {title} horizontally.')
         
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+        
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Flipped horizontally')
         UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -2253,6 +2429,8 @@ class PlotCanvas3d(PlotCanvas):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'Flipped the entire stack of {title} vertically.')
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Flipped vertically')
@@ -2314,6 +2492,8 @@ class PlotCanvas3d(PlotCanvas):
                 UI_TemCompanion.preview_dict[preview_name].show()
                 
                 print(f'Cropped the entire stack of {title} by {int(x0)}:{int(x1)}, {int(y0)}:{int(y1)}.')
+                self.position_window('center left')
+                UI_TemCompanion.preview_dict[preview_name].position_window('center right')
                 
                 # Write process history in the original_metadata
                 UI_TemCompanion.preview_dict[preview_name].process['process'].append('Cropped by {}:{}, {}:{} from the original image'.format(int(x0),int(x1),int(y0),int(y1)))
@@ -2364,6 +2544,8 @@ class PlotCanvas3d(PlotCanvas):
             UI_TemCompanion.preview_dict[preview_name].show()
             
             print(f'Rotated the entire stack of {title} by {ang} degrees counterclockwise.')
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
             
             # Keep the history
             UI_TemCompanion.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
@@ -2406,6 +2588,8 @@ class PlotCanvas3d(PlotCanvas):
             UI_TemCompanion.preview_dict[preview_name].show()
             
             print(f'Resampled {title} by a factor of {rescale_factor}.')
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
             
             # Keep the history
             UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Resampled by a factor of {rescale_factor}.')
@@ -2438,6 +2622,8 @@ class PlotCanvas3d(PlotCanvas):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'{title} has been sorted.')
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
         # Keep the history
         UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Sorted by the order of {sorted_order}.')
@@ -2469,7 +2655,7 @@ class PlotCanvas3d(PlotCanvas):
                     w = window('hann', fixed.shape)
                     fixed = fixed * w
                     moving = moving * w
-                drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling, normalization=None)
+                drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling,     Imalization=None)
                 drift_stack.append(drift)
             # Shift the images to align the stack
             drift = np.array([0,0])
@@ -2522,6 +2708,9 @@ class PlotCanvas3d(PlotCanvas):
             UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             UI_TemCompanion.preview_dict[preview_name].show()
             
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+            
             # Write process history in the original_metadata
             UI_TemCompanion.preview_dict[preview_name].process['process'].append('Aligned by Phase Cross-Correlation')
             UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -2569,6 +2758,9 @@ class PlotCanvas3d(PlotCanvas):
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].show()
         
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+        
         # Write process history in the original_metadata
         UI_TemCompanion.preview_dict[preview_name].process['process'].append('Aligned by Optical Flow iLK')
         UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -2587,6 +2779,8 @@ class PlotCanvas3d(PlotCanvas):
         UI_TemCompanion.preview_dict[preview_name].show()
         
         print(f'Stack of {title} has been integrated.')
+        self.position_window('center left')
+        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
         # Keep the history
         # UI_TemCompanion.preview_dict[preview_name].process['process'].append('Rotated by {} degrees from the original image'.format(ang))
@@ -2780,43 +2974,57 @@ class PlotCanvasFFT(PlotCanvas):
             self.create_scalebar()
         self.fig.tight_layout(pad=0)
         
-    def update_img(self, real_data):
+    def update_img(self, real_data, gpa=False, windowed=False):
         # Compute fft from real_data and update the display and scale
-        fft_data = fftshift(fft2(real_data))
+        if windowed:
+            w = window('hann', real_data.shape)
+            real_data = real_data * w
+        fft_data = fftshift(fft2(real_data))        
         fft_mag = np.abs(fft_data)
-        self.canvas.data['fft'] = fft_data
         self.canvas.data['data'] = fft_mag
-        # Update the units
-        self.canvas.data['axes'][0]['units'] = self.real_units
-        self.canvas.data['axes'][1]['units'] = self.real_units
-        self.canvas.data['axes'][0]['scale'] = self.real_scale
-        self.canvas.data['axes'][1]['scale'] = self.real_scale
-        # Update the units and scale
-        self.set_scale_units()
-        # Update the center
-        self.center = fft_mag.shape[1]//2, fft_mag.shape[0]//2
+        self.canvas.data['fft'] = fft_data
         
-        # Clear the image canvas
+        # For GPA use, resize the FFT to the original
+        if gpa:
+            fft_mag = resize(fft_mag, self.img_size)
+            self.im._A = fft_mag
+            vmin, vmax = np.percentile(fft_mag, (30,99.9))
+            self.im.set_clim(vmin, vmax)
         
-        self.axes.clear()
-        self.marker = None
-        self.center_marker = None
-        self.scalebar = None
+        else:
+            # Update the units
+            self.canvas.data['axes'][0]['units'] = self.real_units
+            self.canvas.data['axes'][1]['units'] = self.real_units
+            self.canvas.data['axes'][0]['scale'] = self.real_scale
+            self.canvas.data['axes'][1]['scale'] = self.real_scale
+            # Update the units and scale
+            self.set_scale_units()
+            # Update the center
+            self.center = fft_mag.shape[1]//2, fft_mag.shape[0]//2
+            
+            # Clear the image canvas
         
-        # Reset the measurement marker if exists
-        if self.marker is not None:
+            self.axes.clear()
             self.marker = None
+            self.center_marker = None
+            self.scalebar = None
+            self.line = None
+            self.text = None
         
-        vmin, vmax = np.percentile(fft_mag, (30,99.9))
+        # # Reset the measurement marker if exists
+        # if self.marker is not None:
+        #     self.marker = None
         
-        self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
-        self.axes.set_axis_off()
-        #Scale bar with inverse unit        
-        if self.scalebar_settings['scalebar']:
-            self.create_scalebar()
-        self.fig.tight_layout(pad=0)
+            vmin, vmax = np.percentile(fft_mag, (30,99.9))
+            
+            self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
+            self.axes.set_axis_off()
+            #Scale bar with inverse unit        
+            if self.scalebar_settings['scalebar']:
+                self.create_scalebar()
+            self.fig.tight_layout(pad=0)
         
-       
+        self.update_background()
         self.canvas.draw_idle()
         
     
@@ -2890,33 +3098,7 @@ class PlotCanvasFFT(PlotCanvas):
         lineprofile_action = QAction('Line Profile')
         lineprofile_action.triggered.connect(self.lineprofile)
         analyze_menu.addAction(lineprofile_action)
-        # gpa_action = QAction('Geometric Phase Analysis')
-        # gpa_action.triggered.connect(self.gpa)
-        # analyze_menu.addAction(gpa_action)
         
-        
-    
-        # Filter menu and actions
-        # filter_menu = context_menu.addMenu('Filter')
-        # filtersetting_action = QAction('Filter Settings')
-        # filtersetting_action.triggered.connect(UI_TemCompanion.filter_settings)
-        # filter_menu.addAction(filtersetting_action)
-        
-        # wiener_action = QAction('Apply Wiener')
-        # wiener_action.triggered.connect(self.wiener_filter)
-        # filter_menu.addAction(wiener_action)
-        # absf_action = QAction('Apply ABSF')
-        # absf_action.triggered.connect(self.absf_filter)
-        # filter_menu.addAction(absf_action)
-        # non_linear_action = QAction('Apply Non-Linear')
-        # non_linear_action.triggered.connect(self.non_linear_filter)
-        # filter_menu.addAction(non_linear_action)
-        # bw_action = QAction('Apply Butterworth low pass')
-        # bw_action.triggered.connect(self.bw_filter)
-        # filter_menu.addAction(bw_action)
-        # gaussian_action = QAction('Apply Gaussian low pass')
-        # gaussian_action.triggered.connect(self.gaussion_filter)
-        # filter_menu.addAction(gaussian_action)
     
         # Info menu
         info_menu = context_menu.addMenu('Info')
@@ -2988,13 +3170,15 @@ class PlotCanvasFFT(PlotCanvas):
             self.active_mask.set_color('orange')
         
         # Add another circle at symmetric position
-        sym_mask = Circle((self.img_size[0]-x0,self.img_size[1]-y0), radius=r0, color='yellow', fill=False)
-        self.sym_mask_list.append(sym_mask)
-        self.axes.add_artist(sym_mask)
-        self.active_mask = mask
-        
-        self.active_idx = self.mask_list.index(mask)
+        if self.mode_control['GPA'] is not True:
+            sym_mask = Circle((self.img_size[0]-x0,self.img_size[1]-y0), radius=r0, color='yellow', fill=False)
+            self.sym_mask_list.append(sym_mask)
+            self.axes.add_artist(sym_mask)
+            self.active_mask = mask
+            
+            self.active_idx = self.mask_list.index(mask)
         self.canvas.draw_idle()
+
         
     def remove_mask(self):
         if self.active_mask is not None:
@@ -3116,6 +3300,9 @@ class PlotCanvasFFT(PlotCanvas):
             UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
             UI_TemCompanion.preview_dict[preview_name].show()
             
+            self.position_window('center left')
+            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+            
             # Keep the history
             UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'IFFT from {mask_center}')
             UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
@@ -3159,6 +3346,38 @@ class PlotCanvasLineProfile(QMainWindow):
             self.buttons = {'measure_clear': None}
             
             self.linewidth = 1
+        
+        def position_window(self, pos='center'):
+            # Set the window pop up position
+            # Possible positions are:
+            # 'center': screen center
+            # 'center left': left side with the right edge on the screen center
+            # 'center right': right side with the left edge on the screen
+            # 'next to parent': the left edge next to its parent window
+            
+            # Get screen resolution
+            screen_geometry = QApplication.primaryScreen().availableGeometry()
+            frame_size = self.frameGeometry()
+            
+            if pos == 'center':
+                x = (screen_geometry.width() - frame_size.width()) // 2
+                y = (screen_geometry.height() - frame_size.height()) // 2
+                
+            if pos == 'center left':
+                x = screen_geometry.width() // 2 - frame_size.width()
+                y = (screen_geometry.height() - frame_size.height()) // 2
+            
+            if pos == 'center right':
+                x = screen_geometry.width() // 2 
+                y = (screen_geometry.height() - frame_size.height()) // 2
+            if pos == 'next to parent':
+                if self.parent() is not None:
+                    parent = self.parent()
+                    parent_geometry = parent.frameGeometry()
+                    x = parent_geometry.x() + parent_geometry.width()
+                    y = parent_geometry.y()
+                    
+            self.move(x, y)
             
         def create_menubar(self):
             menubar = self.menuBar()
@@ -3176,7 +3395,7 @@ class PlotCanvasLineProfile(QMainWindow):
             close_action.setShortcut('ctrl+x')
             close_action.triggered.connect(self.close)
             file_menu.addAction(close_action)
-            close_all_action = QAction('$Close All', self)
+            close_all_action = QAction('&Close All', self)
             close_all_action.setShortcut('ctrl+shift+x')
             close_all_action.triggered.connect(self.close_all)
             file_menu.addAction(close_all_action)
@@ -3458,7 +3677,7 @@ class CustomSettingsDialog(QDialog):
                       'Wistia', 'hot',
                      'Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Lime', 'Purple',
                      'Magenta', 'Pink', 'Blue', 'Maize',
-                     'jet', 'rainbow', 'turbo', 'hsv'
+                     'jet', 'rainbow', 'turbo', 'hsv', 'seismic'
                      ]
         self.cmap_combobox.addItems(colormaps)
         h_layout_cmap.addWidget(self.cmap_label)
@@ -4544,22 +4763,65 @@ class MeasureFFTDialog(QDialog):
     def closeEvent(self, event):
          self.parent().stop_fft_measurement()
          
+    def position_window(self, pos='center'):
+        # Set the window pop up position
+        # Possible positions are:
+        # 'center': screen center
+        # 'center left': left side with the right edge on the screen center
+        # 'center right': right side with the left edge on the screen
+        # 'next to parent': the left edge next to its parent window
+        
+        # Get screen resolution
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        frame_size = self.geometry()
+        
+        if pos == 'center':
+            x = (screen_geometry.width() - frame_size.width()) // 2
+            y = (screen_geometry.height() - frame_size.height()) // 2
+            
+        if pos == 'center left':
+            x = screen_geometry.width() // 2 - frame_size.width()
+            y = (screen_geometry.height() - frame_size.height()) // 2
+        
+        if pos == 'center right':
+            x = screen_geometry.width() // 2 
+            y = (screen_geometry.height() - frame_size.height()) // 2
+        if pos == 'next to parent':
+            if self.parent() is not None:
+                parent = self.parent()
+                parent_geometry = parent.frameGeometry()
+                x = parent_geometry.x() + parent_geometry.width()
+                y = parent_geometry.y()
+                
+        self.move(x, y)
+         
 #==============GPA setting dialog===================================
 class gpaSettings(QDialog):
-    def __init__(self, masksize, edgesmooth, vmin=-0.1, vmax=0.1, parent=None):
+    def __init__(self, masksize, edgesmooth, step, sigma, algorithm, vmin=-0.1, vmax=0.1, parent=None):
         super().__init__(parent)
         self.setWindowTitle('GPA Settings')
         self.masksize = masksize
         self.edgesmooth = edgesmooth
+        self.stepsize = step
+        self.sigma = sigma
         self.vmin = vmin
         self.vmax = vmax
+        self.gpa = algorithm
         
         layout = QVBoxLayout()
+        self.standard_radio = QRadioButton("Standard GPA")
+        self.standard_radio.toggled.connect(self.enable_settings)
         
+        self.adaptive_radio = QRadioButton("Adaptive GPA (SLOW)")
+        
+        layout.addWidget(self.standard_radio)
+        
+        #self.standardGroup = QGroupBox('Standard GPA Parameters')
         masksize_layout = QHBoxLayout()
         masksize_label = QLabel("Mask radius (px):")
         self.masksize_input = QLineEdit()
         self.masksize_input.setText(str(self.masksize))
+        self.masksize_input.setToolTip("The extent around the k vectors used to calculate strains. Smaller mask gives smoothier stain maps but loses spatial resolution and vice versa.")
         self.masksize_input.setFixedSize(50, 20)
         self.masksize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         masksize_layout.addWidget(masksize_label)
@@ -4570,11 +4832,61 @@ class gpaSettings(QDialog):
         edgesmooth_label = QLabel("Edge smooth (0-1):")
         self.edgesmooth_input = QLineEdit()
         self.edgesmooth_input.setText(str(self.edgesmooth))
+        self.edgesmooth_input.setToolTip("The ratio of the outside edge that is smoothed with a cosine function. This is to reduce the edge effect.")
         self.edgesmooth_input.setFixedSize(50, 20)
         self.edgesmooth_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         edgesmooth_layout.addWidget(edgesmooth_label)
         edgesmooth_layout.addWidget(self.edgesmooth_input)
         layout.addLayout(edgesmooth_layout)
+        
+        layout.addWidget(self.adaptive_radio)
+        windowsize_layout = QHBoxLayout()
+        windowsize_lable = QLabel("Window size (px):")
+        self.windowsize_input = QLineEdit()
+        self.windowsize_input.setFixedSize(50, 20)
+        self.windowsize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.windowsize_input.setText(str(self.masksize))
+        self.windowsize_input.setToolTip('Window size used for the WFR. The algorithm searches the max value of windowed Fourier transform, "ridge", around the selected k vectors.')
+        windowsize_layout.addWidget(windowsize_lable)
+        windowsize_layout.addWidget(self.windowsize_input)
+        layout.addLayout(windowsize_layout)
+        
+        step_layout = QHBoxLayout()
+        step_lable = QLabel("Step size (px):")
+        self.step_input = QLineEdit()
+        step = max(self.masksize*2//5, 2)
+        self.step_input.setText(str(step))
+        self.step_input.setFixedSize(50, 20)
+        self.step_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.step_input.setToolTip('Step for the ridge search in WFR algorithm. Smaller step size will significantly increase the processing time.')
+        step_layout.addWidget(step_lable)
+        step_layout.addWidget(self.step_input)
+        layout.addLayout(step_layout)
+        
+        sigma_layout = QHBoxLayout()
+        sigma_lable = QLabel("Sigma:")
+        self.sigma_input = QLineEdit()
+        self.sigma_input.setText(str(self.sigma))
+        self.sigma_input.setFixedSize(50, 20)
+        self.sigma_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.sigma_input.setToolTip('The sigma for the Gaussian window used for the Windowed Fourier Transform.')
+        sigma_layout.addWidget(sigma_lable)
+        sigma_layout.addWidget(self.sigma_input)
+        layout.addLayout(sigma_layout)
+        
+        # solver_layout = QHBoxLayout()
+        # solver_label = QLabel("Number of g vectors:")
+        # self.solver_2g = QRadioButton("2")
+        # self.solver_2g.setChecked(True)
+        # self.solver_3g = QRadioButton("3")
+        # solver_group = QButtonGroup(self)
+        # solver_group.addButton(self.solver_2g)
+        # solver_group.addButton(self.solver_3g)
+        # solver_layout.addWidget(solver_label)
+        # solver_layout.addWidget(self.solver_2g)
+        # solver_layout.addWidget(self.solver_3g)
+        # layout.addLayout(solver_layout)
+        
         
         range_layout = QVBoxLayout()
         range_label = QLabel("Limit display range:")
@@ -4608,22 +4920,28 @@ class gpaSettings(QDialog):
         
         self.setLayout(layout)
         
+        if self.gpa == 'standard':
+            self.standard_radio.setChecked(True)
+        else:
+            self.adaptive_radio.setChecked(True)
     
+    def enable_settings(self):
+        standardgroup = [self.masksize_input, self.edgesmooth_input]
+        adaptivegroup = [self.windowsize_input, self.step_input, self.sigma_input]
+        if self.standard_radio.isChecked():
+            for line in standardgroup:
+                line.setEnabled(True)
+            for line in adaptivegroup:
+                line.setEnabled(False)
+        else:
+            for line in standardgroup:
+                line.setEnabled(False)
+            for line in adaptivegroup:
+                line.setEnabled(True)
+            
         
     def handle_ok(self):
-        try:
-            self.masksize = abs(int(self.masksize_input.text()))
-        except:
-            QMessageBox.warning(self, 'GPA Settings', 'Mask size must be integer!')
-            return
-        try:
-            self.edgesmooth = float(self.edgesmooth_input.text())
-        except:
-            QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
-            return  
-        if self.edgesmooth < 0 or self.edgesmooth > 1:
-            QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
-            return
+        
         try:
             self.vmin = float(self.min_input.text())
             self.vmax = float(self.max_input.text())
@@ -4633,6 +4951,45 @@ class gpaSettings(QDialog):
         if self.vmin > self.vmax:
             QMessageBox.warning(self, 'GPA Settings', 'Invalid display range!')
             return
+        
+        if self.standard_radio.isChecked():
+            self.gpa = 'standard'
+            try:
+                self.masksize = abs(int(self.masksize_input.text()))
+            except:
+                QMessageBox.warning(self, 'GPA Settings', 'Mask size must be integer!')
+                return
+            try:
+                self.edgesmooth = float(self.edgesmooth_input.text())
+            except:
+                QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
+                return  
+            if self.edgesmooth < 0 or self.edgesmooth > 1:
+                QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
+                return
+        
+        if self.adaptive_radio.isChecked():
+            self.gpa = 'adaptive'
+            try:
+                self.masksize = abs(int(self.windowsize_input.text()))
+            except:
+                QMessageBox.warning(self, 'GPA Settings', 'Window size must be integer!')
+                return
+            try:
+                self.stepsize = int(self.step_input.text())
+            except:
+                QMessageBox.warning(self, 'GPA Settings', 'Step size must be integer!')
+                return
+            try:
+                self.sigma = abs(float(self.sigma_input.text()))
+            except:
+                QMessageBox.warning(self, 'GPA Settings', 'Sigma must be a possitive number!')
+                return 
+            
+        # if self.solver_2g.isChecked():
+        #     self.n_masks = 2
+        # if self.solver_3g.isChecked():
+        #     self.n_masks = 3
         
         self.accept()
         
@@ -4883,6 +5240,7 @@ class DPCDialog(QDialog):
         plot.canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name] = plot
         UI_TemCompanion.preview_dict[preview_name].show()
+        UI_TemCompanion.preview_dict[preview_name].position_window('center')
         
         # Keep the history
         if self.from4_img.isChecked():
@@ -4907,6 +5265,7 @@ class DPCDialog(QDialog):
         plot.canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name] = plot
         UI_TemCompanion.preview_dict[preview_name].show()
+        UI_TemCompanion.preview_dict[preview_name].position_window('center')
         
         # Keep the history
         if self.from4_img.isChecked():
@@ -5853,25 +6212,46 @@ def line(p1, p2):
     k = A /B   
     return k, -k * p1[0] + p1[1]    
 
-# Simple GPA function
-def calc_strains(img, g1, g2, r, edge_blur=0.3):
-    """
-    Calculate strain with geometric phase analysis (gpa) [1].
-    Some codes adopted from TEMMETA package
 
-    Parameters
-    ----------
-    img : numpy array of realspace image
-    g1 : tuple
-        coordinates of mask 1 in FFT (pixel units)
-    g2 : tuple
-        coordinates of mask 2 in FFT (pixel units)
+
+#===== GPA functions ==================================
+# Conventional GPA
+def get_phase_fft(img, k, r, edge_blur=0.3):
+    '''Calculate phase from masked iFFT image
+    Bansed on Hÿtch 1998
     r : int
         Size of the circular mask to place over the reflection
     edge_blur : float, optional
         Fraction of pixels at the edge that will be smoothed by a cosine function.
-        edge_pixel = r * edge_blur
-
+    '''
+    im_y, im_x = img.shape
+    cx, cy = im_x // 2, im_y // 2
+    x = np.arange(im_x)
+    y = np.arange(im_y)
+    X, Y = np.meshgrid(x, y)
+    
+    # calculate the fft and mask only on one side
+    fft = fftshift(fft2(img)) 
+    kx, ky = k
+    # need to calculate the coordinates for mask
+    x = int(kx * im_x + cx)
+    y = int(ky * im_y + cy)
+    m = create_mask((im_y, im_x), [(x, y)], [r], edge_blur)
+    fft_m = fft * m
+    # calculate complex valued ifft
+    ifft_m = ifft2(ifftshift(fft_m))
+    # raw phase 
+    phifft_m = np.angle(ifft_m)
+    # corrected phase  
+    P = phifft_m - 2*np.pi*(kx*X+ky*Y)
+    return P
+    
+    
+def calc_strains(P, ks):
+    """
+    Calculate strain with two g vectors and phases
+    P : numpy array of phase image (2,m,n)
+    ks: k vectors (2, 2)
     Returns
     -------
     im_exx : numpy array
@@ -5882,64 +6262,29 @@ def calc_strains(img, g1, g2, r, edge_blur=0.3):
         Epsilon_yx = (epsilon_yx), the shear strain
     im_oxy : numpy array
         omega_xy = -omega_yx, the rotation component
-
-    References
-    ----------
-    [1] M. Hÿtch, E. Snoeck, R. Kilaas, Ultramicroscopy 74 (1998) 131–146.
     """
-    # calculate the fft and mask only on one side
-    x1, y1 = g1
-    x2, y2 = g2
-    
-    im_y, im_x = img.shape
-    
-    
-    fft = fftshift(fft2(img))
-    m1 = create_mask((im_y, im_x), [(x1, y1)], [r], edge_blur)
-    m2 = create_mask((im_y, im_x), [(x2, y2)], [r], edge_blur)
-    
-    fft_m1 = fft * m1
-    fft_m2 = fft * m2
-    # calculate complex valued ifft
-    ifft_m1 = ifft2(ifftshift(fft_m1))
-    ifft_m2 = ifft2(ifftshift(fft_m2))
-    # raw phase images
-    phifft_m1 = np.angle(ifft_m1)
-    phifft_m2 = np.angle(ifft_m2)
-    # calculate g's in 1/pixel units
-    cx, cy = im_x // 2, im_y // 2
-    
-    gx1 = (x1 - cx) / im_x
-    gy1 = (y1 - cy) / im_y
-    gx2 = (x2 - cx) / im_x
-    gy2 = (y2 - cy) / im_y
-    x = np.arange(im_x)
-    y = np.arange(im_y)
-    X, Y = np.meshgrid(x, y)
+    # Calculate the phase derivatives
 
-    # corrected phase images 
-    P1 = phifft_m1 - 2*np.pi*(gx1*X+gy1*Y)
-    P2 = phifft_m2 - 2*np.pi*(gx2*X+gy2*Y)
-    # calculate derivatives
-    dP1dy = calc_derivative(P1, 0) 
-    dP1dx = calc_derivative(P1, 1)
-    dP2dy = calc_derivative(P2, 0)
-    dP2dx = calc_derivative(P2, 1)
+    dP1dy = calc_derivative(P[0,:,:], 0) 
+    dP1dx = calc_derivative(P[0,:,:], 1)
+    dP2dy = calc_derivative(P[1,:,:], 0)
+    dP2dx = calc_derivative(P[1,:,:], 1)
     
-    # calculate strains, first we need lattice points a1 and a2
-    G = np.array([[gx1, gx2],
-                  [gy1, gy2]])
-    [a1x, a2x], [a1y, a2y] = np.linalg.inv(G.T)
+    # calculate lattice points a1 and a2    
+    [a1x, a2x], [a1y, a2y] = np.linalg.inv(ks)
+    
     # the strain components
     exx = -1/(2*np.pi)*(a1x*dP1dx+a2x*dP2dx)
     exy = -1/(2*np.pi)*(a1x*dP1dy+a2x*dP2dy)
     eyx = -1/(2*np.pi)*(a1y*dP1dx+a2y*dP2dx)
     eyy = -1/(2*np.pi)*(a1y*dP1dy+a2y*dP2dy)
     
-    exy = (exy + eyx) / 2
+    Exy = (exy + eyx) / 2
     oxy = (exy - eyx) / 2
 
-    return exx, eyy, exy, oxy
+    return exx, eyy, Exy, oxy
+
+
 
 def create_mask(img_size, center, radius, edge_blur=0.3):
     '''
@@ -5978,7 +6323,7 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
 
     return mask
 
-# Refine the center of the g with center of mass
+
 def refine_center(img, g, r):
     '''
     Refine the g vector center with center of mass
@@ -6015,6 +6360,156 @@ def calc_derivative(arr, axis):
     #nd = np.min(d1.shape)
     dP1x = s1 * d1
     return dP1x.imag
+
+
+
+# Least square fit to solve the strain tensors with at least two g vectors
+def extract_strain_lstsqr(g, dPdx, dPdy):
+    '''g: n x 2 array of g vectors, n >= 2
+    dPdx, dPdy: n x m x m array of corresponding phase derivatives
+    solve exx, exy, eyx, oxy with least square
+    '''
+    n = g.shape[0]
+    m = dPdx.shape[1]
+    
+    # Initialize solutions
+    Exx = np.zeros((m,m))
+    Exy = np.zeros((m,m))
+    Eyx = np.zeros((m,m))
+    Eyy = np.zeros((m,m))
+    
+    # Solve elemental wise
+    for i in range(m):
+        for j in range(m):
+            # Construct linear equations
+            A = np.zeros((2 * n, 4))  # 4 unknowns: Exx_ij, Exy_ij, Eyx_ij, Oxy_ij
+            b = np.zeros(2 * n)
+            
+            for k in range(n):
+                gx, gy = g[k]
+
+                # First equation: gx * Exx_ij + gy * Exy_ij = -1/(2pi) * dP_dx[k, i, j]
+                A[2 * k, 0] = gx  # coefficient for Exx_ij
+                A[2 * k, 1] = gy   # coefficient for Exy_ij
+                b[2 * k] = -1 / (2 * np.pi) * dPdx[k, i, j]
+
+                # Second equation: gx * Eyx_ij + gy * Oxy_ij = -1/(2pi) * dP_dy[k, i, j]
+                A[2 * k + 1, 2] = gx  # coefficient for Eyx_ij
+                A[2 * k + 1, 3] = gy  # coefficient for Eyy_ij
+                b[2 * k + 1] = -1 / (2 * np.pi) * dPdy[k, i, j]
+        
+            # Solve least squares for this (i,j) element
+            x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+            Exx[i, j], Exy[i, j], Eyx[i, j], Eyy[i, j] = x
+    
+    exy = (Exy + Eyx) / 2
+    Oxy = (Eyx - Exy) /2
+            
+    return Exx, Eyy, exy, Oxy
+
+# Adaptive GPA with Windowed Fourier Ridge phase retrieval
+def get_phase_wfr(img, g, sigma, window_size, step):
+    '''
+    Calculate the phase from HRTEM image with a given g vector
+    using the Windowed Fourier ridge technique.
+    Algorithm explained in K Qian, Optics and Lasers in Engineering 45.2 (2007): 304-317.
+    https://doi.org/10.1016/j.optlaseng.2005.10.012
+    Codes adopted from pyGPA originated from:
+    T.A. de Jong et al. Nat Commun 13, 70 (2022)
+    https://doi.org/10.1038/s41467-021-27646-1
+    Parameters:
+    img: image array
+    g: g vector coordinates in its FFT
+    sigma: for Gaussian filter
+    window_size: window size for wfr algorithm, in pixel
+    step: step size in pixel for wfr
+    Returns: phase as numpy array with the same size of img'''
+    
+    # Compute k vectors
+    im_y, im_x = img.shape
+    kx, ky = g
+    xx, yy = np.meshgrid(np.arange(im_x), np.arange(im_y))
+    
+    # Compute window size and step
+    kw = window_size * 1 / im_x
+    kstep = step * 1 / im_x
+    
+    g = {'phase': np.zeros_like(img),
+         'r': np.zeros_like(img),
+         }
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        for wy in np.arange(ky-kw, ky+kw, kstep):
+            multiplier = np.exp(np.pi*2j * (xx*wx + yy*wy))
+            X = fft2(img * multiplier)
+            sf = ifft2(fourier_gaussian(X, sigma=sigma))           
+            sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
+            t = np.abs(sf) > g['r']
+            g['r'][t] = np.abs(sf)[t]
+            g['phase'][t] = np.angle(sf)[t]
+    phase = -g['phase']# Mysterious minus sign
+    return phase
+
+# Put together one function overall
+def GPA(img, g, algorithm='standard', r=20, edge_blur=0.3, sigma=10, window_size=10, step=4):
+    '''Top level GPA function
+    img: np array of square shape m x m
+    g: list of reference g coordinates n x 2
+        when n = 2, use standard GPA to calculate strain tensors
+        when n > 2, use least square fit to solve the stain tensors
+    algorithm: 
+        'standard': perform standard GPA by retrieving phases from masked iFFT 
+        Ref: M. Hÿtch, E. Snoeck, R. Kilaas, Ultramicroscopy 74 (1998) 131–146.
+        'adaptive': perform adaptive GPA by retrieving phase using WFR
+        Ref: 
+        K Qian, Optics and Lasers in Engineering 45.2 (2007): 304-317.
+        T.A. de Jong et al. Nat Commun 13, 70 (2022)
+    r: int, mask radius used for standard GPA
+    edge_blur: float between 0-1, Fraction of pixels at the edge that will be smoothed by a cosine function. 
+    sigma: float, sigma of the Gaussian window for WFT
+    window_size: int, window size for WFR
+    step: int, step for WFR
+    Return: strain tensors with the same size of img
+    '''
+    # Normalize the input image
+    img = norm_img(img)
+    im_y, im_x = img.shape
+    n = len(g)
+    # FFT center coordinates
+    cx, cy = im_x // 2, im_y // 2 
+    
+    P = np.zeros((n, im_y, im_x))
+    dPdx = np.zeros((n, im_y, im_x))
+    dPdy = np.zeros((n, im_y, im_x))
+    ks = np.zeros((n,2))
+    
+    # Calculate the phase from the g vector list
+    for i in range(n):
+        x, y = g[i]
+        ks[i] = (x-cx)/im_x, (y-cy)/im_y
+        
+        if algorithm == 'standard':
+            P[i,:,:] = get_phase_fft(img, ks[i], r, edge_blur)
+        else:
+            P[i,:,:] = get_phase_wfr(img, ks[i], sigma, window_size, step)
+        
+        #Calculate the phase derivative
+        dPdx[i,:,:] = calc_derivative(P[i,:,:], axis=1)
+        dPdy[i,:,:] = calc_derivative(P[i,:,:], axis=0)
+    
+    # Calculate the strain tensors
+    if n > 2:
+        # use least square fit
+        exx, eyy, exy, oxy = extract_strain_lstsqr(ks, dPdx, dPdy)
+    else:
+        # use standard method
+        exx, eyy, exy, oxy = calc_strains(P, ks)
+    return exx, eyy, exy, oxy
+
+
+def renormalize_phase(P):
+    r = (P+np.pi) % (2*np.pi) - np.pi
+    return r
+    
 
 def rotate_vector(X, Y, ang):
     '''

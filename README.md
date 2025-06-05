@@ -11,7 +11,8 @@ The tool requires Python 3 environment. I recommend to install Anaconda which is
 
 After the Anaconda is installed, open the Anaconda prompt console. Download the ``temcompanion`` folder from this page or using the ``git`` tool via: ``git clone https://github.com/matao1984/temcompanion``. Then, navigate to the ``temcompanion`` folder with ``cd [PATH]`` and install with pip:
 
-```conda create -n temcompanion python=3.12
+```
+conda create -n temcompanion python=3.12
 
 conda activate temcompanion
 
@@ -83,7 +84,7 @@ Velox saves all types of data, including simple images, image stacks, SI data, D
 ## 5. Citation
 If TemCompanion helped your TEM image analysis in a publication, please cite:
 
-Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, SoftwareX, 2025, 31, 102212. https://doi.org/10.1016/j.softx.2025.102212.
+Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, _SoftwareX_, __2025__, 31, 102212. https://doi.org/10.1016/j.softx.2025.102212.
 
 bibtex:
 ```

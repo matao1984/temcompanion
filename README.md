@@ -80,9 +80,30 @@ Other image formats including png and jpg, both gray scale and color, are lossy 
 Velox saves all types of data, including simple images, image stacks, SI data, DPC, etc, into a single emd format. While these files share the same format, the data structures are quite different. TemCompanion has been tested for simple images, image stacks, DPC images, and EDS mapping data. For EDS mapping data, it will only read the image type signals, e.g., STEM images and quantification maps, and ignore the spectra data. For DPC data, it will read all the quadrant signals, computed signals (e.g., A-C, B-D, iDPC, dDPC, etc.), but currently will not work on the composite DPC images, which combines the DPCx and DPCy signals into complex data. Since this type of images is rarely used, there is currently no plan to include it in TemCompanion, unless there's enough interest in the future.
 
 ## 5. Citation
-A paper is in preparation. Please also consider citing/acknowledging the [``rsciio``](https://hyperspy.org/rosettasciio/index.html#citing-rosettasciio).
+If TemCompanion helped your TEM image analysis in a publication, please cite:
+
+Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, SoftwareX, 2025, 31, 102212. https://doi.org/10.1016/j.softx.2025.102212.
+
+bibtex:
+@article{MA2025102212,
+title = {TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis},
+journal = {SoftwareX},
+volume = {31},
+pages = {102212},
+year = {2025},
+doi = {https://doi.org/10.1016/j.softx.2025.102212},
+author = {Tao Ma}
+}
 
 ## 6. Change history
+
+### v1.2.6
+- Fixed app crash when measuring on live FFT
+- Fixed windowed FFT not working on non calibrated images
+- Automatic window positioning with functions
+- Add selecting reference area for GPA
+- Add adaptive GPA with wfr algorithm
+- Improved memory consumption.
 
 ### v1.2.5
 - Improved rendering speed for interactive measuring and line profile by using blitting

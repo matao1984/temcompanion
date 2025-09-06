@@ -92,6 +92,26 @@
 # Automatic window positioning with functions
 # Add selecting reference area for GPA
 # Add adaptive GPA with wfr algorithm
+# Improved memory consumption.
+
+# 2025-09-06  v1.3.0dev
+# Restructured codes with DPC and GPA codes separately
+# Use a separate thread for time-consuming tasks while keeping the GUI responsive
+# Added progress bar for long-running tasks
+# Bug fix for close event to delete all child widgets
+# Set output to float32 for stack alignment
+# Added save stack as gif animation
+# Added reslice stack from a line
+# Live FFT on a stack
+# Apply filters to each frame of image stack
+# Redesigned the slider for image stack navigation
+# "Space" to Play/Pause, "," to Rewind, "." to Forward on stack images.
+# Added gamma correction for image adjustment
+# Rewrite some of the filter functions
+# Added radial integration from a selected center
+# Added using arrow keys to move the crop region, live FFT region, and masks on FFT
+# iFFT filtered image is automatically updated if a mask is present
+
 
 from PyQt5 import QtCore, QtWidgets
 
@@ -101,9 +121,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
-                             QListWidget, QListWidgetItem, QButtonGroup
+                             QListWidget, QListWidgetItem, QButtonGroup, QProgressBar
                              )
-from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal
+from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread
 from PyQt5.QtGui import QImage, QIcon, QDropEvent, QDragEnterEvent
 from superqt import QDoubleRangeSlider
 
@@ -114,7 +134,6 @@ import io
 import numpy as np
 import copy
 
-from scipy.ndimage import center_of_mass
 
 import pickle
 import json
@@ -129,19 +148,23 @@ from matplotlib.figure import Figure
 from matplotlib_scalebar.scalebar import ScaleBar
 from matplotlib.widgets import Slider, RectangleSelector, SpanSelector
 from matplotlib.patches import Circle
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, PowerNorm, LogNorm
 
-from hrtem_filter import filters
-from scipy.fft import fft2, fftshift, ifft2, ifftshift, fftfreq
+from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.filters import window
 from skimage.measure import profile_line
-from scipy.ndimage import rotate, shift, fourier_gaussian
+from scipy.ndimage import rotate, shift
 from skimage.registration import phase_cross_correlation, optical_flow_ilk
 from skimage.transform import warp, rescale, resize
 
 
-ver = '1.2.6'
-rdate = '2025-05-01'
+ver = '1.3.0dev'
+rdate = '2025-09-06'
+
+#===================Import internal modules==========================================
+from GPA import GPA, norm_img, create_mask, refine_center
+from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+import filters_old as filters
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -155,9 +178,21 @@ class EmittingStream(QObject):
         pass  # Required for compatibility with sys.stdout
         
 
-        
-   
-        
+#===================QThread for background processing================================
+class Worker(QThread):
+    result = pyqtSignal(object)
+    finished = pyqtSignal()
+    def __init__(self, func, *args, **kwargs):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        # Perform long-running task defined by func
+        result = self.func(*self.args, **self.kwargs)
+        self.finished.emit()
+        self.result.emit(result)
 
         
 #=====================Main Window UI ===============================================
@@ -223,8 +258,11 @@ class UI_TemCompanion(QWidget):
         if self.preview_dict:
             plots = list(self.preview_dict.keys())
             for plot in plots:
-                self.preview_dict[plot].close()
-        
+                try:
+                    self.preview_dict[plot].close()
+                except:
+                    pass
+
         if self.converter is not None and self.converter.isVisible():
             self.converter.close()
         
@@ -232,8 +270,8 @@ class UI_TemCompanion(QWidget):
         
     # Define filter parameters as class variables        
     apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian = False, False, False, False, False
-    filter_parameters_default = {"WF Delta": "5", "WF Bw-order": "4", "WF Bw-cutoff": "0.3",
-                                 "ABSF Delta": "5", "ABSF Bw-order": "4", "ABSF Bw-cutoff": "0.3",
+    filter_parameters_default = {"WF Delta": "10", "WF Bw-order": "4", "WF Bw-cutoff": "0.3",
+                                 "ABSF Delta": "10", "ABSF Bw-order": "4", "ABSF Bw-cutoff": "0.3",
                                  "NL Cycles": "10", "NL Delta": "10", "NL Bw-order": "4", "NL Bw-cutoff": "0.3",
                                  "Bw-order": "4", "Bw-cutoff": "0.3",
                                  "GS-cutoff": "0.3"}
@@ -248,7 +286,7 @@ class UI_TemCompanion(QWidget):
         
         self.setObjectName("TemCompanion")
         self.setWindowTitle(f"TemCompanion Ver {ver}")
-        self.resize(400, 300)
+        self.resize(400, 400)
         
         buttonlayout = QHBoxLayout()
         
@@ -425,65 +463,70 @@ See the "About" for more details. Buy me a lunch if you like it!
         
 # ====================== Open file for preview ===============================
     def preview(self):
+        
         try:
             f = load_file(self.file, self.file_type)
             f_name = getFileName(self.file)
-        except:
-            print(f'Cannot open {self.file}, make sure it is not in use or corrupted!')
-            return  
+            
+            if f == None:
+                return
         
-        if f == None:
+            for i in range(len(f)):
+                img = f[i]
+                try:
+                    title = img['metadata']['General']['title']
+                except:
+                    title = '' 
+                try:
+                    preview_name = f_name + ": " + title
+        
+                        
+                    if img['data'].ndim == 2:  
+                        
+                        preview_im = PlotCanvas(img, parent=self)
+                        
+                        
+        
+                    elif img['data'].ndim == 3:
+                        # Modify the axes to be aligned with the save functions
+                        # Backup the original axes
+                        if 'original_axes' not in img.keys():
+                            img['original_axes'] = copy.deepcopy(img['axes'])
+                            img['axes'].pop(0)
+                            img['axes'][0]['index_in_array'] = 0
+                            img['axes'][1]['index_in_array'] = 1
+                        
+                        preview_im = PlotCanvas3d(img, parent=self)
+                    else:
+                        QMessageBox.warning(self,'Load file error','Cannot preview the file(s). Currently, only 2D and 3D data are supported!')
+                        return
+                        
+                    
+                    preview_im.setWindowTitle(preview_name)
+                    preview_im.canvas.canvas_name = preview_name
+                    self.preview_dict[preview_name] = preview_im
+                    
+                    self.preview_dict[preview_name].show() 
+                    self.preview_dict[preview_name].position_window('center')
+                    
+                    print(f'Opened successfully: {f_name + ": " + title}.')
+                except Exception as e:
+                    print(f'Opened unsuccessful: {f_name + ": " + title}. Error: {e}')
+        except Exception as e:
+            print(f'Cannot open {self.file}, make sure it is not in use or corrupted! Error: {e}')
             return
-    
-        for i in range(len(f)):
-            img = f[i]
-            try:
-                title = img['metadata']['General']['title']
-            except:
-                title = '' 
-            try:
-                preview_name = f_name + ": " + title
-    
-                    
-                if img['data'].ndim == 2:  
-                    
-                    preview_im = PlotCanvas(img, parent=self)
-                    
-                    
-    
-                elif img['data'].ndim == 3:
-                    # Modify the axes to be aligned with the save functions
-                    # Backup the original axes
-                    if 'original_axes' not in img.keys():
-                        img['original_axes'] = copy.deepcopy(img['axes'])
-                        img['axes'].pop(0)
-                        img['axes'][0]['index_in_array'] = 0
-                        img['axes'][1]['index_in_array'] = 1
-                    
-                    preview_im = PlotCanvas3d(img, parent=self)
-                else:
-                    QMessageBox.warning(self,'Load file error','Cannot preview the file(s). Currently, only 2D and 3D data are supported!')
-                    return
-                    
-                
-                preview_im.setWindowTitle(preview_name)
-                preview_im.canvas.canvas_name = preview_name
-                self.preview_dict[preview_name] = preview_im
-                
-                self.preview_dict[preview_name].show() 
-                self.preview_dict[preview_name].position_window('center')
-                
-                print(f'Opened successfully: {f_name + ": " + title}.')
-            except:
-                print(f'Opened unsuccessful: {f_name + ": " + title}.')
+
+        
+        finally:    
+            f = None
             
             
 #=========== Define figure canvas for preview ===================================================
 class PlotCanvas(QMainWindow):
     def __init__(self, img, parent=None):
         super().__init__(parent)
-        
-        
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)        
+                
         self.img_size = img['data'].shape
               
         # Create main frame for image
@@ -508,11 +551,10 @@ class PlotCanvas(QMainWindow):
         # Set the click to focus to receive key press event
         self.canvas.setFocusPolicy( QtCore.Qt.ClickFocus )
         self.canvas.setFocus()
-        
 
-        
-        
-        
+        self.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.setFocus()
+
         # Default settings for scale bar
         self.scalebar_settings = {'scalebar': True,
                                   'color': 'yellow',
@@ -552,19 +594,24 @@ class PlotCanvas(QMainWindow):
                              'measure_fft': False,
                              'mask': False,
                              'Live_FFT': False,
-                             'GPA': False
+                             'GPA': False,
+                             'define_center': False
             }
+
+        self.radial_integration_dialog = None
 
         # Connect event handlers
         self.button_press_cid = None
         self.button_release_cid = None
         self.motion_notify_cid = None
         self.scroll_event_cid = None
-        
+        self.arrow_move_cid = None
+
         # All the push buttons
         self.buttons = {'crop_ok': None,
                         'crop_cancel': None,
-                        'distance_finish': None}
+                        'distance_finish': None,
+                        'define_center': None}
         
         self.distance_fft = 0
         self.ang = 0
@@ -581,10 +628,10 @@ class PlotCanvas(QMainWindow):
         
         # Create the navigation toolbar, tied to the canvas
         self.mpl_toolbar = CustomToolbar(self.canvas, parent=self)        
-        vbox = QVBoxLayout()
-        vbox.addWidget(self.mpl_toolbar)
-        vbox.addWidget(self.canvas)
-        self.main_frame.setLayout(vbox)
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.mpl_toolbar)
+        self.layout.addWidget(self.canvas)
+        self.main_frame.setLayout(self.layout)
         self.setCentralWidget(self.main_frame)
         
         # Create figure and menubar
@@ -596,6 +643,13 @@ class PlotCanvas(QMainWindow):
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
 
+        # Progress bar
+        self.progressBar = QProgressBar()
+        self.progressBar.setRange(0, 0)
+        self.progressBar.setVisible(False)
+        self.statusBar.addPermanentWidget(self.progressBar)
+
+
         # Display a message in the status bar
         self.statusBar.showMessage("Ready")
         
@@ -606,6 +660,12 @@ class PlotCanvas(QMainWindow):
 
         
     def closeEvent(self, event):
+        # Find all child widgets and close
+        children = self.findChildren(QMainWindow)
+        for child in children:
+            child.close()
+        # Delete self
+        self.canvas.data = None
         UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
     
     def resizeEvent(self, event):
@@ -658,12 +718,16 @@ class PlotCanvas(QMainWindow):
                 y = parent_geometry.y()
                 
         self.move(x, y)
-            
-        
-    
-        
 
-       
+
+    def toggle_progress_bar(self, status='ON'):
+        if status == 'ON':
+            self.progressBar.setVisible(True)
+            self.statusBar.showMessage("Processing...")
+        else:
+            self.progressBar.setVisible(False)
+            self.statusBar.showMessage("Ready")
+
     def create_menubar(self):
         menubar = self.menuBar()  # Create a menu bar
 
@@ -746,6 +810,9 @@ class PlotCanvas(QMainWindow):
         lineprofile_action.setShortcut('ctrl+l')
         lineprofile_action.triggered.connect(self.lineprofile)
         analyze_menu.addAction(lineprofile_action)
+        radial_integration_action = QAction('Radial Integration', self)
+        radial_integration_action.triggered.connect(self.radial_integration)
+        analyze_menu.addAction(radial_integration_action)
         gpa_action = QAction('Geometric Phase Analysis', self)
         gpa_action.triggered.connect(self.gpa)
         analyze_menu.addAction(gpa_action)
@@ -862,6 +929,9 @@ class PlotCanvas(QMainWindow):
         lineprofile_action = QAction('Line Profile')
         lineprofile_action.triggered.connect(self.lineprofile)
         analyze_menu.addAction(lineprofile_action)
+        radial_integration_action = QAction('Radial Integration')
+        radial_integration_action.triggered.connect(self.radial_integration)
+        analyze_menu.addAction(radial_integration_action)
         gpa_action = QAction('Geometric Phase Analysis')
         gpa_action.triggered.connect(self.gpa)
         analyze_menu.addAction(gpa_action)
@@ -916,19 +986,47 @@ class PlotCanvas(QMainWindow):
         img_dict['data'] = current_img
         return img_dict
     
+    def get_original_img_dict(self):
+        # Return the original image together with the full dictionary
+        img_dict = copy.deepcopy(self.canvas.data)
+        return img_dict
+    
+    def plot_new_image(self, img_dict, canvas_name, parent=None, metadata=None):
+        # Plot a new image in a new window
+        # parent: the parent widget for the new image canvas
+        # metadata: optional metadata to add in the image dictionary
+        # position: the position of the new image canvas
+        data = img_dict['data']
+        if data.ndim == 2:
+            UI_TemCompanion.preview_dict[canvas_name] = PlotCanvas(img_dict, parent=parent)
+        elif data.ndim == 3:
+            UI_TemCompanion.preview_dict[canvas_name] = PlotCanvas3d(img_dict, parent=parent)
+        if metadata is not None:
+            UI_TemCompanion.preview_dict[canvas_name].update_metadata(metadata)
+        UI_TemCompanion.preview_dict[canvas_name].setWindowTitle(canvas_name)
+        UI_TemCompanion.preview_dict[canvas_name].canvas.canvas_name = canvas_name
+        UI_TemCompanion.preview_dict[canvas_name].show()
+        
+
+
+    def update_metadata(self, metadata):
+        # Update the metadata of the current canvas
+        self.process['process'].append(metadata)
+        self.canvas.data['metadata']['process'] = copy.deepcopy(self.process)
+
     def close_all(self):
         plots = list(UI_TemCompanion.preview_dict.keys())
         for plot in plots:
-            UI_TemCompanion.preview_dict[plot].close()
-        
-    
+            try:
+                UI_TemCompanion.preview_dict[plot].close()
+            except Exception as e:
+                print(f"Error closing plot {plot}: {e}, ignored.")
+
     def crop(self):
         ax = self.canvas.figure.get_axes()[0]
         # Display a message in the status bar
-        self.statusBar.showMessage("Drag a rectangle to crop. Hold Shift to draw a square.")
-        
+        self.statusBar.showMessage("Drag a rectangle to crop. Hold Shift to draw a square. Use arrow keys to move.")
 
-        
         if self.selector is None:
             self.selector = RectangleSelector(ax, onselect=self.on_select, interactive=True, useblit=True,
                                               drag_from_anywhere=True, use_data_coordinates=True,
@@ -951,6 +1049,9 @@ class PlotCanvas(QMainWindow):
             
             
             self.selector.set_active(True)
+            # Connect key press events
+            self.arrow_move_cid = self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
+
             # Show buttons
             for value in self.buttons.values():
                 if value is not None:
@@ -960,6 +1061,39 @@ class PlotCanvas(QMainWindow):
 
     def on_select(self, eclick, erelease):
         pass  # handle the crop in the confirm_crop function
+
+    def on_key_press(self, event):
+        x0, x1, y0, y1 = self.selector.extents
+        if event.key == 'up':
+            if y0 >= 1:
+                y0 -= 1
+                y1 -= 1
+                self.selector.extents = (x0, x1, y0, y1)
+        if event.key == 'down':
+            if y1 <= self.img_size[0] - 1:
+                y0 += 1
+                y1 += 1
+                self.selector.extents = (x0, x1, y0, y1)
+        if event.key == 'left':
+            if x0 >= 1:
+                x0 -= 1
+                x1 -= 1
+                self.selector.extents = (x0, x1, y0, y1)
+        if event.key == 'right':
+            if x1 <= self.img_size[1] - 1:
+                x0 += 1
+                x1 += 1
+                self.selector.extents = (x0, x1, y0, y1)
+        
+        # Trigger live FFT 
+        if self.mode_control['Live_FFT']:
+            self.current_data = self.get_current_img_from_canvas()
+            x0, x1, y0, y1 = int(x0), int(x1), int(y0), int(y1)
+            self.live_img['data'] = self.current_data[y0:y1,x0:x1]
+            # Update the FFT 
+            preview_name = self.canvas.canvas_name + '_Live FFT'
+            UI_TemCompanion.preview_dict[preview_name].update_img(self.live_img['data'])
+            print(f"Displaying FFT from {x0}:{x1}, {y0}:{y1}")
 
     def manual_crop(self):
         if self.selector is not None:
@@ -1007,6 +1141,7 @@ class PlotCanvas(QMainWindow):
             self.selector.set_visible(False)
             self.selector.disconnect_events()  # Disconnect event handling
             self.selector = None  
+            self.fig.canvas.mpl_disconnect(self.arrow_move_cid)
             # Reset buttons
             for value in self.buttons.values():
                 if value is not None:
@@ -1023,7 +1158,8 @@ class PlotCanvas(QMainWindow):
             self.selector.set_active(False)
             self.selector.set_visible(False)
             self.selector.disconnect_events()  # Disconnect event handling
-            self.selector = None  
+            self.selector = None 
+            self.fig.canvas.mpl_disconnect(self.arrow_move_cid) 
             
         for value in self.buttons.values():
             if value is not None:
@@ -1181,47 +1317,58 @@ class PlotCanvas(QMainWindow):
         figsize = self.canvas.figure.get_size_inches()
         img_size = self.get_current_img_from_canvas().shape
         dpi = float(sorted(img_size/figsize, reverse=True)[0])
-        # Hide other elements
-        if len(self.canvas.figure.axes) != 1:
-            self.canvas.figure.axes[1].set_visible(False)
         
         self.canvas.figure.savefig(buf, dpi=dpi)
         
         
         self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
         buf.close()
-        if len(self.canvas.figure.axes) != 1:
-            self.canvas.figure.axes[1].set_visible(True)
-        
-        
+                
         self.statusBar.showMessage("The current image has been copied to the clipboard!")
         self.fig.canvas.draw_idle()
 
-    def wiener_filter(self):
-        
+    def wiener_filter(self):        
         filter_parameters = UI_TemCompanion.filter_parameters        
         delta_wf = int(filter_parameters['WF Delta'])
         order_wf = int(filter_parameters['WF Bw-order'])
         cutoff_wf = float(filter_parameters['WF Bw-cutoff'])
-        img_wf = self.get_img_dict_from_canvas()
+        img_wf = self.get_original_img_dict()
         title = self.windowTitle()
-        wf = apply_filter(img_wf['data'], 'Wiener', delta=delta_wf, lowpass_order=order_wf, lowpass_cutoff=cutoff_wf)
-        img_wf['data'] = wf
-        preview_name = self.canvas.canvas_name + '_Wiener Filtered'
-        
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_wf, parent=self.parent())
-        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
-        UI_TemCompanion.preview_dict[preview_name].show()
-        
-        print(f'Applied Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}.')
-        # Positioning
-        self.position_window('center left')
-        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
-        
-        # Keep the history
-        UI_TemCompanion.preview_dict[preview_name].process['process'].append('Wiener filter applied with delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(delta_wf,order_wf,cutoff_wf))
-        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
+        data = img_wf['data']
+        apply_to = None
+        if data.ndim == 3:
+            dialog = ApplyFilterDialog(parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                apply_to = dialog.apply_to
+                if apply_to == 'current':
+                    img_wf = self.get_img_dict_from_canvas()
+                    data = img_wf['data']
+            else:
+                return
+        elif data.ndim == 2:
+            apply_to = 'current'
+        if apply_to is not None:
+            preview_name = self.canvas.canvas_name + '_' + apply_to +'_Wiener Filtered'
+            metadata = f'Wiener filter applied with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}'
+
+            # Positioning
+            self.position_window('center left')
+
+            # Apply the filter in a separate thread
+            print(f'Applying Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}...')
+            self.thread = QThread()
+            self.worker = Worker(apply_filter_on_img_dict, img_wf, 'Wiener', delta=delta_wf, lowpass_order=order_wf, lowpass_cutoff=cutoff_wf)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)            
+            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)           
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.finished.connect(lambda: print(f'Applied Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}.'))
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+            self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+            self.thread.start()        
         
 
     def absf_filter(self):
@@ -1229,29 +1376,42 @@ class PlotCanvas(QMainWindow):
         delta_absf = int(filter_parameters['ABSF Delta'])
         order_absf = int(filter_parameters['ABSF Bw-order'])
         cutoff_absf = float(filter_parameters['ABSF Bw-cutoff'])
-        img_absf = self.get_img_dict_from_canvas()
+        img_absf = self.get_original_img_dict()
         title = self.windowTitle()
-        absf = apply_filter(img_absf['data'], 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
-        img_absf['data'] = absf
-        preview_name = self.canvas.canvas_name + '_ABS Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_absf, parent=self.parent())
-               
-        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
-        UI_TemCompanion.preview_dict[preview_name].show()
-        
-        # Print results output
-        msg = f'ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}.'
-        print(msg)
-        
-        # Positioning
-        self.position_window('center left')
-        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
-        
-        # Keep the history
-        UI_TemCompanion.preview_dict[preview_name].process['process'].append('ABS filter applied with delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(delta_absf,order_absf,cutoff_absf))
-        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
-        
+        apply_to = None
+        data = img_absf['data']
+        if data.ndim == 3:
+            dialog = ApplyFilterDialog(parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                apply_to = dialog.apply_to
+                if apply_to == 'current':
+                    img_absf = self.get_img_dict_from_canvas()
+                    data = img_absf['data']
+            else:
+                return
+        elif data.ndim == 2:
+            apply_to = 'current'
+        if apply_to is not None:
+            preview_name = self.canvas.canvas_name + '_' + apply_to +'_ABS Filtered'
+            metadata = f'ABS filter applied with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}'
+
+            # Positioning
+            self.position_window('center left')
+            # Apply the filter in a separate thread
+            print(f'Applying ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}...')
+            self.thread = QThread()
+            self.worker = Worker(apply_filter_on_img_dict, img_absf, 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)            
+            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)           
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.finished.connect(lambda: print(f'Applied ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}.'))
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+            self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+            self.thread.start()        
 
     
     def non_linear_filter(self):
@@ -1260,83 +1420,133 @@ class PlotCanvas(QMainWindow):
         order_nl = int(filter_parameters['NL Bw-order'])
         cutoff_nl = float(filter_parameters['NL Bw-cutoff'])
         N = int(filter_parameters['NL Cycles'])
-        img_nl = self.get_img_dict_from_canvas()
+        img_nl = self.get_original_img_dict()
         title = self.windowTitle()
-        nl = apply_filter(img_nl['data'], 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
-        img_nl['data'] = nl
-        preview_name = self.canvas.canvas_name + '_NL Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_nl, parent=self.parent())
-        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
-        
-        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-        UI_TemCompanion.preview_dict[preview_name].show()
-        
-        # Print results output
-        msg = f'Applied Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}.'
-        print(msg)
-        
-        # Positioning
-        self.position_window('center left')
-        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+        data = img_nl['data']
+        apply_to = None
+        if data.ndim == 3:
+            dialog = ApplyFilterDialog(parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                apply_to = dialog.apply_to
+                if apply_to == 'current':
+                    img_nl = self.get_img_dict_from_canvas()
+                    data = img_nl['data']
+            else:
+                return
+        elif data.ndim == 2:
+            apply_to = 'current'
+        if apply_to is not None:
+            preview_name = self.canvas.canvas_name + '_' + apply_to + '_NL Filtered'
+            metadata = f'Non-Linear filter applied with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}'
+                # Position the current image
+            self.position_window('center left')
 
-        
-        # Keep the history
-        UI_TemCompanion.preview_dict[preview_name].process['process'].append('Nonlinear filter applied with N= {}, delta = {}, Bw-order = {}, Bw-cutoff = {}'.format(N,delta_nl,order_nl,cutoff_nl))
-        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
-        
+            # Apply the filter in a separate thread
+            print(f'Applying Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}...')
+            self.thread = QThread()
+            self.worker = Worker(apply_filter_on_img_dict, img_nl, 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)            
+            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)           
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.finished.connect(lambda: print(f'Applied Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}.'))
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+            self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+            self.thread.start()
+
     def bw_filter(self):
         filter_parameters = UI_TemCompanion.filter_parameters        
         order_bw = int(filter_parameters['Bw-order'])
         cutoff_bw = float(filter_parameters['Bw-cutoff'])
-        img_bw = self.get_img_dict_from_canvas()
+        img_bw = self.get_original_img_dict()
         title = self.windowTitle()
-        bw = apply_filter(img_bw['data'], 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
-        img_bw['data'] = bw
-        preview_name = self.canvas.canvas_name + '_Bw Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_bw, parent=self.parent())
-        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
+        data = img_bw['data']
+        apply_to = None
+        if data.ndim == 3:
+            dialog = ApplyFilterDialog(parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                apply_to = dialog.apply_to
+                if apply_to == 'current':
+                    img_bw = self.get_img_dict_from_canvas()
+                    data = img_bw['data']
+            else:
+                return
+        elif data.ndim == 2:
+            apply_to = 'current'
+        if apply_to is not None:
+            preview_name = self.canvas.canvas_name + '_' + apply_to + '_Bw Filtered'
+            metadata = f'Butterworth filter applied with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}'
+
+            # Position the current image
+            self.position_window('center left')
+
+            # Apply the filter in a separate thread
+            print(f'Applying Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}...')
+            self.thread = QThread()
+            self.worker = Worker(apply_filter_on_img_dict, img_bw, 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)            
+            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)           
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.finished.connect(lambda: print(f'Applied Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}.'))
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+            self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+            self.thread.start()
+
+
         
-        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-        UI_TemCompanion.preview_dict[preview_name].show()
-        
-        print(f'Applied Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}.')
-        
-        # Positioning
-        self.position_window('center left')
-        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
-        
-        # Keep the history
-        UI_TemCompanion.preview_dict[preview_name].process['process'].append('Butterworth filter applied with Bw-order = {}, Bw-cutoff = {}'.format(order_bw,cutoff_bw))
-        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
-    
+
     def gaussion_filter(self):
         filter_parameters = UI_TemCompanion.filter_parameters        
         cutoff_gaussian = float(filter_parameters['GS-cutoff'])
-        img_gaussian = self.get_img_dict_from_canvas()
+        img_gaussian = self.get_original_img_dict()
         title = self.windowTitle()
-        gaussian = apply_filter(img_gaussian['data'], 'Gaussian', cutoff_ratio=cutoff_gaussian)
-        img_gaussian['data'] = gaussian
-        preview_name = self.canvas.canvas_name + '_Gaussian Filtered'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img_gaussian,parent=self.parent())
-        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
+        data = img_gaussian['data']
+        apply_to = None
+        if data.ndim == 3:
+            dialog = ApplyFilterDialog(parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                apply_to = dialog.apply_to
+                if apply_to == 'current':
+                    img_gaussian = self.get_img_dict_from_canvas()
+                    data = img_gaussian['data']
+            else:
+                return
+        elif data.ndim == 2:
+            apply_to = 'current'
+        if apply_to is not None:
+            preview_name = self.canvas.canvas_name + '_' + apply_to + '_Gaussian Filtered'
+            metadata = f'Gaussian filter applied with cutoff = {cutoff_gaussian}'
+            
+            # Position the current image
+            self.position_window('center left')
+
+            # Apply the filter in a separate thread
+            print(f'Applying Gaussian filter to {title} with cutoff = {cutoff_gaussian}...')
+            self.thread = QThread()
+            self.worker = Worker(apply_filter_on_img_dict, img_gaussian, 'Gaussian', cutoff_ratio=cutoff_gaussian)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)            
+            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)           
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.finished.connect(lambda: print(f'Applied Gaussian filter to {title} with cutoff = {cutoff_gaussian}.'))
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+            self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+            self.thread.start()
+
         
-        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-        UI_TemCompanion.preview_dict[preview_name].show()
-        
-        print(f'Applied Gaussian filter to {title} with cutoff = {cutoff_gaussian}.')
-        # Positioning
-        self.position_window('center left')
-        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
-        
-        
-        # Keep the history
-        UI_TemCompanion.preview_dict[preview_name].process['process'].append('Gaussian filter applied with cutoff = {}'.format(cutoff_gaussian))
-        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
-    
     
     def create_img(self):
-        
-        self.im = self.axes.imshow(self.canvas.data['data'], cmap='gray')
+        self.im = self.axes.imshow(self.canvas.data['data'], norm=PowerNorm(gamma=1.0), cmap='gray')
         self.axes.set_axis_off()
         # Add scale bar 
         self.scale = self.canvas.data['axes'][1]['scale']
@@ -1344,20 +1554,24 @@ class PlotCanvas(QMainWindow):
         
         if self.scalebar_settings['scalebar']:
             self.create_scalebar()
-            
+        
         if self.scalebar_settings['dimension'] == 'si-length-reciprocal':
             vmin = np.percentile(self.canvas.data['data'], 30)
             vmax = np.percentile(self.canvas.data['data'], 99.5)
         else:
             vmin = np.percentile(self.canvas.data['data'], 0.01)
             vmax = np.percentile(self.canvas.data['data'], 99.9)
-            
+
         # Update vmin/vmax
-        self.im.set_clim(vmin, vmax)    
+        self.im.set_clim(vmin, vmax)
         self.fig.tight_layout(pad=0)
         
         self.fig.canvas.draw()
-        
+
+    def update_img(self, img):
+        self.canvas.data['data'] = img
+        self.im.set_data(img)
+        self.fig.canvas.draw_idle()
         
     def update_background(self, event=None):
         self.background = self.fig.canvas.copy_from_bbox(self.axes.bbox)
@@ -1369,8 +1583,8 @@ class PlotCanvas(QMainWindow):
         # Strip spaces in some cases
         try:
             self.units = ''.join(self.units.split(' '))
-        except:
-            pass
+        except Exception as e:
+            print(f"Error reading units: {e} Set to pixel scale")
         
         if self.units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
             self.scalebar_settings['dimension'] = 'si-length' # Real space image
@@ -1419,7 +1633,7 @@ class PlotCanvas(QMainWindow):
         try: 
             extra_metadata = img_dict['original_metadata']
             metadata.update(extra_metadata)
-        except:
+        except Exception as e:
             pass
         self.metadata_viewer = MetadataViewer(metadata, parent=self)
         self.metadata_viewer.show()
@@ -1537,7 +1751,7 @@ class PlotCanvas(QMainWindow):
     
 #=========== Measure functions ================================================
     def clear_cid(self):
-        cid_list = [self.button_press_cid, self.button_release_cid, self.motion_notify_cid, self.scroll_event_cid]
+        cid_list = [self.button_press_cid, self.button_release_cid, self.motion_notify_cid, self.scroll_event_cid, self.arrow_move_cid]
         for i, cid in enumerate(cid_list):
             if cid is not None:
                 self.fig.canvas.mpl_disconnect(cid)
@@ -1835,6 +2049,7 @@ class PlotCanvas(QMainWindow):
             self.selector.extents = (x_min, x_max, y_min, y_max)
             
             self.selector.set_active(True)
+            self.arrow_move_cid = self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
             self.fig.canvas.draw_idle()
             
             preview_name = self.canvas.canvas_name + '_Live FFT'
@@ -1863,9 +2078,8 @@ class PlotCanvas(QMainWindow):
             x_max = x_min + d
             y_max = y_min + d
             self.selector.extents = (x_min, x_max, y_min, y_max)
+        self.current_data = self.get_current_img_from_canvas()
         self.live_img['data'] = self.current_data[y_min:y_max,x_min:x_max]
-        # fft_size = self.live_img['data'].shape[0]
-        # fft_scale = 1 / self.scale / fft_size
         # Update the FFT 
         preview_name = self.canvas.canvas_name + '_Live FFT'
         UI_TemCompanion.preview_dict[preview_name].update_img(self.live_img['data'])
@@ -1877,6 +2091,7 @@ class PlotCanvas(QMainWindow):
             self.selector.set_active(False)
             self.selector.set_visible(False)
             self.selector = None
+            self.fig.canvas.mpl_disconnect(self.arrow_move_cid)
             self.mode_control['Live_FFT'] = False
             # Display a message in the status bar
             self.statusBar.showMessage("Ready")
@@ -1912,12 +2127,15 @@ class PlotCanvas(QMainWindow):
             
             
     def define_center_dp(self):
-        # Measured soots list for defineing center
+        # Add mode control
+        self.mode_control['define_center'] = True
+        # Measured spots list for defineing center
         self.measured_spots = [None, None]
         # Reconnect the button press event cid
         self.fig.canvas.mpl_disconnect(self.button_press_cid)
         self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click_define_center)
-        self.buttons['define_center'].hide()
+        if self.buttons['define_center'] is not None:
+            self.buttons['define_center'].hide()
         # Add two new buttons
         self.buttons['define_center_ok'] = QPushButton('OK', self)
         self.buttons['define_center_ok'].clicked.connect(self.set_center_dp)
@@ -1933,32 +2151,44 @@ class PlotCanvas(QMainWindow):
         self.canvas.draw_idle()
     
     def quit_set_center(self):
+        self.cleanup()
+        self.mode_control['define_center'] = False
         self.buttons['define_center_ok'].hide()
         self.buttons['define_center_cancel'].hide()
-        self.buttons['define_center'].show()
-        # Display a message in the status bar
-        self.statusBar.showMessage("Click on a spot to measure")
-        self.fig.canvas.mpl_disconnect(self.button_press_cid)
-        self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.cleanup()
-        self.center_marker, = self.axes.plot(self.center[0], self.center[1], 'yx', markersize=10)
-
+        if self.buttons['define_center'] is not None:
+            self.buttons['define_center'].show()
+        
+        if self.radial_integration_dialog is not None:
+            self.clear_cid()
+            self.radial_integration_dialog.close()
+            self.radial_integration_dialog = None            
+        else:
+            # Display a message in the status bar
+            self.statusBar.showMessage("Click on a spot to measure")
+            self.fig.canvas.mpl_disconnect(self.button_press_cid)
+            self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+            self.center_marker, = self.axes.plot(self.center[0], self.center[1], 'yx', markersize=10)
         self.canvas.draw_idle()
         
     def set_center_dp(self):
         if self.measured_spots[0] is not None and self.measured_spots[1] is not None:
             # Two spots are collected
             p1, p2 = self.measured_spots[0], self.measured_spots[1]
-            self.center = int(p1[0] + (p2[0] - p1[0]) / 2), int(p1[1] + (p2[1] - p1[1]) / 2)
+            center = int(p1[0] + (p2[0] - p1[0]) / 2), int(p1[1] + (p2[1] - p1[1]) / 2)
         elif self.measured_spots[1] is not None:
             # One spot
             p1 = self.measured_spots[1]
-            self.center = int(p1[0]), int(p1[1])
-        
-        self.quit_set_center()
-        
-        
-        
+            center = int(p1[0]), int(p1[1])
+
+        if self.mode_control['measure_fft']:
+            # Handle FFT measurement mode
+            self.center = center
+            self.quit_set_center()
+        else:
+            # Handle other modes if needed
+            self.radial_integration_dialog.center = center
+            self.radial_integration_dialog.update_center()
+
     def on_click_define_center(self, event):
         # Handle clicking event when defining the center
         if event.inaxes != self.axes:
@@ -1969,8 +2199,11 @@ class PlotCanvas(QMainWindow):
         
         x_click, y_click = int(event.xdata), int(event.ydata)
         # Define a window size around the clicked point to calculate the center of mass
-        window_size = self.measure_fft_dialog.windowsize
-        
+        try: 
+            window_size = self.measure_fft_dialog.windowsize
+        except AttributeError:
+            window_size = 5  # Default window size
+
         cx, cy = refine_center(image_data, (x_click, y_click), window_size)
         
         
@@ -2051,9 +2284,18 @@ class PlotCanvas(QMainWindow):
             self.clear_buttons()
             self.mode_control['measure_fft'] = True
             self.start_fft_measurement()
-        
-        
-        
+
+
+#============ Radial Integration function ===================================
+    
+    def radial_integration(self):
+        # Perform radial integration on the current image
+        self.radial_integration_dialog = RadialIntegrationDialog(parent=self)
+        self.radial_integration_dialog.show()
+        self.define_center_dp()
+        self.statusBar.showMessage('Select integration center by clicking on the center spot or two symmetric spots.')
+
+
 #============== Put cleanup mask function here===============================
     def cleanup_mask(self):
         if self.mask_list or self.sym_mask_list:
@@ -2120,11 +2362,13 @@ class PlotCanvas(QMainWindow):
         preview_name = self.canvas.canvas_name + "_GPA_FFT"
         preview_fft = PlotCanvasFFT(self.live_img, parent=self)
         
-        UI_TemCompanion.preview_dict[preview_name] = preview_fft
+        preview_fft.mode_control['GPA'] = True
         
         preview_fft.canvas.canvas_name = preview_name
         preview_fft.setWindowTitle('Windowed FFT of ' + title)
-        preview_fft.show()
+        UI_TemCompanion.preview_dict[preview_name] = preview_fft
+        UI_TemCompanion.preview_dict[preview_name].show()
+
         self.position_window('center left')
         preview_fft.position_window('next to parent')
         
@@ -2154,7 +2398,7 @@ class PlotCanvas(QMainWindow):
         for circle in preview_fft.sym_mask_list:
             circle.remove()
         preview_fft.sym_mask_list = []
-        preview_fft.mode_control['GPA'] = True
+        
         
         # Redefine buttons
         preview_fft.clear_buttons()
@@ -2215,60 +2459,66 @@ class PlotCanvas(QMainWindow):
             QMessageBox.warning(self, 'Run GPA', 'At least 2 g vectors are needed!')
             return
         
-        # g1 = UI_TemCompanion.preview_dict[preview_name_fft].mask_list[0].center
-        # g2 = UI_TemCompanion.preview_dict[preview_name_fft].mask_list[1].center
         r = max(UI_TemCompanion.preview_dict[preview_name_fft].mask_list[0].radius, UI_TemCompanion.preview_dict[preview_name_fft].mask_list[1].radius)
         
-        exx, eyy, exy, oxy = GPA(data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
-        # if self.algorithm == 'standard':
-        #     exx, eyy, exy, oxy = simpleGPA(data, g1, g2, r, edge_blur=self.edgesmooth)
-        # elif self.algorithm == 'adaptive':
-        #     exx, eyy, exy, oxy = adaptiveGPA(data, g1, g2, sigma=r, window_size=r, step=int(r/5))
-        
+        title = self.canvas.canvas_name
+        # Run GPA in a separate thread
+        self.thread = QThread()
+        self.worker = Worker(GPA, data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
+        # exx, eyy, exy, oxy = GPA(data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+        self.thread.started.connect(lambda: print(f'Running GPA on {title} with {self.algorithm} GPA...'))
+        self.thread.started.connect(self.worker.run)
+        self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF')) 
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.finished.connect(lambda: print(f'Finished running GPA on {title} with {self.algorithm} GPA.'))
+        self.worker.result.connect(self.display_gpa_result)
+        self.thread.start()
+
+    def display_gpa_result(self, result):
+        # Display the GPA result
+        exx, eyy, exy, oxy = result
+        img = self.get_img_dict_from_canvas()
+
         # Display the strain tensors
         exx_dict = copy.deepcopy(img)
         exx_dict['data'] = exx
         preview_name_exx = self.canvas.canvas_name + "_exx"
-        UI_TemCompanion.preview_dict[preview_name_exx] = PlotCanvas(exx_dict, parent=self)
+        self.plot_new_image(exx_dict, preview_name_exx)
         UI_TemCompanion.preview_dict[preview_name_exx].setWindowTitle('Epsilon xx')
-        UI_TemCompanion.preview_dict[preview_name_exx].canvas.canvas_name = preview_name_exx
         UI_TemCompanion.preview_dict[preview_name_exx].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_exx].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_exx].create_colorbar()
-        UI_TemCompanion.preview_dict[preview_name_exx].show()
         
         eyy_dict = copy.deepcopy(img)
         eyy_dict['data'] = eyy
         preview_name_eyy = self.canvas.canvas_name + "_eyy"
-        UI_TemCompanion.preview_dict[preview_name_eyy] = PlotCanvas(eyy_dict, parent=self)
+        self.plot_new_image(eyy_dict, preview_name_eyy)
         UI_TemCompanion.preview_dict[preview_name_eyy].setWindowTitle('Epsilon yy')
-        UI_TemCompanion.preview_dict[preview_name_eyy].canvas.canvas_name = preview_name_eyy
         UI_TemCompanion.preview_dict[preview_name_eyy].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_eyy].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_eyy].create_colorbar()
-        UI_TemCompanion.preview_dict[preview_name_eyy].show()
         
         exy_dict = copy.deepcopy(img)
         exy_dict['data'] = exy
         preview_name_exy = self.canvas.canvas_name + "_exy"
-        UI_TemCompanion.preview_dict[preview_name_exy] = PlotCanvas(exy_dict, parent=self)
+        self.plot_new_image(exy_dict, preview_name_exy)
         UI_TemCompanion.preview_dict[preview_name_exy].setWindowTitle('Epsilon xy')
-        UI_TemCompanion.preview_dict[preview_name_exy].canvas.canvas_name = preview_name_exy
         UI_TemCompanion.preview_dict[preview_name_exy].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_exy].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_exy].create_colorbar()
-        UI_TemCompanion.preview_dict[preview_name_exy].show()
         
         oxy_dict = copy.deepcopy(img)
         oxy_dict['data'] = oxy
         preview_name_oxy = self.canvas.canvas_name + "_oxy"
-        UI_TemCompanion.preview_dict[preview_name_oxy] = PlotCanvas(oxy_dict, parent=self)
+        self.plot_new_image(oxy_dict, preview_name_oxy)
         UI_TemCompanion.preview_dict[preview_name_oxy].setWindowTitle('Omega')
-        UI_TemCompanion.preview_dict[preview_name_oxy].canvas.canvas_name = preview_name_oxy
         UI_TemCompanion.preview_dict[preview_name_oxy].im.set_clim(self.vmin, self.vmax)
         UI_TemCompanion.preview_dict[preview_name_oxy].im.set_cmap('seismic')
         UI_TemCompanion.preview_dict[preview_name_oxy].create_colorbar()
-        UI_TemCompanion.preview_dict[preview_name_oxy].show()
     
     def gpa_settings(self):
         # Open a dialog to take settings
@@ -2310,7 +2560,31 @@ class PlotCanvas(QMainWindow):
         self.dpc_reconstruct = DPCDialog(parent=self)
         self.dpc_reconstruct.show()
         
-        
+
+#======== Animation Worker ==========================================
+class AnimationWorker(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(int)
+
+    def __init__(self, slider, parent=None):
+        super().__init__(parent)
+        self._playing = True
+        self.slider = slider
+        self.frame = self.slider.value()
+
+    def run(self):
+        f_max = self.slider.maximum()        
+        # Run from current to max
+        while self.frame < f_max and self._playing:
+            # Perform animation frame updates
+            self.frame += 1
+            self.progress.emit(self.frame)
+            QThread.msleep(100)  # Simulate work being done
+        if self.frame == f_max:
+            self.finished.emit()
+    
+    def stop(self):
+        self._playing = False
 
         
 #======= Canvas to show image stacks==========================================
@@ -2319,7 +2593,23 @@ class PlotCanvas3d(PlotCanvas):
         super().__init__(img, parent)        
         # Redefine image size 
         self.img_size = img['data'].shape[1], img['data'].shape[2]
+
+        # Add slider and play button to layout
+        layout = self.layout
         
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(img['data'].shape[0] - 1)
+        self.slider.setValue(0)
+        self.slider.valueChanged.connect(self.update_frame)
+
+        # layout.addLayout(slider_layout)
+        layout.addWidget(self.slider)
+        self.main_frame.setLayout(layout)
+
+        # Playback control
+        self.isPlaying = False
+
         # Add extra buttons
         self.buttons['crop_stack_ok'] = None
         self.buttons['crop_stack_cancel'] = None
@@ -2342,6 +2632,9 @@ class PlotCanvas3d(PlotCanvas):
         resampling_stack = QAction('Resampling stack', self)
         resampling_stack.triggered.connect(self.resampling_stack)
         stack_menu.addAction(resampling_stack)
+        reslice_stack = QAction('Reslice stack', self)
+        reslice_stack.triggered.connect(self.reslice_stack)
+        stack_menu.addAction(reslice_stack)
         sort_stack = QAction('Sort stack', self)
         sort_stack.triggered.connect(self.sort_stack)
         stack_menu.addAction(sort_stack)
@@ -2357,14 +2650,30 @@ class PlotCanvas3d(PlotCanvas):
         export_stack = QAction('Export as tiff stack', self)
         export_stack.triggered.connect(self.export_stack)
         stack_menu.addAction(export_stack)
+        export_stack_gif = QAction('Export as GIF animation', self)
+        export_stack_gif.triggered.connect(self.export_stack_gif)
+        stack_menu.addAction(export_stack_gif)
         export_series = QAction('Save as series', self)
         export_series.triggered.connect(self.export_series)
         stack_menu.addAction(export_series)
+
+        # Update status bar message
         
-        
+        self.statusBar.showMessage('Stack loaded! Use "Space" to Play/Pause, "," to Rewind, "." to Forward.')
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            self.toggle_play()
+        if event.key() == Qt.Key_Comma:
+            if self.slider.value() >= 1:
+                self.slider.setValue(self.slider.value() - 1)
+        if event.key() == Qt.Key_Period:
+            if self.slider.value() <= self.slider.maximum() - 1:
+                self.slider.setValue(self.slider.value() + 1)
+
     def create_img(self):
         self.canvas.img_idx = 0
-        self.im = self.axes.imshow(self.canvas.data['data'][self.canvas.img_idx],cmap='gray')
+        self.im = self.axes.imshow(self.canvas.data['data'][self.canvas.img_idx],norm=PowerNorm(gamma=1),cmap='gray')
         self.axes.set_axis_off()
         # Add scale bar 
         self.scale = self.canvas.data['axes'][1]['scale']
@@ -2372,23 +2681,47 @@ class PlotCanvas3d(PlotCanvas):
         if self.scalebar_settings['scalebar']:
             self.create_scalebar()
         self.fig.tight_layout(pad=0)
-        # Create a slider for stacks
-        self.slider_ax = self.fig.add_axes([0.2, 0.9, 0.7, 0.03], facecolor='lightgoldenrodyellow')
-        self.fontsize = 10
-        self.slider = Slider(self.slider_ax, 'Frame', 0, self.canvas.data['data'].shape[0] - 1, 
-                             valinit=self.canvas.img_idx, valstep=1,handle_style={'size': self.fontsize})
-        self.slider_ax.tick_params(labelsize=self.fontsize)  # Smaller font size for ticks
-        self.slider.label.set_size(self.fontsize)     # Smaller font size for label
-        self.slider.label.set_color('yellow')
-        self.slider.valtext.set_size(self.fontsize)
-        self.slider.valtext.set_color('yellow')
-        self.slider.on_changed(self.update_frame)
         
+        
+    def toggle_play(self):
+        self.isPlaying = not self.isPlaying
+        
+        
+        if self.isPlaying:
+            # Handle animation with a separate thread
+            self.thread = QThread(parent=self)
+            self.worker = AnimationWorker(self.slider)
+            self.worker.moveToThread(self.thread)
+
+            self.thread.started.connect(self.worker.run)
+            self.worker.progress.connect(lambda value: self.slider.setValue(value))
+            self.worker.finished.connect(lambda: self.slider.setValue(0))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(lambda: self.toggle_play())
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.thread.start()
+        else:
+            self.worker.stop()
+            self.thread.quit()
+
+
     # Update function for the slider
     def update_frame(self, val):
-        self.canvas.img_idx = int(self.slider.val)
+        self.canvas.img_idx = val
         self.im.set_data(self.canvas.data['data'][self.canvas.img_idx])
         self.canvas.draw_idle()
+        # Update live FFT if present
+        if self.mode_control['Live_FFT']:
+            preview_name = self.canvas.canvas_name + '_Live FFT'
+            self.current_data = self.get_current_img_from_canvas()
+            x_min, x_max, y_min, y_max = self.selector.extents
+            x_min = int(x_min)
+            x_max = int(x_max)
+            y_min = int(y_min)
+            y_max = int(y_max)
+            self.live_img['data'] = self.current_data[y_min:y_max,x_min:x_max]
+            UI_TemCompanion.preview_dict[preview_name].update_img(self.live_img['data'])
         
         
     def flip_stack_horizontal(self):
@@ -2595,7 +2928,71 @@ class PlotCanvas3d(PlotCanvas):
             UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Resampled by a factor of {rescale_factor}.')
             UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
 
-
+    
+    def reslice_stack(self):
+        self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.on_button_press)
+        self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.on_button_release)
+        # Display a message in the status bar
+        self.statusBar.showMessage("Draw a line with mouse on ROI to reslice. Drag with mouse if needed.")
+        
+        self.buttons['reslice_ok'] = QPushButton('Reslice', parent=self.canvas)
+        self.buttons['reslice_ok'].move(30,30)
+        self.buttons['reslice_ok'].clicked.connect(self.reslice_from_line)
+        self.buttons['reslice_ok'].show()
+        
+        self.buttons['reslice_cancel'] = QPushButton('Cancel', parent=self.canvas)
+        self.buttons['reslice_cancel'].move(100,30)
+        self.buttons['reslice_cancel'].clicked.connect(self.clear_reslice)
+        self.buttons['reslice_cancel'].show()
+        
+    def clear_reslice(self):
+        self.cleanup()
+        self.clear_buttons()
+        self.clear_cid()
+        # Display a message in the status bar
+        self.statusBar.showMessage("Ready")
+        
+    def reslice_from_line(self):
+        if self.start_point is not None and self.end_point is not None:
+            
+            p1 = self.start_point
+            p2 = self.end_point
+            # extract line profile from each frame
+            img = copy.deepcopy(self.canvas.data)
+            resliced = []
+            for frame in img['data']:
+                line = profile_line(frame,(p1[1],p1[0]), (p2[1],p2[0]), linewidth=1)
+                resliced.append(line)
+            
+            resliced_array = np.array(resliced)
+            # update image and axes
+            img['data'] = resliced_array
+            resliced_size = resliced_array.shape
+            original_axes = copy.deepcopy(img['axes'])
+            # z axis will be the new y
+            original_axes[0]['size'] = resliced_size[0]
+            original_axes[0]['navigate'] = False
+            original_axes[1]['size'] = resliced_size[1]
+            img['axes'] = []
+            img['axes'].append(original_axes[0])
+            img['axes'].append(original_axes[1])
+            
+            
+            # plot
+            
+            preview_name = self.canvas.canvas_name + f'_Resliced from {p1}, {p2}'
+            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(img, parent=self.parent())
+            UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
+            UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
+            UI_TemCompanion.preview_dict[preview_name].show()
+            
+            # Keep the history
+            UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Resliced from {p1} to {p2}.')
+            UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
+            
+        # Clear cid
+        self.clear_reslice()
+            
     def sort_stack(self):
         sorted_img = copy.deepcopy(self.canvas.data)
         img = sorted_img['data']
@@ -2629,116 +3026,148 @@ class PlotCanvas3d(PlotCanvas):
         UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'Sorted by the order of {sorted_order}.')
         UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
     
-    def align_stack_cc(self):        
-        aligned_img = copy.deepcopy(self.canvas.data)
-        img = aligned_img['data']
-        
+    def align_stack_cc(self):                
         # Open a dialog to take parameters
         dialog = AlignStackDialog(parent=self)
         if dialog.exec_() == QDialog.Accepted:
             apply_window = dialog.apply_window
             crop_img = dialog.crop_img
             crop_to_square = dialog.crop_to_square
-                        
-            img_n, img_x, img_y = img.shape
-            drift_stack = []
-            
-            
-            # Calculate the drift with sub pixel precision
-            upsampling = 100
-            print('Stack alignment using phase cross-correlation.')
-            for n in range(img_n -1):            
-                fixed = img[n]
-                moving = img[n+1]
-                # Apply a Hann window to suppress periodic features
-                if apply_window:
-                    w = window('hann', fixed.shape)
-                    fixed = fixed * w
-                    moving = moving * w
-                drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling,     Imalization=None)
-                drift_stack.append(drift)
-            # Shift the images to align the stack
-            drift = np.array([0,0])
-            drift_all = []
-            for n in range(img_n-1):
-                drift = drift + drift_stack[n]
-                img_to_shift = img[n+1]
-                
-                img[n+1,:,:] = shift(img_to_shift,drift, output='int16')
-                print(f'Shifted slice {n+1} by {drift}')
-                drift_all.append(drift)
-                
-            if crop_img:
-                # Crop the stack to the biggest common region
-                drift_x = [i[0] for i in drift_all]
-                drift_y = [i[1] for i in drift_all]
-                drift_x_min, drift_x_max = min(drift_x), max(drift_x)
-                drift_y_min, drift_y_max = min(drift_y), max(drift_y)
-                x_min = max(int(drift_x_max) + 1, 0)
-                x_max = min(img_x, int(img_x + drift_x_min) - 1)
-                y_min = max(int(drift_y_max) + 1,0)
-                y_max = min(img_y, int(img_y + drift_y_min) - 1)
-                
-                img_crop = img[:,x_min:x_max,y_min:y_max]
-                print(f'Cropped images to {y_min}:{y_max}, {x_min}:{x_max}.')
-                
-                if crop_to_square:
-                    x, y = img_crop[0].shape
-                    if x > y:
-                        new_start = int((x - y) / 2)
-                        new_end = new_start + y 
-                        img_crop = img_crop[:,new_start:new_end,:]
-                    else:
-                        new_start = int((y - x) / 2)
-                        new_end = new_start + x 
-                        img_crop = img_crop[:,:,new_start:new_end]
-                    print(f'Further cropped to square from {new_start}:{new_end}.')
-                    
-                aligned_img['data'] = img_crop
-                aligned_img['data'] = aligned_img['data']
-                # Update axes size
-                aligned_img['axes'][0]['size'] = aligned_img['data'].shape[1]
-                aligned_img['axes'][1]['size'] = aligned_img['data'].shape[2]
-            print('Stack alignment finished!')
-                    
-            # Create a new PlotCanvas to display
+            img = self.get_original_img_dict()
+
             preview_name = self.canvas.canvas_name + '_aligned by cc'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self.parent())
-            UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-            UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
-            UI_TemCompanion.preview_dict[preview_name].show()
-            
+            metadata = 'Aligned by Phase Cross-Correlation'
+
             self.position_window('center left')
-            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+
+            # Run alignment in a separate thread
+            self.thread = QThread()
+            self.worker = Worker(self.run_alignment_cc, img, apply_window, crop_img, crop_to_square)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+            self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+            self.thread.start()
+
+           
+
+    def run_alignment_cc(self, img_dict, apply_window=True, crop_img=True, crop_to_square=False):
+        aligned_img = copy.deepcopy(img_dict)
+        img = img_dict['data']
+
+        # Perform phase cross-correlation alignment on an image stack
+        # img: 3D numpy array (n, x, y)
+        img_n, img_x, img_y = img.shape
+        drift_stack = []
+        
+        
+        # Calculate the drift with sub pixel precision
+        upsampling = 100
+        print('Stack alignment using phase cross-correlation.')
+        for n in range(img_n -1):            
+            fixed = img[n]
+            moving = img[n+1]
+            # Apply a Hann window to suppress periodic features
+            if apply_window:
+                w = window('hann', fixed.shape)
+                fixed = fixed * w
+                moving = moving * w
+
             
-            # Write process history in the original_metadata
-            UI_TemCompanion.preview_dict[preview_name].process['process'].append('Aligned by Phase Cross-Correlation')
-            UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
-    
+            drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling, normalization=None)
+            drift_stack.append(drift)
+        # Shift the images to align the stack
+        drift = np.array([0,0])
+        drift_all = []
+        for n in range(img_n-1):
+            drift = drift + drift_stack[n]
+            img_to_shift = img[n+1]
+            
+            img[n+1,:,:] = shift(img_to_shift,drift)
+            print(f'Shifted slice {n+1} by {drift}')
+            drift_all.append(drift)
+            
+        if crop_img:
+            # Crop the stack to the biggest common region
+            drift_x = [i[0] for i in drift_all]
+            drift_y = [i[1] for i in drift_all]
+            drift_x_min, drift_x_max = min(drift_x), max(drift_x)
+            drift_y_min, drift_y_max = min(drift_y), max(drift_y)
+            x_min = max(int(drift_x_max) + 1, 0)
+            x_max = min(img_x, int(img_x + drift_x_min) - 1)
+            y_min = max(int(drift_y_max) + 1,0)
+            y_max = min(img_y, int(img_y + drift_y_min) - 1)
+            
+            img_crop = img[:,x_min:x_max,y_min:y_max]
+            print(f'Cropped images to {y_min}:{y_max}, {x_min}:{x_max}.')
+            
+            if crop_to_square:
+                x, y = img_crop[0].shape
+                if x > y:
+                    new_start = int((x - y) / 2)
+                    new_end = new_start + y 
+                    img_crop = img_crop[:,new_start:new_end,:]
+                else:
+                    new_start = int((y - x) / 2)
+                    new_end = new_start + x 
+                    img_crop = img_crop[:,:,new_start:new_end]
+                print(f'Further cropped to square from {new_start}:{new_end}.')
+                
+            aligned_img['data'] = img_crop
+            aligned_img['data'] = aligned_img['data']
+            # Update axes size
+            aligned_img['axes'][0]['size'] = aligned_img['data'].shape[1]
+            aligned_img['axes'][1]['size'] = aligned_img['data'].shape[2]
+        print('Stack alignment finished!')
+        return aligned_img
 
     def align_stack_of(self):
-        aligned_img = copy.deepcopy(self.canvas.data)
-        img = aligned_img['data']
-        # Open a dialog to take parameters
-        # dialog = AlignStackOFDialog(parent=self)
-        # if dialog.exec_() == QDialog.Accepted:
-        #     algorithm = dialog.algorithm
-        #     apply_window = dialog.apply_window
-            
         print('Stack alignment using Optical Flow iLK.')
+        preview_name = self.canvas.canvas_name + '_aligned by OF'
+        metadata = 'Aligned by Optical Flow iLK.'
+        self.position_window('center left')
+        img = self.get_original_img_dict()
+        # Run alignment in a separate thread
+        self.thread = QThread()
+        self.worker = Worker(self.run_alignment_of, img)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata))
+        self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
+        self.thread.start()
+
+            
+    def run_alignment_of(self, img_dict):
+        aligned_img = copy.deepcopy(img_dict)
+        img = aligned_img['data']
+        # Normalize
+        for f in range(img.shape[0]):
+            img[f] = norm_img(img[f])
+            
+        
         img_n, nr, nc = img.shape
         drift_stack = []
         for n in range(img_n -1):            
             fixed = img[n]
             moving = img[n+1]
             
-            #print(f'Calculate the drift of slice {n+1} using Optical Flow iLK...')
+            print(f'Calculate the drift of slice {n+1} using Optical Flow iLK...')
             
             u, v = optical_flow_ilk(fixed, moving)
             drift_stack.append((u, v))
         
         # Apply the correction
-        #print('Applying drift correction...')
+        print('Applying drift correction...')
         row_coords, col_coords = np.meshgrid(np.arange(nr), np.arange(nc), indexing='ij')
         drift = np.array([np.zeros((nr,nc)),np.zeros((nr,nc))])
         for n in range(img_n-1):
@@ -2750,22 +3179,8 @@ class PlotCanvas3d(PlotCanvas):
         
             aligned_img['data'] = img
         print('Stack alignment finished!')
-                
-        # Create a new PlotCanvas to display
-        preview_name = self.canvas.canvas_name + '_aligned by OF'
-        UI_TemCompanion.preview_dict[preview_name] = PlotCanvas3d(aligned_img, parent=self.parent())
-        UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-        UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
-        UI_TemCompanion.preview_dict[preview_name].show()
-        
-        self.position_window('center left')
-        UI_TemCompanion.preview_dict[preview_name].position_window('center right')
-        
-        # Write process history in the original_metadata
-        UI_TemCompanion.preview_dict[preview_name].process['process'].append('Aligned by Optical Flow iLK')
-        UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
-            
-    
+        return aligned_img
+
     def integrate_stack(self):
         data = np.mean(self.canvas.data['data'], axis=0)
         integrated_img = {'data': data, 'axes': self.canvas.data['axes'], 'metadata': self.canvas.data['metadata'],
@@ -2806,6 +3221,33 @@ class PlotCanvas3d(PlotCanvas):
                                                    options=options)
         if file_path:
             tif_writer(file_path, data_to_export) 
+            
+            print(f'{file_path} has been exported.')
+            
+    
+    def export_stack_gif(self):
+        data = self.canvas.data
+        img_data = data['data']
+        # Normalize data
+        for f in range(img_data.shape[0]):
+            img_data[f] = norm_img(img_data[f]) * 255
+        # Update the axes in case they have been changed, e.g., scale, size...
+        data['original_axes'][1]['size'] = data['axes'][0]['size']
+        data['original_axes'][2]['size'] = data['axes'][1]['size']
+        data['original_axes'][1]['scale'] = data['axes'][0]['scale']
+        data['original_axes'][2]['scale'] = data['axes'][1]['scale']
+        data['original_axes'][1]['units'] = data['axes'][0]['units']
+        data['original_axes'][2]['units'] = data['axes'][1]['units']
+        
+        data_to_export = {'data': img_data, 'metadata': data['metadata'], 'axes': data['original_axes']}
+        options = QFileDialog.Options()
+        file_path, selection = QFileDialog.getSaveFileName(self.parent(), 
+                                                   "Save as GIF animation", 
+                                                   "", 
+                                                   "GIF Files (*.gif)", 
+                                                   options=options)
+        if file_path:
+            im_writer(file_path, data_to_export, duration=500, loop=0) 
             
             print(f'{file_path} has been exported.')
 
@@ -2858,15 +3300,13 @@ class PlotCanvas3d(PlotCanvas):
             else: # Save with matplotlib
                 figsize = self.canvas.figure.get_size_inches()
                 img_size = img_to_save['data'][0].shape
-                dpi = float(sorted(img_size/figsize, reverse=True)[0])  
+                dpi = float(sorted(img_size/figsize, reverse=True)[0])                  
                 
-                # Hide the slider
-                self.canvas.figure.axes[1].set_visible(False)
                 for i in range(img_to_save['data'].shape[0]):
-                    self.slider.set_val(i)
+                    self.slider.setValue(i)
                     self.canvas.figure.savefig(output_dir + f_name + f'_{i:03d}' +'.' + file_type, dpi=dpi, format=file_type)
                     print(f'Exported to {output_dir}/{f_name}_{i:03d}.')
-                self.canvas.figure.axes[1].set_visible(True)
+                
                     
             
 
@@ -2967,7 +3407,7 @@ class PlotCanvasFFT(PlotCanvas):
 
         vmin, vmax = np.percentile(fft_mag, (30,99.9))
         
-        self.im = self.axes.imshow(self.canvas.data['data'], vmin=vmin, vmax=vmax, cmap='inferno')
+        self.im = self.axes.imshow(self.canvas.data['data'], norm=PowerNorm(gamma=1, vmin=vmin, vmax=vmax), cmap='inferno')
         self.axes.set_axis_off()
         #Scale bar with inverse unit  
         if self.scalebar_settings['scalebar']:
@@ -3010,6 +3450,10 @@ class PlotCanvasFFT(PlotCanvas):
             self.scalebar = None
             self.line = None
             self.text = None
+
+            if self.mode_control['mask']:
+                self.mask_list = []
+                self.sym_mask_list = []
         
         # # Reset the measurement marker if exists
         # if self.marker is not None:
@@ -3121,7 +3565,7 @@ class PlotCanvasFFT(PlotCanvas):
         self.clear_cid()        
         self.clear_buttons()
         for key, value in self.mode_control.items():
-            if value:
+            if value and key != 'GPA':
                 self.mode_control[key] = False
                 
         self.mode_control['mask'] = True
@@ -3130,6 +3574,7 @@ class PlotCanvasFFT(PlotCanvas):
        
         self.button_press_cid = self.fig.canvas.mpl_connect('button_press_event', self.fft_on_press)
         self.button_release_cid = self.fig.canvas.mpl_connect('button_release_event', self.fft_on_release)
+        self.arrow_move_cid = self.fig.canvas.mpl_connect('key_press_event', self.fft_on_key_press)
 
         
         # Buttons for add, remove, cancel
@@ -3142,9 +3587,9 @@ class PlotCanvasFFT(PlotCanvas):
         self.buttons['mask_cancel']  = QPushButton('Cancel', parent=self.canvas)
         self.buttons['mask_cancel'].setGeometry(170, 30, 80, 30)
         self.buttons['mask_cancel'].clicked.connect(self.cleanup_mask)
-        self.buttons['mask_ifft'] = QPushButton('iFFT', parent=self.canvas)
-        self.buttons['mask_ifft'].setGeometry(240, 30, 80, 30)
-        self.buttons['mask_ifft'].clicked.connect(self.ifft_filter)
+        # self.buttons['mask_ifft'] = QPushButton('iFFT', parent=self.canvas)
+        # self.buttons['mask_ifft'].setGeometry(240, 30, 80, 30)
+        # self.buttons['mask_ifft'].clicked.connect(self.ifft_filter)
         
         for key, value in self.buttons.items():
             if value is not None:
@@ -3152,14 +3597,15 @@ class PlotCanvasFFT(PlotCanvas):
         
         self.add_mask()
         
-        self.statusBar.showMessage('Drag on the red circle to position. Scroll to resize. Add more as needed.')
+
+        self.statusBar.showMessage('Drag on the red circle to position. Scroll to resize. Use arrow keys to move. Add more as needed.')
         self.canvas.draw_idle()
         
     
     
     def add_mask(self):       
         # Default size and position
-        x0, y0 = self.img_size[0]/4, self.img_size[1]/4
+        x0, y0 = self.img_size[0] * 0.4, self.img_size[1] * 0.4
         r0 = int(self.img_size[0]/100 /0.7)
         mask = Circle((x0,y0),radius=r0, color='red', fill=False)
         self.axes.add_artist(mask)
@@ -3174,10 +3620,11 @@ class PlotCanvasFFT(PlotCanvas):
             sym_mask = Circle((self.img_size[0]-x0,self.img_size[1]-y0), radius=r0, color='yellow', fill=False)
             self.sym_mask_list.append(sym_mask)
             self.axes.add_artist(sym_mask)
-            self.active_mask = mask
-            
+            self.active_mask = mask            
             self.active_idx = self.mask_list.index(mask)
+            self.ifft_filter()
         self.canvas.draw_idle()
+        
 
         
     def remove_mask(self):
@@ -3191,6 +3638,9 @@ class PlotCanvasFFT(PlotCanvas):
             self.active_mask = None
             self.active_idx = None
             self.canvas.draw_idle()
+
+            if self.mode_control['GPA'] is not True:
+                self.ifft_filter()
         
     def fft_on_press(self,event):
         
@@ -3234,12 +3684,13 @@ class PlotCanvasFFT(PlotCanvas):
      
     def fft_on_release(self, event):
         if event.inaxes != self.axes:
-            return
-        
-        
+            return        
         self.fig.canvas.mpl_disconnect(self.motion_notify_cid)
+        
         self.canvas.draw_idle()
-                
+        if self.mode_control['GPA'] is not True:
+            self.ifft_filter()
+
     def on_scroll(self, event):
         if self.active_mask is None:
             return
@@ -3260,10 +3711,27 @@ class PlotCanvasFFT(PlotCanvas):
         #     self.sym_mask_list[self.active_idx].set_radius(new_radius)
 
         self.fig.canvas.draw_idle() 
-        
-            
-        
-     
+        if self.mode_control['GPA'] is not True:
+            self.ifft_filter()
+
+    def fft_on_key_press(self, event):
+        if self.active_mask is not None:
+            cx, cy = self.active_mask.center
+            if event.key == 'up':
+                cy = max(cy - 1, 0)
+            if event.key == 'down':
+                cy = min(cy + 1, self.img_size[1])
+            if event.key == 'left':
+                cx = max(cx - 1, 0)
+            if event.key == 'right':
+                cx = min(cx + 1, self.img_size[0])
+            self.active_mask.center = (cx, cy)
+            if self.sym_mask_list:
+                self.sym_mask_list[self.active_idx].center = (self.img_size[0]-cx, self.img_size[1]-cy)
+                self.ifft_filter()
+            self.canvas.draw_idle()
+
+
     def ifft_filter(self):
         if self.mask_list and self.sym_mask_list:
             mask_list = self.mask_list + self.sym_mask_list
@@ -3274,320 +3742,373 @@ class PlotCanvasFFT(PlotCanvas):
             fft_data = self.canvas.data['fft']
             masked_fft = fft_data * mask
             filtered_img = ifft2(ifftshift(masked_fft)).real
-            filtered_img_dict = self.get_img_dict_from_canvas()
-            filtered_img_dict['data'] = filtered_img
-            
-            # Calculate scale and update
-            if self.units != 'px':
-                img_scale = 1 / self.scale /self.img_size[0]
-                img_units = self.units.split('/')[-1]
+
+            preview_name = self.canvas.canvas_name + '_iFFT'
+
+            if preview_name not in UI_TemCompanion.preview_dict.keys():
+                filtered_img_dict = self.get_img_dict_from_canvas()
+                filtered_img_dict['data'] = filtered_img
                 
+                # Calculate scale and update
+                if self.units != 'px':
+                    img_scale = 1 / self.scale /self.img_size[0]
+                    img_units = self.units.split('/')[-1]
+                    
+                else:
+                    img_scale = 1
+                    img_units = 'px'
+                
+                for axes in filtered_img_dict['axes']:
+                    axes['units'] = img_units
+                    axes['scale'] = img_scale
+
+                self.plot_new_image(filtered_img_dict, preview_name, parent=self, metadata=f'iFFT filtered from {self.canvas.canvas_name}.')
+                self.position_window('center left')
+                UI_TemCompanion.preview_dict[preview_name].position_window('center right')
             else:
-                img_scale = 1
-                img_units = 'px'
+                UI_TemCompanion.preview_dict[preview_name].update_img(filtered_img)   
+
+
             
-            for axes in filtered_img_dict['axes']:
-                axes['units'] = img_units
-                axes['scale'] = img_scale
                 
                 
             # Create a new plot canvas and display
-            mask_center = [(int(circle.center[0]), int(circle.center[1])) for circle in self.mask_list]
-            preview_name = self.canvas.canvas_name + f'_iFFT_{mask_center}'
-            UI_TemCompanion.preview_dict[preview_name] = PlotCanvas(filtered_img_dict,parent=self.parent())
-            UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
             
-            UI_TemCompanion.preview_dict[preview_name].setWindowTitle(preview_name)
-            UI_TemCompanion.preview_dict[preview_name].show()
+            # mask_center = [(int(circle.center[0]), int(circle.center[1])) for circle in self.mask_list]
             
-            self.position_window('center left')
-            UI_TemCompanion.preview_dict[preview_name].position_window('center right')
             
-            # Keep the history
-            UI_TemCompanion.preview_dict[preview_name].process['process'].append(f'IFFT from {mask_center}')
-            UI_TemCompanion.preview_dict[preview_name].canvas.data['metadata']['process'] = copy.deepcopy(UI_TemCompanion.preview_dict[preview_name].process)
         else:
             QMessageBox.warning(self, 'Mask and iFFT', 'Add mask(s) first!') 
     
-            
-            
-        
-#========= Plot canvas for line profile =======================================
-class PlotCanvasLineProfile(QMainWindow):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            
-            self.main_frame = QWidget()
-            self.fig = Figure(figsize=(5, 3), dpi=150)
-            self.axes = self.fig.add_subplot(111)
-            self.canvas = FigureCanvas(self.fig)
-            self.canvas.setParent(self)
-            
-            self.selector = None
-            self.text = None
-            self.clear_button = None
-            
-            #self.plot_lineprofile(p1, p2)
-            
-            # Create the navigation toolbar, tied to the canvas
-            self.mpl_toolbar = LineProfileToolbar(self.canvas, self)        
-            vbox = QVBoxLayout()
-            vbox.addWidget(self.mpl_toolbar)
-            vbox.addWidget(self.canvas)
-            self.main_frame.setLayout(vbox)
-            self.setCentralWidget(self.main_frame)
-            self.create_menubar()
-            
-            # Right click menu
-            self.main_frame.setContextMenuPolicy(Qt.CustomContextMenu)
-            self.main_frame.customContextMenuRequested.connect(self.show_context_menu)
-            
-            # Buttons
-            self.buttons = {'measure_clear': None}
-            
-            self.linewidth = 1
-        
-        def position_window(self, pos='center'):
-            # Set the window pop up position
-            # Possible positions are:
-            # 'center': screen center
-            # 'center left': left side with the right edge on the screen center
-            # 'center right': right side with the left edge on the screen
-            # 'next to parent': the left edge next to its parent window
-            
-            # Get screen resolution
-            screen_geometry = QApplication.primaryScreen().availableGeometry()
-            frame_size = self.frameGeometry()
-            
-            if pos == 'center':
-                x = (screen_geometry.width() - frame_size.width()) // 2
-                y = (screen_geometry.height() - frame_size.height()) // 2
+
+#========= General spectrum plot canvas ======================================
+class PlotCanvasSpectrum(QMainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+
+        self.main_frame = QWidget()
+        self.fig = Figure(figsize=(5, 3), dpi=150)
+        self.axes = self.fig.add_subplot(111)
+        self.canvas = FigureCanvas(self.fig)
+        self.canvas.setParent(self)
+
+        self.x_units = None
+        self.y_units = None
+
+        self.selector = None
+        self.text = None
+        self.clear_button = None
                 
-            if pos == 'center left':
-                x = screen_geometry.width() // 2 - frame_size.width()
-                y = (screen_geometry.height() - frame_size.height()) // 2
-            
-            if pos == 'center right':
-                x = screen_geometry.width() // 2 
-                y = (screen_geometry.height() - frame_size.height()) // 2
-            if pos == 'next to parent':
-                if self.parent() is not None:
-                    parent = self.parent()
-                    parent_geometry = parent.frameGeometry()
-                    x = parent_geometry.x() + parent_geometry.width()
-                    y = parent_geometry.y()
-                    
-            self.move(x, y)
-            
-        def create_menubar(self):
-            menubar = self.menuBar()
-            
-            file_menu = menubar.addMenu('&File')
-            save_action = QAction('&Save as', self)
-            save_action.setShortcut('ctrl+s')
-            save_action.triggered.connect(self.mpl_toolbar.save_figure)
-            file_menu.addAction(save_action)
-            copy_action = QAction('&Copy Plot to Clipboard', self)
-            copy_action.setShortcut('ctrl+c')
-            copy_action.triggered.connect(self.copy_plot)
-            file_menu.addAction(copy_action)
-            close_action = QAction('&Close', self)
-            close_action.setShortcut('ctrl+x')
-            close_action.triggered.connect(self.close)
-            file_menu.addAction(close_action)
-            close_all_action = QAction('&Close All', self)
-            close_all_action.setShortcut('ctrl+shift+x')
-            close_all_action.triggered.connect(self.close_all)
-            file_menu.addAction(close_all_action)
-            
-            measure_menu = menubar.addMenu('Measure')
-            measure_horizontal = QAction('Measure horizontal', self)
-            
-            measure_horizontal.triggered.connect(self.measure_horizontal)
-            measure_menu.addAction(measure_horizontal)
-            measure_vertical = QAction('Measure vertical', self)
-            
-            measure_vertical.triggered.connect(self.measure_vertical)
-            measure_menu.addAction(measure_vertical)
-            
-            settings_menu = menubar.addMenu('&Settings')
-            linewidth_setting_action = QAction('&Set line width',self)
-            linewidth_setting_action.setShortcut('ctrl+w')
-            linewidth_setting_action.triggered.connect(self.linewidth_setting)
-            settings_menu.addAction(linewidth_setting_action)
-
-            plotsettings_action = QAction('&Plot Settings', self)
-            plotsettings_action.setShortcut('ctrl+o')
-            plotsettings_action.triggered.connect(self.plotsetting)
-            settings_menu.addAction(plotsettings_action)
-            
-            self.menubar = menubar
-            
-        def show_context_menu(self,pos):
-            context_menu = QtWidgets.QMenu(self)
-            
-            file_menu = context_menu.addMenu('File')
-            save_action = QAction('Save as')
-            save_action.triggered.connect(self.mpl_toolbar.save_figure)
-            file_menu.addAction(save_action)
-            copy_action = QAction('Copy Plot to Clipboard')
-            copy_action.triggered.connect(self.copy_plot)
-            file_menu.addAction(copy_action)
-            close_action = QAction('Close')
-            close_action.triggered.connect(self.close)
-            file_menu.addAction(close_action)
-            
-            
-            measure_menu = context_menu.addMenu('Measure')
-            measure_horizontal = QAction('Measure horizontal', self)            
-            measure_horizontal.triggered.connect(self.measure_horizontal)
-            measure_menu.addAction(measure_horizontal)
-            measure_vertical = QAction('Measure vertical', self)            
-            measure_vertical.triggered.connect(self.measure_vertical)
-            measure_menu.addAction(measure_vertical)
-            
-            settings_menu = context_menu.addMenu('Settings')
-            linewidth_setting_action = QAction('&Set line width')
-            linewidth_setting_action.triggered.connect(self.linewidth_setting)
-            settings_menu.addAction(linewidth_setting_action)
-            plotsettings_action = QAction('Plot Settings')
-            plotsettings_action.triggered.connect(self.plotsetting)
-            settings_menu.addAction(plotsettings_action)
-            
-            context_menu.exec_(self.mapToGlobal(pos))
-
+        # Create the navigation toolbar, tied to the canvas
+        self.mpl_toolbar = LineProfileToolbar(self.canvas, self)        
+        vbox = QVBoxLayout()
+        vbox.addWidget(self.mpl_toolbar)
+        vbox.addWidget(self.canvas)
+        self.main_frame.setLayout(vbox)
+        self.setCentralWidget(self.main_frame)
+        self.create_menubar()
         
-        def close_all(self):
-            plots = list(UI_TemCompanion.preview_dict.keys())
-            for plot in plots:
+        # Right click menu
+        self.main_frame.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.main_frame.customContextMenuRequested.connect(self.show_context_menu)
+        
+        # Buttons
+        self.buttons = {'measure_clear': None}
+
+    def exitEvent(self, event):
+        UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
+
+    def position_window(self, pos='center'):
+        # Set the window pop up position
+        # Possible positions are:
+        # 'center': screen center
+        # 'center left': left side with the right edge on the screen center
+        # 'center right': right side with the left edge on the screen
+        # 'next to parent': the left edge next to its parent window
+        
+        # Get screen resolution
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        frame_size = self.frameGeometry()
+        
+        if pos == 'center':
+            x = (screen_geometry.width() - frame_size.width()) // 2
+            y = (screen_geometry.height() - frame_size.height()) // 2
+            
+        if pos == 'center left':
+            x = screen_geometry.width() // 2 - frame_size.width()
+            y = (screen_geometry.height() - frame_size.height()) // 2
+        
+        if pos == 'center right':
+            x = screen_geometry.width() // 2 
+            y = (screen_geometry.height() - frame_size.height()) // 2
+        if pos == 'next to parent':
+            if self.parent() is not None:
+                parent = self.parent()
+                parent_geometry = parent.frameGeometry()
+                x = parent_geometry.x() + parent_geometry.width()
+                y = parent_geometry.y()
+                
+        self.move(x, y)
+
+    def create_menubar(self):
+        menubar = self.menuBar()
+        
+        file_menu = menubar.addMenu('&File')
+        save_action = QAction('&Save as', self)
+        save_action.setShortcut('ctrl+s')
+        save_action.triggered.connect(self.mpl_toolbar.save_figure)
+        file_menu.addAction(save_action)
+        copy_action = QAction('&Copy Plot to Clipboard', self)
+        copy_action.setShortcut('ctrl+c')
+        copy_action.triggered.connect(self.copy_plot)
+        file_menu.addAction(copy_action)
+        close_action = QAction('&Close', self)
+        close_action.setShortcut('ctrl+x')
+        close_action.triggered.connect(self.close)
+        file_menu.addAction(close_action)
+        close_all_action = QAction('&Close All', self)
+        close_all_action.setShortcut('ctrl+shift+x')
+        close_all_action.triggered.connect(self.close_all)
+        file_menu.addAction(close_all_action)
+        
+        measure_menu = menubar.addMenu('Measure')
+        measure_horizontal = QAction('Measure horizontal', self)
+        
+        measure_horizontal.triggered.connect(self.measure_horizontal)
+        measure_menu.addAction(measure_horizontal)
+        measure_vertical = QAction('Measure vertical', self)
+        
+        measure_vertical.triggered.connect(self.measure_vertical)
+        measure_menu.addAction(measure_vertical)
+        
+        settings_menu = menubar.addMenu('&Settings')
+        plotsettings_action = QAction('&Plot Settings', self)
+        plotsettings_action.setShortcut('ctrl+o')
+        plotsettings_action.triggered.connect(self.plotsetting)
+        settings_menu.addAction(plotsettings_action)
+        
+        self.menubar = menubar
+        
+    def show_context_menu(self,pos):
+        context_menu = QtWidgets.QMenu(self)
+        
+        file_menu = context_menu.addMenu('File')
+        save_action = QAction('Save as')
+        save_action.triggered.connect(self.mpl_toolbar.save_figure)
+        file_menu.addAction(save_action)
+        copy_action = QAction('Copy Plot to Clipboard')
+        copy_action.triggered.connect(self.copy_plot)
+        file_menu.addAction(copy_action)
+        close_action = QAction('Close')
+        close_action.triggered.connect(self.close)
+        file_menu.addAction(close_action)
+        
+        
+        measure_menu = context_menu.addMenu('Measure')
+        measure_horizontal = QAction('Measure horizontal', self)            
+        measure_horizontal.triggered.connect(self.measure_horizontal)
+        measure_menu.addAction(measure_horizontal)
+        measure_vertical = QAction('Measure vertical', self)            
+        measure_vertical.triggered.connect(self.measure_vertical)
+        measure_menu.addAction(measure_vertical)
+        
+        settings_menu = context_menu.addMenu('Settings')
+        plotsettings_action = QAction('Plot Settings')
+        plotsettings_action.triggered.connect(self.plotsetting)
+        settings_menu.addAction(plotsettings_action)
+        
+        context_menu.exec_(self.mapToGlobal(pos))
+
+    def create_plot(self, x, y, x_label=None, x_units=None, y_label=None, y_units=None,title=None):
+        # Create a plot with data x and y of the same length
+        # x: array-like, the x-axis data, must be 1D
+        # y: array-like, the y-axis data, can be 2D
+        if len(x) != len(y):
+            raise ValueError("x and y must be the same length")
+        if not np.ndim(x) == 1:
+            raise ValueError("x must be 1D")
+        
+        self.axes.plot(x, y, '-', color='red')
+        self.axes.tick_params(direction='in')
+
+        # Set window title
+        if title is not None:
+            self.setWindowTitle(title)
+
+        # Set axis labels
+        if x_label is not None:
+            if x_units is not None:
+                self.x_units = x_units
+                x_label_text = f'{x_label} ({x_units})'
+            else:
+                x_label_text = x_label
+            self.axes.set_xlabel(x_label_text)
+
+        if y_label is not None:
+            if y_units is not None:
+                self.y_units = y_units
+                y_label_text = f'{y_label} ({y_units})'
+            else:
+                y_label_text = y_label
+            self.axes.set_ylabel(y_label_text)
+        
+        # Set axis span
+        self.axes.set_xlim(min(x), max(x))
+        y_span = max(y) - min(y)
+        y_max = max(y) + y_span * 0.1
+        y_min = min(y) - y_span * 0.1
+        self.axes.set_ylim(y_min, y_max)
+        self.fig.tight_layout()
+        self.canvas.draw_idle()
+
+    def close_all(self):
+        plots = list(UI_TemCompanion.preview_dict.keys())
+        for plot in plots:
+            try:
                 UI_TemCompanion.preview_dict[plot].close()
+            except Exception as e:
+                print(f"Error closing plot {plot}: {e}, ignored.")
+
+    def copy_plot(self):
+        buf = io.BytesIO()        
+        dpi = 150
+        self.canvas.figure.savefig(buf, dpi=dpi)
+        self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
+        buf.close()
+        self.fig.canvas.draw_idle()
+
+    def plotsetting(self):
+        self.mpl_toolbar.edit_parameters()
+
+    def on_select_h(self, xmin, xmax):
+        distance = xmax - xmin
+        if self.text is not None:
+            self.text.remove()
             
-        def copy_plot(self):
-            buf = io.BytesIO()
+        ylim = self.axes.get_ylim()
+        text_x = distance * 0.1 + xmin
+        text_y = ylim[1] - (ylim[1] - ylim[0]) * 0.1
+        
+        if self.x_units is not None:
+            text = f'{distance:.4f} ({self.x_units})'
+        else:
+            text = f'{distance:.4f}'
+
+        self.text = self.axes.text(text_x, text_y, text, color='black')
+        self.canvas.draw_idle()
+        
+    def on_select_v(self,ymin,ymax):
+        distance = ymax - ymin
+        if self.text is not None:
+            self.text.remove()
             
-            dpi = 150
+        xlim = self.axes.get_xlim()
+        text_x = xlim[1] - (xlim[1] - xlim[0]) * 0.3
+        text_y = ymax - distance * 0.1
+
+        if self.y_units is not None:
+            text = f'{distance:.4f} ({self.y_units})'
+        else:
+            text = f'{distance:.4f}'
+
+        self.text = self.axes.text(text_x, text_y, text, color='black')
+        self.canvas.draw_idle()
+        
+    def cleanup(self):
+        if self.selector is not None:
+            self.selector.set_active(False)
+            self.selector.set_visible(False)
+            self.selector = None   
+        if self.text is not None:
+            self.text.remove()
+            self.text = None
+        
+        if self.clear_button is not None:
+            self.clear_button.hide()
+            self.clear_button = None
+        
+        self.fig.canvas.draw_idle()
+        
+    def measure_horizontal(self):            
+        self.measure_span('horizontal')
             
-            self.canvas.figure.savefig(buf, dpi=dpi)
+        
+    def measure_vertical(self):
+        self.measure_span('vertical')
+        
+    def measure_span(self, direction):
+        if direction == 'horizontal':
+            onselect = self.on_select_h
+        elif direction == 'vertical':
+            onselect = self.on_select_v
+        if self.selector is None:
+            self.selector = SpanSelector(self.axes, onselect=onselect, interactive=True, useblit=True,
+                                            direction=direction,
+                                            drag_from_anywhere=True,
+                                            button=[1],
+                                            )
+                # Clear button
+            self.clear_button = QPushButton('Clear', parent=self.canvas)
+            self.clear_button.move(10, 10)
+            self.clear_button.clicked.connect(self.cleanup)
             
-            
-            self.clipboard = QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
-            buf.close()
-            
-            self.fig.canvas.draw_idle()
+            self.selector.set_active(True)
+            self.clear_button.show()
+            self.fig.canvas.draw_idle()  
+
+#========= Plot canvas for line profile =======================================
+class PlotCanvasLineProfile(PlotCanvasSpectrum):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.linewidth = 1
+        # Add line width setting in the menu
+        menubar = self.menubar
+        settings_menu = menubar.children()[3]
+        linewidth_setting_action = QAction('&Set line width',self)
+        linewidth_setting_action.setShortcut('ctrl+w')
+        linewidth_setting_action.triggered.connect(self.linewidth_setting)
+        settings_menu.addAction(linewidth_setting_action)
+
+        
+
+    def plot_lineprofile(self, p1, p2, linewidth=1):  
+        self.img_data = self.parent().get_current_img_from_canvas()
+        if self.text is not None:
+            self.text = None
+        self.axes.clear()
+        
+        self.start_point = p1
+        self.stop_point = p2
+        lineprofile = profile_line(self.img_data, (p1[1], p1[0]), (p2[1], p2[0]), linewidth=linewidth, reduce_func=np.mean)
+        x_scale = self.parent().scale
+        x_units = self.parent().units
+        line_x = np.linspace(0, len(lineprofile)-1, len(lineprofile)) * x_scale
+        self.create_plot( line_x, lineprofile, x_label='Distance', x_units=x_units, y_label='Intensity')
+
+        
+    def update_lineprofile(self, linewidth):
+        self.linewidth = linewidth
+        # Remove the previous plot
+        line = self.axes.get_lines()[0]
+        line.remove()
+        self.plot_lineprofile(self.start_point, self.stop_point, linewidth=self.linewidth)
+        self.parent().update_line_width(linewidth)
+        
+        
+    def closeEvent(self, event):
+        if self.parent().mode_control['lineprofile']:
+            self.parent().stop_line_profile()
+        UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
+        
+        
+    def linewidth_setting(self):
+        dialog = LineWidthSettingDialog(self.linewidth, parent=self)
+        dialog.show()
             
 
-        def plot_lineprofile(self, p1, p2, linewidth=1):  
-            self.img_data = self.parent().get_current_img_from_canvas()
-            if self.text is not None:
-                self.text = None
-            self.axes.clear()
-            
-            self.start_point = p1
-            self.stop_point = p2
-            lineprofile = profile_line(self.img_data, (p1[1], p1[0]), (p2[1], p2[0]), linewidth=linewidth, reduce_func=np.mean)
-            line_x = np.linspace(0, len(lineprofile)-1, len(lineprofile)) * self.parent().scale
-            self.axes.plot(line_x, lineprofile, '-', color='red')
-            self.axes.tick_params(direction='in')
-            self.axes.set_xlabel('Distance ({})'.format(self.parent().units))
-            self.axes.set_ylabel('Intensity')
-            self.axes.set_xlim(min(line_x), max(line_x))
-            y_span = max(lineprofile) - min(lineprofile)
-            y_max = max(lineprofile) + y_span * 0.1
-            y_min = min(lineprofile) - y_span * 0.1
-            self.axes.set_ylim(y_min, y_max)
-            self.fig.tight_layout()
-            self.canvas.draw_idle()
-            
-        def update_lineprofile(self, linewidth):
-            self.linewidth = linewidth
-            # Remove the previous plot
-            line = self.axes.get_lines()[0]
-            line.remove()
-            self.plot_lineprofile(self.start_point, self.stop_point, linewidth=self.linewidth)
-            self.parent().update_line_width(linewidth)
-            
-            
-        def closeEvent(self, event):
-            if self.parent().mode_control['lineprofile']:
-                self.parent().stop_line_profile()
-            UI_TemCompanion.preview_dict.pop(self.canvas.canvas_name, None)
-            
-        def plotsetting(self):
-            self.mpl_toolbar.edit_parameters()
-            
-        def linewidth_setting(self):
-            dialog = LineWidthSettingDialog(self.linewidth, parent=self)
-            dialog.show()
-            
 
-
-        def on_select_h(self, xmin, xmax):
-            distance = xmax - xmin
-            if self.text is not None:
-                self.text.remove()
-                
-            ylim = self.axes.get_ylim()
-            text_x = distance * 0.1 + xmin
-            text_y = ylim[1] - (ylim[1] - ylim[0]) * 0.1
-            
-            self.text = self.axes.text(text_x, text_y, f'{distance:.4f} ({self.parent().units})',
-                                       color='black')
-            self.canvas.draw_idle()
-            
-        def on_select_v(self,ymin,ymax):
-            distance = ymax - ymin
-            if self.text is not None:
-                self.text.remove()
-                
-            xlim = self.axes.get_xlim()
-            text_x = xlim[1] - (xlim[1] - xlim[0]) * 0.3
-            text_y = ymax - distance * 0.1
-            self.text = self.axes.text(text_x, text_y, f'{distance:.0f} (Counts)',
-                                       color='black')
-            self.canvas.draw_idle()
-            
-        def cleanup(self):
-            if self.selector is not None:
-                self.selector.set_active(False)
-                self.selector.set_visible(False)
-                self.selector = None   
-            if self.text is not None:
-                self.text.remove()
-                self.text = None
-            
-            if self.clear_button is not None:
-                self.clear_button.hide()
-                self.clear_button = None
-            
-            self.fig.canvas.draw_idle()
-            
-        def measure_horizontal(self):            
-            self.measure_span('horizontal')
-                
-            
-        def measure_vertical(self):
-            self.measure_span('vertical')
-            
-        def measure_span(self, direction):
-            if direction == 'horizontal':
-                onselect = self.on_select_h
-            elif direction == 'vertical':
-                onselect = self.on_select_v
-            if self.selector is None:
-                self.selector = SpanSelector(self.axes, onselect=onselect, interactive=True, useblit=True,
-                                             direction=direction,
-                                             drag_from_anywhere=True,
-                                             button=[1],
-                                             )
-                 # Clear button
-                self.clear_button = QPushButton('Clear', parent=self.canvas)
-                self.clear_button.move(10, 10)
-                self.clear_button.clicked.connect(self.cleanup)
-             
-                self.selector.set_active(True)
-                self.clear_button.show()
-                self.fig.canvas.draw_idle()   
-            
 
 
 #========= Redefined window for image edit button =============================
@@ -3599,6 +4120,7 @@ class CustomSettingsDialog(QDialog):
         self.ax = ax
         #self.img = ax.get_images()[0] if ax.get_images() else None
         self.img = self.parent().plotcanvas.im
+        
         self.scalebar_settings = self.parent().plotcanvas.scalebar_settings
         
         self.colorbar = QCheckBox('Colorbar', self)
@@ -3611,19 +4133,35 @@ class CustomSettingsDialog(QDialog):
         self.original_settings['scalebar'] = copy.copy(self.scalebar_settings)
         # Create the layout
         layout = QVBoxLayout()
-        
+
+        display_group = QGroupBox("Display Adjustment", self)
+        display_layout = QVBoxLayout()
+
         # vmin and vmax slider
         vminmax_label = QLabel('vmin/max')
         self.doubleslider = QDoubleRangeSlider(Qt.Orientation.Horizontal)
         self.doubleslider.valueChanged.connect(self.update_clim)
         self.colorbar.stateChanged.connect(self.set_colorbar)
+
+        # gamma slider
+        gamma_label = QLabel('Gamma')
+        self.gamma_slider = QSlider(Qt.Orientation.Horizontal)
+        self.gamma_slider.setRange(1, 20)
+        self.gamma_slider.valueChanged.connect(self.update_clim)
         
+
         h_box = QHBoxLayout()
         h_box.addWidget(vminmax_label)
         h_box.addWidget(self.doubleslider)
-        layout.addLayout(h_box)
+        display_layout.addLayout(h_box)
+
+        h_box_gamma = QHBoxLayout()
+        h_box_gamma.addWidget(gamma_label)
+        h_box_gamma.addWidget(self.gamma_slider)
+        display_layout.addLayout(h_box_gamma)
 
         
+
         h_layout_vmin = QHBoxLayout()
         self.vmin_label = QLabel("vmin:")
         self.vmin_input = QLineEdit()
@@ -3634,7 +4172,9 @@ class CustomSettingsDialog(QDialog):
         h_layout_vmin.addWidget(self.vmin_label)
         h_layout_vmin.addWidget(self.vmin_input)
         h_layout_vmin.addWidget(self.vmin_button)
-        layout.addLayout(h_layout_vmin)
+        display_layout.addLayout(h_layout_vmin)
+
+        
 
         h_layout_vmax = QHBoxLayout()
         self.vmax_label = QLabel("vmax:")
@@ -3646,27 +4186,37 @@ class CustomSettingsDialog(QDialog):
         h_layout_vmax.addWidget(self.vmax_label)
         h_layout_vmax.addWidget(self.vmax_input)
         h_layout_vmax.addWidget(self.vmax_button)
-        layout.addLayout(h_layout_vmax)
-        
-        
-        
-        
-        
-        # Set current vmin and vmax
+        display_layout.addLayout(h_layout_vmax)
+
+        h_layout_gamma = QHBoxLayout()
+        self.set_gamma_label = QLabel("Gamma:")
+        self.gamma_input = QLineEdit()
+        self.gamma_input.resize(40, 10)
+        self.gamma_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.gamma_button = QPushButton('Set', self)
+        self.gamma_button.clicked.connect(self.set_gamma)
+        h_layout_gamma.addWidget(self.set_gamma_label)
+        h_layout_gamma.addWidget(self.gamma_input)
+        h_layout_gamma.addWidget(self.gamma_button)
+        display_layout.addLayout(h_layout_gamma)
+
+        display_group.setLayout(display_layout)
+        layout.addWidget(display_group)
+
+        # Set current gamma, vmin and vmax
         if self.img:
-            vmin, vmax = self.img.get_clim()
+            gamma = self.img.norm.gamma
+            vmin = self.img.norm.vmin
+            vmax = self.img.norm.vmax
+            self.gamma_slider.setValue(int(gamma * 10))
+            self.original_settings['gamma'] = gamma
             dmin = np.percentile(self.img._A, 0.01)            
             dmax = np.percentile(self.img._A, 99.9)
             self.doubleslider.setRange(dmin, dmax)
             self.doubleslider.setValue((vmin, vmax))
-            self.vmin_input.setText(f'{vmin:.2f}')
-            self.vmax_input.setText(f'{vmax:.2f}')
-            
+            # Store original settings
             self.original_settings['vmin/max'] = (vmin, vmax)
-            self.original_settings['dmin/max'] = (dmin, dmax)
-        
-
-        
+            self.original_settings['dmin/max'] = (dmin, dmax)            
 
         # Colormap dropdown
         h_layout_cmap = QHBoxLayout()
@@ -3683,7 +4233,10 @@ class CustomSettingsDialog(QDialog):
         h_layout_cmap.addWidget(self.cmap_label)
         h_layout_cmap.addWidget(self.cmap_combobox)
         h_layout_cmap.addWidget(self.colorbar)
-        layout.addLayout(h_layout_cmap)
+
+        cmap_group = QGroupBox("Colormap", self)
+        cmap_group.setLayout(h_layout_cmap)
+        layout.addWidget(cmap_group)
 
         # Set current colormap
         if self.img:
@@ -3698,12 +4251,15 @@ class CustomSettingsDialog(QDialog):
         
             
         # Scalebar customization
-        
+
+        scalebar_group = QGroupBox("Scalebar Customization", self)
+        scalebar_layout = QVBoxLayout()
+
         self.scalebar_check = QCheckBox("Add scalebar to image")
         self.scalebar_check.setChecked(self.scalebar_settings['scalebar'])
-        self.scalebar_check.stateChanged.connect(self.update_scalebar)
-        
-        layout.addWidget(self.scalebar_check)
+        self.scalebar_check.stateChanged.connect(self.update_scalebar)     
+        scalebar_layout.addWidget(self.scalebar_check)
+
         h_layout_scalebar = QHBoxLayout()
         self.sbcolor_label = QLabel('Scalebar color')
         self.sbcolor_combobox = QComboBox()
@@ -3715,7 +4271,8 @@ class CustomSettingsDialog(QDialog):
         
         h_layout_scalebar.addWidget(self.sbcolor_label)
         h_layout_scalebar.addWidget(self.sbcolor_combobox)
-        
+        scalebar_layout.addLayout(h_layout_scalebar)
+
         h_layout_loc = QHBoxLayout()
         self.sbloc_label = QLabel('Scalebar location')
         self.sblocation_combox = QComboBox()
@@ -3725,6 +4282,7 @@ class CustomSettingsDialog(QDialog):
         self.sblocation_combox.currentTextChanged.connect(self.update_scalebar)
         h_layout_loc.addWidget(self.sbloc_label)
         h_layout_loc.addWidget(self.sblocation_combox)
+        scalebar_layout.addLayout(h_layout_loc)
         
         h_layout_scaleloc = QHBoxLayout()
         self.scaleloc_label = QLabel('Text location')
@@ -3735,9 +4293,12 @@ class CustomSettingsDialog(QDialog):
         self.scaleloc.currentTextChanged.connect(self.update_scalebar)
         h_layout_scaleloc.addWidget(self.scaleloc_label)
         h_layout_scaleloc.addWidget(self.scaleloc)
-        layout.addLayout(h_layout_scalebar)
-        layout.addLayout(h_layout_loc)
-        layout.addLayout(h_layout_scaleloc)
+        scalebar_layout.addLayout(h_layout_scaleloc)
+
+        scalebar_group.setLayout(scalebar_layout)
+        layout.addWidget(scalebar_group)
+
+        
 
         # Apply button
         buttons = QDialogButtonBox(QDialogButtonBox.Reset | QDialogButtonBox.Ok)
@@ -3756,11 +4317,17 @@ class CustomSettingsDialog(QDialog):
         vmin, vmax = self.doubleslider.value()
         self.vmin_input.setText(f'{vmin:.2f}')
         self.vmax_input.setText(f'{vmax:.2f}')
-        self.img.set_clim(vmin,vmax)
+        # Apply gamma correction
+        gamma = self.gamma_slider.value() / 10
+        self.gamma_input.setText(f'{gamma:.1f}')
+        new_norm = PowerNorm(gamma, vmin=vmin, vmax=vmax)
+        self.img.set_norm(new_norm)
+        
         if self.colorbar.isChecked():
             self.parent().plotcanvas.colorbar.set_ticks([vmin,vmax])
         self.ax.figure.canvas.draw_idle()
-    
+
+
     def set_colorbar(self):
         if self.colorbar.isChecked():
             self.parent().plotcanvas.create_colorbar()
@@ -3787,10 +4354,18 @@ class CustomSettingsDialog(QDialog):
         if vmax > self.doubleslider.maximum():
             self.doubleslider.setMaximum(vmax)
         self.doubleslider.setValue((vmin, vmax))
-        
-        
-        
-        
+
+    
+    def set_gamma(self):
+        try:
+            gamma = float(self.gamma_input.text())
+            if 0.1 <= gamma <= 2:
+                self.gamma_slider.setValue(int(gamma * 10))
+            else:
+                QMessageBox.warning(self, 'Invalid gamma', 'Gamma must be a number between 0.1 and 2!')
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid gamma', 'Gamma must be a number between 0.1 and 2!')
+
     def update_colormap(self):
         # Apply colormap
         self.cmap_name = self.cmap_combobox.currentText()
@@ -3816,16 +4391,16 @@ class CustomSettingsDialog(QDialog):
         self.sbcolor_combobox.setCurrentText(self.original_settings['scalebar']['color'])
         self.sblocation_combox.setCurrentText(self.original_settings['scalebar']['location'])
         self.scaleloc.setCurrentText(self.original_settings['scalebar']['scale_loc'])
-        self.update_scalebar()
         
         # Reset vmin vmax
         self.doubleslider.setRange(*self.original_settings['dmin/max'])
         self.doubleslider.setValue(self.original_settings['vmin/max'])
-        self.update_clim()
-        
+
+        # Reset gamma
+        self.gamma_slider.setValue(int(self.original_settings['gamma'] * 10))
+
         # Reset colormap
         self.cmap_combobox.setCurrentText(self.original_settings['cmap'])
-        self.update_colormap()
 
 #============ Redefined custom color maps transitioning from black ============
 # Redefine color maps for pure colors to transition from black
@@ -3898,8 +4473,7 @@ class CustomToolbar(NavigationToolbar):
                 # Check if the image is 3D
                 if isinstance(self.canvas.img_idx, int):
                     img_to_save['data'] = img_to_save['data'][self.canvas.img_idx] 
-                    # Hide the slider bar for savefig
-                    self.canvas.figure.axes[1].set_visible(False)
+                    
                     
                 if self.selected_type == '16-bit TIFF Files (*.tiff)':
                     
@@ -3915,9 +4489,7 @@ class CustomToolbar(NavigationToolbar):
                     img_size = img_to_save['data'].shape
                     dpi = float(sorted(img_size/figsize, reverse=True)[0])                                        
                     self.canvas.figure.savefig(self.file_path, dpi=dpi, format=self.file_type)
-                    
-                if isinstance(self.canvas.img_idx, int):
-                    self.canvas.figure.axes[1].set_visible(True)
+    
                 
                 
     # Redefine the edit axis button
@@ -4230,8 +4802,34 @@ class FilterSettingDialogue(QDialog):
         
         self.accept()
 
+#=========== Apply filter dialogue ==================================
+class ApplyFilterDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Apply Filter")
+        layout = QVBoxLayout()
+        label1 = QLabel("Apply filter to:")
+        layout.addWidget(label1)
+        layout2 = QHBoxLayout()
+        self.apply_current = QPushButton("Current frame")
+        self.apply_current.clicked.connect(self.apply_current_clicked)
+        self.apply_stack = QPushButton("Entire stack")
+        self.apply_stack.clicked.connect(self.apply_stack_clicked)
+        layout2.addWidget(self.apply_current)
+        layout2.addWidget(self.apply_stack)
+        layout.addLayout(layout2)
+        self.setLayout(layout)
+
+    def apply_current_clicked(self):
+            self.apply_to = 'current'
+            self.accept()
+
+    def apply_stack_clicked(self):
+            self.apply_to = 'stack'
+            self.accept()
+
         
-    
+
 #=========== Rotate image dialogue ==================================
 class RotateImageDialog(QDialog):
     def __init__(self, parent=None):
@@ -4525,7 +5123,7 @@ class LineProfileSettingDialog(QDialog):
         self.ax = ax
         self.line = ax.get_lines()[0] if ax.get_lines() else None
 
-        self.setWindowTitle("Line Width Settings")
+        self.setWindowTitle("Plot Settings")
         self.linewidth = 1
         
         # Create the layout
@@ -4617,13 +5215,9 @@ class LineProfileSettingDialog(QDialog):
             ymax = float(self.ymax_input.text())
 
         except ValueError:
-            QMessageBox.warning(self, 'Line profile settings', 'Invalid min or max values!')
+            QMessageBox.warning(self, 'Plot settings', 'Invalid min or max values!')
             return
             
-        
-        # if xmin >= xmax or ymin >= ymax:
-        #    QMessageBox.warning(self, 'Line profile settings', 'Invalid min or max value!')
-        #    return
        
         else:
             self.ax.set_xlim(xmin, xmax)
@@ -4794,7 +5388,86 @@ class MeasureFFTDialog(QDialog):
                 y = parent_geometry.y()
                 
         self.move(x, y)
-         
+
+#==============Radial Integration Dialog===================================
+class RadialIntegrationDialog(QDialog):
+    def __init__(self, parent):
+        # Parent must be the image window
+        super().__init__(parent)
+        self.setWindowTitle("Radial Integration")
+        self.center = self.parent().center
+        self.img_dict = self.parent().get_img_dict_from_canvas()
+
+        layout = QVBoxLayout()
+        label = QLabel("Select the center for radial integration:")
+        self.center_label = QLabel(f"Center: {self.center}")
+        layout.addWidget(label)
+        layout.addWidget(self.center_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
+        self.cancel_button.clicked.connect(self.handle_cancel)
+        self.ok_button = buttons.button(QDialogButtonBox.Ok)
+        self.ok_button.clicked.connect(self.handle_ok)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+
+    def handle_ok(self):
+        # Handle the OK button press
+        self.calculate_radial_integration(self.center)
+        self.accept()
+
+    def handle_cancel(self):
+        self.parent().quit_set_center()
+        self.parent().statusBar.showMessage("Ready")
+        self.reject()
+
+    def update_center(self):
+        self.center_label.setText(f"Center: {self.center}")
+
+    def calculate_radial_integration(self, center):
+        # Perform radial integration calculation
+        img = copy.deepcopy(self.img_dict['data'])
+        original_center = img.shape[1]//2, img.shape[0]//2
+        # Shift image to center
+        if center != original_center:
+            offset = (int(center[0] - original_center[0]), int(center[1] - original_center[1]))
+            x_span = int(min(center[0], img.shape[1]-center[0]))
+            new_x_start = center[0] - x_span
+            new_x_end = new_x_start + 2 * x_span
+            y_span = int(min(center[1], img.shape[0]-center[1]))
+            new_y_start = center[1] - y_span
+            new_y_end = new_y_start + 2 * y_span
+            img = img[new_y_start:new_y_end, new_x_start:new_x_end]
+            if img.shape[0] != img.shape[1]:
+                img = filters.crop_to_square(img)
+            print(f'Original center: {original_center}')
+            print(f'New center: {center}')
+            print(f"Cropping image to {new_y_start}:{new_y_end}, {new_x_start}:{new_x_end}")
+            print(f'New image shape: {img.shape}')
+
+        radial_x, radial_y = filters.radial_integration(img)
+        scale = self.img_dict['axes'][1]['scale']
+        unit = self.img_dict['axes'][1]['units']
+        calibrated_x = radial_x * scale
+
+        # Plot the radial profile
+        preview_name = self.parent().windowTitle() + f'_radial_profile from {self.center}'
+        x_label = f'Radial Distance'
+        y_label = 'Integrated Intensity'
+        plot = PlotCanvasSpectrum()
+        plot.create_plot(calibrated_x, radial_y, x_label=x_label, x_units=unit, y_label=y_label, title=preview_name)
+        plot.canvas.canvas_name = preview_name
+        UI_TemCompanion.preview_dict[preview_name] = plot
+        UI_TemCompanion.preview_dict[preview_name].show()
+
+        print(f'Performed radial integration on {self.parent().windowTitle()} from the center: {self.center}.')
+
+        self.handle_cancel()
+
+
 #==============GPA setting dialog===================================
 class gpaSettings(QDialog):
     def __init__(self, masksize, edgesmooth, step, sigma, algorithm, vmin=-0.1, vmax=0.1, parent=None):
@@ -4873,19 +5546,6 @@ class gpaSettings(QDialog):
         sigma_layout.addWidget(sigma_lable)
         sigma_layout.addWidget(self.sigma_input)
         layout.addLayout(sigma_layout)
-        
-        # solver_layout = QHBoxLayout()
-        # solver_label = QLabel("Number of g vectors:")
-        # self.solver_2g = QRadioButton("2")
-        # self.solver_2g.setChecked(True)
-        # self.solver_3g = QRadioButton("3")
-        # solver_group = QButtonGroup(self)
-        # solver_group.addButton(self.solver_2g)
-        # solver_group.addButton(self.solver_3g)
-        # solver_layout.addWidget(solver_label)
-        # solver_layout.addWidget(self.solver_2g)
-        # solver_layout.addWidget(self.solver_3g)
-        # layout.addLayout(solver_layout)
         
         
         range_layout = QVBoxLayout()
@@ -4986,10 +5646,6 @@ class gpaSettings(QDialog):
                 QMessageBox.warning(self, 'GPA Settings', 'Sigma must be a possitive number!')
                 return 
             
-        # if self.solver_2g.isChecked():
-        #     self.n_masks = 2
-        # if self.solver_3g.isChecked():
-        #     self.n_masks = 3
         
         self.accept()
         
@@ -5279,7 +5935,7 @@ class DPCDialog(QDialog):
 class ListReorderDialog(QDialog):
     def __init__(self, items):
         super().__init__()
-        
+
         self.ordered_items_idx = []
         self.item_to_index = {item: idx for idx, item in enumerate(items)}
         
@@ -5350,8 +6006,9 @@ class ListReorderDialog(QDialog):
         row = self.listWidget.row(item)
         self.listWidget.takeItem(row)
         # Insert it at the bottom
-        self.listWidget.addItem(item)    
-        
+        self.listWidget.addItem(item) 
+
+
 
     def handle_ok(self):
         for index in range(self.listWidget.count()):
@@ -5372,10 +6029,6 @@ class BatchConverter(QWidget):
         self.output_dir = None 
         self.get_filter_parameters()
         self.setAcceptDrops(True)
-        
-
-      
-
 
     def setupUi(self):
         self.setWindowTitle("Batch Conversion")
@@ -5436,6 +6089,10 @@ class BatchConverter(QWidget):
         self.convertbox.resize(240,40)
         self.convertbox.setObjectName("convertbox")
         self.convertbox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(False)
         
         layout = QVBoxLayout()
         layout1 = QHBoxLayout()
@@ -5466,6 +6123,7 @@ class BatchConverter(QWidget):
         layout.addLayout(layout2)
         layout.addLayout(layout3)
         layout.addLayout(layout4)
+        layout.addWidget(self.progress_bar)
         
         self.setLayout(layout)
 
@@ -5576,56 +6234,29 @@ class BatchConverter(QWidget):
             cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
             
             save_metadata = self.metadatacheck.isChecked()
-            
-            
-            for file in self.files:  
-                # convert_file(file,output_dir,f_type)
-                msg = "Converting '{}.{}'".format(getFileName(file),getFileType(file))
-                self.refresh_output(msg)
-                
-                ext = getFileType(file)
-                if ext == 'emd':
-                    self.filetype = 'Velox emd Files (*.emd)'
-                elif ext in ['dm3', 'dm4']:
-                    self.filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
-                elif ext == 'ser':
-                    self.filetype = 'TIA ser Files (*.ser)'
-                elif ext in ['tif', 'tiff']:
-                    self.filetype = 'Tiff Files (*.tif *.tiff)'
-                elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
-                    self.filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
-                elif ext == 'pkl':
-                    self.filetype = 'Pickle Dictionary Files (*.pkl)'
-                else:
-                    QMessageBox.warning(self, 'Open File', 'Unsupported file formats!')
-                    return
-                
-                try:                
-                    convert_file(file,self.filetype, self.output_dir,self.f_type, save_metadata=save_metadata, scalebar = self.scale_bar,
+
+            # A separate thread for file conversion
+            self.thread = QThread()
+
+            self.worker = BatchConversionWorker(self.files, self.output_dir,self.f_type, save_metadata=save_metadata, scalebar = self.scale_bar,
                                  apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
                                  apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
                                  apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
-                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian
-                                 )
-                    
-                    msg = "'{}.{}' has been converted".format(getFileName(file),getFileType(file))
-                    self.refresh_output(msg)
-    
-    
-                except:
-                    msg = "'{}.{}' has been skipped".format(getFileName(file),getFileType(file))
-                    self.refresh_output(msg)
-    
-            self.refresh_output("Conversion finished!") 
-            
-        
+                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian)
 
+            self.worker.moveToThread(self.thread)
 
-
-
-
-            
+            self.thread.started.connect(lambda: self.progress_bar.setVisible(True))
+            self.thread.started.connect(self.worker.run)
+            self.worker.progress.connect(self.refresh_output)
+            self.worker.finished.connect(lambda: self.progress_bar.setVisible(False))  
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater) 
+            self.thread.finished.connect(self.thread.deleteLater)            
+            self.worker.finished.connect(lambda: self.refresh_output("Conversion finished!")) 
+            self.thread.start()
+                         
             
             
 #================ Define filter settings function ============================
@@ -5650,7 +6281,7 @@ from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_reader as im_reader
 from rsciio.mrc import file_reader as mrc_reader
-#from rsciio.image import file_writer as im_writer
+from rsciio.image import file_writer as im_writer
 import math
 
 def getDirectory(file, s='.'):
@@ -5672,13 +6303,9 @@ def getFileType(file):
     return file_type
 
 
-def norm_img(data):
-    #Normalize a data array
-    data = data.astype('float32') #Int32 for calculation
-    norm = (data - data.min())/(data.max()-data.min())
-    return norm
 
-#@run_in_executor
+
+
 def apply_filter(img, filter_type, **kwargs):
     filter_dict = {'Wiener': filters.wiener_filter,
                    'ABS': filters.abs_filter,
@@ -5686,17 +6313,33 @@ def apply_filter(img, filter_type, **kwargs):
                    'BW': filters.bw_lowpass,
                    'Gaussian': filters.gaussian_lowpass
                    }
-    
-    
-    if filter_type in filter_dict.keys():
-        img = filters.crop_to_square(img)
-        
-        result = filter_dict[filter_type](img, **kwargs)
-        if filter_type in ['Wiener', 'ABS', 'NL']:
-            return result[0]
-        elif filter_type in ['BW', 'Gaussian']:
-            return result
+    if img.ndim == 2:
+        # Apply the selected filter only on 2D array
+        if filter_type in filter_dict.keys():
+            img = filters.crop_to_square(img)
+            
+            result = filter_dict[filter_type](img, **kwargs)
+            if filter_type in ['Wiener', 'ABS', 'NL']:
+                return result[0]
+            elif filter_type in ['BW', 'Gaussian']:
+                return result
+    elif img.ndim == 3:
+        # Apply to image stacks
+        img_shape = img.shape
+        result = np.zeros(img_shape)
+        for i in range(img_shape[0]):
+            result_i = apply_filter(img[i], filter_type, **kwargs)
+            result[i] = result_i
+        return result
+    else:
+        raise ValueError("Unsupported image dimensions")
 
+def apply_filter_on_img_dict(img_dict, *args, **kwargs):
+    # Take a image dictionary, apply the filter onto the data, and return the modified dictionary
+    data = img_dict['data']
+    filtered_data = apply_filter(data, *args, **kwargs)
+    img_dict['data'] = filtered_data
+    return img_dict
 
 def save_as_tif16(input_file, f_name, output_dir, dtype='int16',
                   apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False):
@@ -5977,8 +6620,8 @@ def load_file(file, file_type):
             try:
                 img = load_file(img_file, file_type)  
                 reordered_img.append(img[0])
-            except:
-                pass
+            except Exception as e:
+                print(f"Error loading {img_file}: {e} Ignored.")
         
         stack_dict = reordered_img[0]
         img_size = stack_dict['data'].shape
@@ -6024,9 +6667,9 @@ def load_file(file, file_type):
                     img_valid['original_metadata'] = img_dict['original_metadata']
                     img_valid['original_axes'] = img_dict['original_axes']
                     # ['original_metadata'] is optional
-                except:
+                except Exception as e:
                     pass
-                
+
         if img_valid:
             f_valid.append(img_valid)   
         
@@ -6076,8 +6719,8 @@ def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwar
                     try:
                         extra_metadata = img['original_metadata']
                         metadata.update(extra_metadata)
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"Error reading original metadata: {e}")
                     with open(output_dir + new_name + '.json', 'w') as j_file:
                         json.dump(metadata, j_file, indent=4)
                 
@@ -6108,8 +6751,8 @@ def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwar
                         metadata_to_save = metadata.copy()
                         extra_metadata = img['original_metadata']
                         metadata_to_save.update(extra_metadata)
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"Error reading original metadata: {e}")
                     with open(new_dir + title + '_metadata.json', 'w') as j_file:
                         json.dump(metadata_to_save, j_file, indent=4)
                 
@@ -6123,9 +6766,53 @@ def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwar
                     
                     save_file_as(new_img, new_name, new_dir, f_type, **kwargs)
                     
-                    
-                    
-                           
+
+#================Batch Conversion Worker Thread====================================
+class BatchConversionWorker(QThread):
+    progress = pyqtSignal(str)
+    finished = pyqtSignal()
+
+    def __init__(self, files, *args, **kwargs):
+        super().__init__()
+        self.files = files
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        for file in self.files:
+            # Identify the file types
+            msg = f"Converting '{file}'..."
+            self.progress.emit(msg)
+
+            ext = getFileType(file)
+            if ext == 'emd':
+                filetype = 'Velox emd Files (*.emd)'
+            elif ext in ['dm3', 'dm4']:
+                filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
+            elif ext == 'ser':
+                filetype = 'TIA ser Files (*.ser)'
+            elif ext in ['tif', 'tiff']:
+                filetype = 'Tiff Files (*.tif *.tiff)'
+            elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
+                filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+            elif ext == 'pkl':
+                filetype = 'Pickle Dictionary Files (*.pkl)'
+            else:
+                QMessageBox.warning(self, 'Open File', 'Unsupported file formats!')
+                return
+
+            try:
+                convert_file(file, filetype, *self.args, **self.kwargs)
+
+                msg = f"'{file}' has been converted"
+                self.progress.emit(msg)
+
+            except Exception as e:
+                msg = f"'{file}' has been skipped. Error: {e}"
+                self.progress.emit(msg)
+
+        self.finished.emit()
+
 def calculate_angle_from_3_points(A, B, C):
     '''
     Calculate the <ABC when their coordinates are given
@@ -6214,427 +6901,6 @@ def line(p1, p2):
 
 
 
-#===== GPA functions ==================================
-# Conventional GPA
-def get_phase_fft(img, k, r, edge_blur=0.3):
-    '''Calculate phase from masked iFFT image
-    Bansed on Hÿtch 1998
-    r : int
-        Size of the circular mask to place over the reflection
-    edge_blur : float, optional
-        Fraction of pixels at the edge that will be smoothed by a cosine function.
-    '''
-    im_y, im_x = img.shape
-    cx, cy = im_x // 2, im_y // 2
-    x = np.arange(im_x)
-    y = np.arange(im_y)
-    X, Y = np.meshgrid(x, y)
-    
-    # calculate the fft and mask only on one side
-    fft = fftshift(fft2(img)) 
-    kx, ky = k
-    # need to calculate the coordinates for mask
-    x = int(kx * im_x + cx)
-    y = int(ky * im_y + cy)
-    m = create_mask((im_y, im_x), [(x, y)], [r], edge_blur)
-    fft_m = fft * m
-    # calculate complex valued ifft
-    ifft_m = ifft2(ifftshift(fft_m))
-    # raw phase 
-    phifft_m = np.angle(ifft_m)
-    # corrected phase  
-    P = phifft_m - 2*np.pi*(kx*X+ky*Y)
-    return P
-    
-    
-def calc_strains(P, ks):
-    """
-    Calculate strain with two g vectors and phases
-    P : numpy array of phase image (2,m,n)
-    ks: k vectors (2, 2)
-    Returns
-    -------
-    im_exx : numpy array
-        The epsilon_xx strain component 
-    im_eyy : numpy array
-        The epsilon_yy strain component 
-    im_exy : numpy array
-        Epsilon_yx = (epsilon_yx), the shear strain
-    im_oxy : numpy array
-        omega_xy = -omega_yx, the rotation component
-    """
-    # Calculate the phase derivatives
-
-    dP1dy = calc_derivative(P[0,:,:], 0) 
-    dP1dx = calc_derivative(P[0,:,:], 1)
-    dP2dy = calc_derivative(P[1,:,:], 0)
-    dP2dx = calc_derivative(P[1,:,:], 1)
-    
-    # calculate lattice points a1 and a2    
-    [a1x, a2x], [a1y, a2y] = np.linalg.inv(ks)
-    
-    # the strain components
-    exx = -1/(2*np.pi)*(a1x*dP1dx+a2x*dP2dx)
-    exy = -1/(2*np.pi)*(a1x*dP1dy+a2x*dP2dy)
-    eyx = -1/(2*np.pi)*(a1y*dP1dx+a2y*dP2dx)
-    eyy = -1/(2*np.pi)*(a1y*dP1dy+a2y*dP2dy)
-    
-    Exy = (exy + eyx) / 2
-    oxy = (exy - eyx) / 2
-
-    return exx, eyy, Exy, oxy
-
-
-
-def create_mask(img_size, center, radius, edge_blur=0.3):
-    '''
-    Generate a circle mask from a given point and radius
-    img_size: tuple of original (FFT) image size
-    center: list of tuple of the mask center
-    radius: lisf of float of the radius in pixel, length must be equal to center
-    edge_width: fload of the smoothed edge in pixel
-    '''      
-    # Create a grid of coordinates
-    Y, X = np.ogrid[:img_size[0], :img_size[1]]
-    mask = np.zeros(img_size, dtype=float) 
-    
-    for i in range(len(center)):
-        x_center, y_center = center[i]
-        r = radius[i]
-        # Calculate the Euclidean distance from each grid point to the circle's center
-        distance = np.sqrt((X - x_center)**2 + (Y - y_center)**2)
-        
-        edge_width = int(r * edge_blur)
-    
-        # Create the base circle mask: inside the circle is 1, outside is 0
-        inside_circle = (distance <= r - edge_width)
-        outside_circle = (distance >= r)
-    
-        # Transition zone
-        transition_zone = ~inside_circle & ~outside_circle
-        
-        # Smooth edge with a cosine function
-        transition_distance = (distance - r) / edge_width
-        transition_mask = 0.5 * (1 + np.cos(np.pi * transition_distance))
-    
-        # Combine masks
-        mask[inside_circle] = 1
-        mask[transition_zone] = transition_mask[transition_zone]
-
-    return mask
-
-
-def refine_center(img, g, r):
-    '''
-    Refine the g vector center with center of mass
-    g: tuple of (x, y)
-    r: radius for window size
-    '''
-    window_size = r
-    x = int(g[0])
-    y = int(g[1])
-    x_min = max(x - window_size, 0)
-    x_max = min(x + window_size, img.shape[1])
-    y_min = max(y - window_size, 0)
-    y_max = min(y + window_size, img.shape[0])
-
-    window = img[y_min:y_max, x_min:x_max]
-
-    # Convert the window to binary with a threshold to make CoM more accurate
-    threshold = np.mean(window) + 1.5 * np.std(window)
-    binary_image = window > threshold
-
-    # Calculate the center of mass within the window
-    cy, cx = center_of_mass(binary_image)
-    cx += x_min
-    cy += y_min
-    return cx, cy
-
-def calc_derivative(arr, axis):
-    """
-    Calculate the derivative of a phase image.
-    """
-    s1 = np.exp(-1j*arr)
-    s2 = np.exp(1j*arr)
-    d1 = np.gradient(s2, axis=axis) 
-    #nd = np.min(d1.shape)
-    dP1x = s1 * d1
-    return dP1x.imag
-
-
-
-# Least square fit to solve the strain tensors with at least two g vectors
-def extract_strain_lstsqr(g, dPdx, dPdy):
-    '''g: n x 2 array of g vectors, n >= 2
-    dPdx, dPdy: n x m x m array of corresponding phase derivatives
-    solve exx, exy, eyx, oxy with least square
-    '''
-    n = g.shape[0]
-    m = dPdx.shape[1]
-    
-    # Initialize solutions
-    Exx = np.zeros((m,m))
-    Exy = np.zeros((m,m))
-    Eyx = np.zeros((m,m))
-    Eyy = np.zeros((m,m))
-    
-    # Solve elemental wise
-    for i in range(m):
-        for j in range(m):
-            # Construct linear equations
-            A = np.zeros((2 * n, 4))  # 4 unknowns: Exx_ij, Exy_ij, Eyx_ij, Oxy_ij
-            b = np.zeros(2 * n)
-            
-            for k in range(n):
-                gx, gy = g[k]
-
-                # First equation: gx * Exx_ij + gy * Exy_ij = -1/(2pi) * dP_dx[k, i, j]
-                A[2 * k, 0] = gx  # coefficient for Exx_ij
-                A[2 * k, 1] = gy   # coefficient for Exy_ij
-                b[2 * k] = -1 / (2 * np.pi) * dPdx[k, i, j]
-
-                # Second equation: gx * Eyx_ij + gy * Oxy_ij = -1/(2pi) * dP_dy[k, i, j]
-                A[2 * k + 1, 2] = gx  # coefficient for Eyx_ij
-                A[2 * k + 1, 3] = gy  # coefficient for Eyy_ij
-                b[2 * k + 1] = -1 / (2 * np.pi) * dPdy[k, i, j]
-        
-            # Solve least squares for this (i,j) element
-            x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-            Exx[i, j], Exy[i, j], Eyx[i, j], Eyy[i, j] = x
-    
-    exy = (Exy + Eyx) / 2
-    Oxy = (Eyx - Exy) /2
-            
-    return Exx, Eyy, exy, Oxy
-
-# Adaptive GPA with Windowed Fourier Ridge phase retrieval
-def get_phase_wfr(img, g, sigma, window_size, step):
-    '''
-    Calculate the phase from HRTEM image with a given g vector
-    using the Windowed Fourier ridge technique.
-    Algorithm explained in K Qian, Optics and Lasers in Engineering 45.2 (2007): 304-317.
-    https://doi.org/10.1016/j.optlaseng.2005.10.012
-    Codes adopted from pyGPA originated from:
-    T.A. de Jong et al. Nat Commun 13, 70 (2022)
-    https://doi.org/10.1038/s41467-021-27646-1
-    Parameters:
-    img: image array
-    g: g vector coordinates in its FFT
-    sigma: for Gaussian filter
-    window_size: window size for wfr algorithm, in pixel
-    step: step size in pixel for wfr
-    Returns: phase as numpy array with the same size of img'''
-    
-    # Compute k vectors
-    im_y, im_x = img.shape
-    kx, ky = g
-    xx, yy = np.meshgrid(np.arange(im_x), np.arange(im_y))
-    
-    # Compute window size and step
-    kw = window_size * 1 / im_x
-    kstep = step * 1 / im_x
-    
-    g = {'phase': np.zeros_like(img),
-         'r': np.zeros_like(img),
-         }
-    for wx in np.arange(kx-kw, kx+kw, kstep):
-        for wy in np.arange(ky-kw, ky+kw, kstep):
-            multiplier = np.exp(np.pi*2j * (xx*wx + yy*wy))
-            X = fft2(img * multiplier)
-            sf = ifft2(fourier_gaussian(X, sigma=sigma))           
-            sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
-            t = np.abs(sf) > g['r']
-            g['r'][t] = np.abs(sf)[t]
-            g['phase'][t] = np.angle(sf)[t]
-    phase = -g['phase']# Mysterious minus sign
-    return phase
-
-# Put together one function overall
-def GPA(img, g, algorithm='standard', r=20, edge_blur=0.3, sigma=10, window_size=10, step=4):
-    '''Top level GPA function
-    img: np array of square shape m x m
-    g: list of reference g coordinates n x 2
-        when n = 2, use standard GPA to calculate strain tensors
-        when n > 2, use least square fit to solve the stain tensors
-    algorithm: 
-        'standard': perform standard GPA by retrieving phases from masked iFFT 
-        Ref: M. Hÿtch, E. Snoeck, R. Kilaas, Ultramicroscopy 74 (1998) 131–146.
-        'adaptive': perform adaptive GPA by retrieving phase using WFR
-        Ref: 
-        K Qian, Optics and Lasers in Engineering 45.2 (2007): 304-317.
-        T.A. de Jong et al. Nat Commun 13, 70 (2022)
-    r: int, mask radius used for standard GPA
-    edge_blur: float between 0-1, Fraction of pixels at the edge that will be smoothed by a cosine function. 
-    sigma: float, sigma of the Gaussian window for WFT
-    window_size: int, window size for WFR
-    step: int, step for WFR
-    Return: strain tensors with the same size of img
-    '''
-    # Normalize the input image
-    img = norm_img(img)
-    im_y, im_x = img.shape
-    n = len(g)
-    # FFT center coordinates
-    cx, cy = im_x // 2, im_y // 2 
-    
-    P = np.zeros((n, im_y, im_x))
-    dPdx = np.zeros((n, im_y, im_x))
-    dPdy = np.zeros((n, im_y, im_x))
-    ks = np.zeros((n,2))
-    
-    # Calculate the phase from the g vector list
-    for i in range(n):
-        x, y = g[i]
-        ks[i] = (x-cx)/im_x, (y-cy)/im_y
-        
-        if algorithm == 'standard':
-            P[i,:,:] = get_phase_fft(img, ks[i], r, edge_blur)
-        else:
-            P[i,:,:] = get_phase_wfr(img, ks[i], sigma, window_size, step)
-        
-        #Calculate the phase derivative
-        dPdx[i,:,:] = calc_derivative(P[i,:,:], axis=1)
-        dPdy[i,:,:] = calc_derivative(P[i,:,:], axis=0)
-    
-    # Calculate the strain tensors
-    if n > 2:
-        # use least square fit
-        exx, eyy, exy, oxy = extract_strain_lstsqr(ks, dPdx, dPdy)
-    else:
-        # use standard method
-        exx, eyy, exy, oxy = calc_strains(P, ks)
-    return exx, eyy, exy, oxy
-
-
-def renormalize_phase(P):
-    r = (P+np.pi) % (2*np.pi) - np.pi
-    return r
-    
-
-def rotate_vector(X, Y, ang):
-    '''
-    X, Y: array; components of vector along x and y
-    ang: rotation angle in radian
-    '''
-    new_X = X * np.cos(ang) - Y * np.sin(ang)
-    new_Y = X * np.sin(ang) + Y * np.cos(ang)
-    return new_X, new_Y
-
-# Integrate DPC function
-def reconstruct_iDPC(DPCx, DPCy, rotation=0, cutoff=0.02):
-    '''
-    Reconstruct iDPC image from DPCx and DPCy images
-    DPCx, DPCy: arrays of the same size
-    rotation: float, scan rotation offset for the setup in degrees
-    cutoff: float, cutoff for the high pass filter
-    ref: Ivan Lazić, et al. Ultramicroscopy 160 (2016) 265–280. 
-    '''
-    if DPCx.ndim == 2:
-        im_y, im_x = DPCx.shape
-        # Rotate the DPC vector images
-        if rotation != 0:
-            ang = rotation * np.pi / 180 # Convert to radian
-            DPCx, DPCy = rotate_vector(DPCx, DPCy, ang)
-        # Make the k grid
-        qx, qy = fftfreq(im_x), fftfreq(im_y)
-        kx, ky = np.meshgrid(qx, qy)
-        d1 = kx * fft2(DPCx) + ky * fft2(DPCy)
-        k2 = kx**2 + ky**2
-        d2 = 2 * np.pi * k2 * 1j
-        d2[0,0] = np.inf
-        iDPC_fft = d1 / d2
-        # Apply a Gaussian high pass filter
-        g = gaussian_high_pass((im_y, im_x), cutoff)
-        iDPC_fft = iDPC_fft * g
-        iDPC = np.real(ifft2(iDPC_fft))
-        #iDPC -= np.min(iDPC)
-    elif DPCx.ndim == 3:
-        # Calculate on an image stack
-        im_z = DPCx.shape[0]
-        iDPC = np.zeros(DPCx.shape)
-        for i in range(im_z):
-            iDPC[i,:,:] = reconstruct_iDPC(DPCx[i], DPCy[i], rotation, cutoff)
-    #iDPC_int16 = iDPC.astype('int16')
-    return iDPC
-    
-def gaussian_high_pass(shape, cutoff=0.02):
-    # Return a Gaussian high pass filter
-    im_y, im_x = shape
-    cx, cy = im_x // 2, im_y // 2
-    X, Y = np.meshgrid(np.arange(im_x), np.arange(im_y))
-    X -= cx
-    Y -= cy
-    sigma = im_x * cutoff
-    gaussian = np.exp(-(X**2 + Y**2) / (2 * sigma ** 2))
-    return ifftshift(1 - gaussian)
-
-# Calculate the divergence
-def reconstruct_dDPC(DPCx, DPCy, rotation, inverse = False):
-    if DPCx.ndim == 2:
-        # Rotate the DPC vector images
-        if rotation != 0:
-            ang = rotation * np.pi / 180 # Convert to radian
-            DPCx, DPCy = rotate_vector(DPCx, DPCy, ang)
-        dDPCx = np.gradient(DPCx, axis=1)
-        dDPCy = np.gradient(DPCy, axis=0)
-        dDPC = dDPCx + dDPCy
-        if inverse:
-            dDPC = -dDPC
-        #dDPC -= np.min(dDPC)
-    elif DPCx.ndim == 3:
-        im_z = DPCx.shape[0]
-        dDPC = np.zeros(DPCx.shape)
-        for i in range(im_z):
-            dDPC[i,:,:] = reconstruct_dDPC(DPCx[i], DPCy[i], rotation, inverse)
-    #dDPC_int16 = dDPC.astype('int16')
-    return dDPC
-
-def find_rotation_ang_max_contrast(DPCx, DPCy, step=1):
-    '''Try to find the scan rotation offset of DPC signals by maximizing the contrast
-    DPCx, DPCy: 2d array of the same size
-    step: invertal of degrees when evaluating the contrast in 0-360 degrees 
-    Return: angle'''
-    im_size = 256
-    if DPCx.shape[0] > im_size and DPCx.shape[1] > im_size:
-        # crop the input signals to save time
-        x0 = (DPCx.shape[1] - im_size) // 2
-        y0 = (DPCx.shape[0] - im_size) // 2
-        DPCx = DPCx[y0:y0+im_size,x0:x0+im_size]
-        DPCy = DPCy[y0:y0+im_size,x0:x0+im_size]
-    angles1 = np.arange(0, 180, step)
-    angles2 = np.arange(-180,0, step)
-    contrast = []
-    for ang in angles1:
-        iDPC = reconstruct_iDPC(DPCx, DPCy, ang)
-        contrast.append(np.std(iDPC))
-    
-    i_max1 = contrast.index(max(contrast))
-    contrast = []
-    for ang in angles2:
-        iDPC = reconstruct_iDPC(DPCx, DPCy, ang)
-        contrast.append(np.std(iDPC))
-    i_max2 = contrast.index(max(contrast))
-    return angles1[i_max1], angles2[i_max2]
-
-def find_rotation_ang_min_curl(DPCx, DPCy, step=1):
-    '''Try to find the scan rotation offset of DPC signals by minimizing the curl
-    DPCx, DPCy: 2d array of the same size
-    step: invertal of degrees when evaluating the curl in 0-360 degrees 
-    Return: angle
-    '''
-    angles = np.arange(0, 360, step)
-    curls = []
-    for ang in angles:
-        Dx, Dy = rotate_vector(DPCx, DPCy, ang*np.pi/180)
-        C = curl_2d(Dx, Dy)
-        curls.append(C)
-        
-    cost = [np.sum(c**2) for c in curls]
-    i_min = cost.index(min(cost))
-    return angles[i_min]    
-    
-def curl_2d(Fx, Fy):
-    return np.gradient(Fy, axis=1) - np.gradient(Fx, axis=0)
 
 def find_img_by_title(title):
     for canvas in UI_TemCompanion.preview_dict.values():

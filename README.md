@@ -101,6 +101,24 @@ author = {Tao Ma}
 
 ## 6. Change history
 
+### v1.3.0dev
+- Restructured codes with DPC, GPA and filters codes separately
+- Use a separate thread for time-consuming tasks while keeping the GUI responsive
+- Added progress bar for long-running tasks
+- Bug fix for close event to delete all child widgets
+- Set output to float32 for stack alignment
+- Added save stack as gif animation
+- Added reslice stack from a line
+- Live FFT on a stack
+- Apply filters to entire image stack
+- Redesigned the slider for image stack navigation
+- "Space" to Play/Pause, "," to Rewind, "." to Forward on stack images.
+- Added gamma correction for image adjustment
+- Rewrote some of the filter functions
+- Added radial integration from a selected center
+- Added using arrow keys to move the crop region, live FFT region, and masks on FFT
+- iFFT filtered image is automatically updated if a mask is present
+
 ### v1.2.6
 - Fixed app crash when measuring on live FFT
 - Fixed windowed FFT not working on non calibrated images

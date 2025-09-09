@@ -162,9 +162,9 @@ ver = '1.3.0dev'
 rdate = '2025-09-06'
 
 #===================Import internal modules==========================================
-from GPA import GPA, norm_img, create_mask, refine_center
-from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
-import filters_old as filters
+from .GPA import GPA, norm_img, create_mask, refine_center
+from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+from . import filters
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output

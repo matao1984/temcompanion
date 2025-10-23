@@ -159,6 +159,7 @@ from matplotlib.colors import LinearSegmentedColormap, PowerNorm, LogNorm
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
+from pyqtgraph import GraphicsView
 
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.filters import window
@@ -590,6 +591,7 @@ class MainFrameCanvas(QWidget):
         self.idx = None
         self.slider = None
         self.colorbar = None
+        self.cb_width = 0
 
         # Playback control for stack images
         self.isPlaying = False
@@ -779,16 +781,21 @@ class MainFrameCanvas(QWidget):
         if show:
             if self.colorbar is None:
                 if self.image_item is not None:
-                    img_width = self.plot.size().width()
-                    cb_width = int(img_width * 0.05)
+                    cb_width = 25
                     cm = self.image_item.getColorMap()
                     self.colorbar = pg.ColorBarItem(values=(self.attribute['vmin'], self.attribute['vmax']), 
                                                     width=cb_width,colorMap=cm, interactive=False)
                     self.colorbar.setImageItem(self.image_item, insert_in=self.plot.plotItem)
+                    layout = self.plot.plotItem.layout
+                    layout.setColumnFixedWidth(5, cb_width + 40)
+                    self.cb_width = 77
+                    self._resize_event(self.size())
         else:
             if self.colorbar is not None:
                 self.plot.plotItem.layout.removeItem(self.colorbar)
                 self.colorbar = None
+                self.cb_width = 0
+                self._resize_event(self.size())
 
     def update_img(self, img, pvmin=0.1, pvmax=99.9):
         # Update the image display with new image data 
@@ -807,18 +814,21 @@ class MainFrameCanvas(QWidget):
 
     def _resize_event(self, size):
         w, h = size.width(), size.height()
-        current_ratio = w / (h - self.sh)
+
+        current_ratio = (w - self.cb_width) / (h - self.sh)
+        # Horizontal space for colorbar
+        
         
         if current_ratio > self.ratio:
             # Container is too wide, adjust width
-            target_w = np.ceil((h-self.sh) * self.ratio)
+            target_w = np.ceil((h-self.sh) * self.ratio) + self.cb_width
             h_margin = (w - target_w) / 2
             h_margin0 = int(h_margin)
             h_margin1 = int(w - target_w - h_margin0)
             self.layout.setContentsMargins(h_margin0, 0, h_margin1, 0)
         else:
             # Container is too tall, adjust height
-            target_h = np.ceil(w / self.ratio + self.sh)
+            target_h = np.ceil((w - self.cb_width) / self.ratio + self.sh)
             v_margin = (h - target_h) / 2
             v_margin0 = int(v_margin)
             v_margin1 = int(h - target_h - v_margin0)
@@ -854,7 +864,14 @@ class MainFrameCanvas(QWidget):
             if self.parent().mode_control['Live_FFT']:
                 self.parent().update_live_fft()
 
-
+#=========== Colorbar Widget ====================================================
+class ColorbarWidget(GraphicsView):
+    def __init__(self, img_item, parent=None, *args, **kargs):
+        background = kargs.pop('background', 'default')
+        GraphicsView.__init__(self, parent, useOpenGL=False)
+        self.item = pg.ColorBarItem(*args, **kargs)
+        self.setCentralItem(self.item)
+        self.item.setImageItem(img_item)
             
 #=========== New plot canvas with pyqtgraph ==================================================== 
 class PlotCanvas(QMainWindow):

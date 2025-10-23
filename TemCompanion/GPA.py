@@ -95,11 +95,11 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
     for i in range(len(center)):
         x_center, y_center = center[i]
         r = radius[i]
+        
         # Calculate the Euclidean distance from each grid point to the circle's center
         distance = np.sqrt((X - x_center)**2 + (Y - y_center)**2)
         
-        edge_width = int(r * edge_blur)
-    
+        edge_width = r * edge_blur
         # Create the base circle mask: inside the circle is 1, outside is 0
         inside_circle = (distance <= r - edge_width)
         outside_circle = (distance >= r)
@@ -108,6 +108,7 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
         transition_zone = ~inside_circle & ~outside_circle
         
         # Smooth edge with a cosine function
+
         transition_distance = (distance - r) / edge_width
         transition_mask = 0.5 * (1 + np.cos(np.pi * transition_distance))
     
@@ -307,8 +308,12 @@ def renormalize_phase(P):
 
 
 
-def norm_img(data):
+def norm_img(data, vmin=None, vmax=None):
+    if vmin is None:
+        vmin = np.min(data)
+    if vmax is None:
+        vmax = np.max(data)
     #Normalize a data array
     data = data.astype('float32') #Int32 for calculation
-    norm = (data - data.min())/(data.max()-data.min())
+    norm = (data - vmin)/(vmax - vmin)
     return norm

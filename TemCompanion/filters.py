@@ -16,6 +16,27 @@ def crop_to_square(img):
         img_crop = img[new_start:new_end,:]
     return img_crop
 
+def pad_to_square(img):
+    '''
+    Pad the input images to be square by adding zeros on the right and bottom sides
+    '''
+    # Get current dimensions
+    rows, cols = img.shape
+
+    # Determine the maximum dimension
+    max_dim = max(rows, cols)
+
+    # Calculate padding for rows and columns
+    row_padding = max_dim - rows
+    col_padding = max_dim - cols
+
+    # Apply padding using np.pad()
+    # Pad bottom for rows, and right for columns
+    padded_arr = np.pad(img, ((0, row_padding), (0, col_padding)), mode='constant', constant_values=0)
+
+    return padded_arr
+
+
 
 
 # For radial integration, convert image indices to polar coordinates
@@ -36,6 +57,9 @@ def gaussian_lowpass(img, cutoff_ratio):
     img: image array to be filtered, must be square
     cutoff_ratio: cutoff ratio in frequency domain
     """
+    img_shape = img.shape
+    if img_shape[0] != img_shape[1]:
+        img = pad_to_square(img)
     r = img_to_polar(img)
     
     # Compute the FFT to find the frequency transform
@@ -51,8 +75,8 @@ def gaussian_lowpass(img, cutoff_ratio):
     filtered_fshift = fshift * gaussian_filter
 
     # Apply the inverse FFT to return to the spatial domain
-    img_glp = ifft2(ifftshift(filtered_fshift))
-    img_glp = np.real(img_glp)
+    img_glp = ifft2(ifftshift(filtered_fshift)).real
+    img_glp = img_glp[:img_shape[0], :img_shape[1]]
     return img_glp
 
 # Butterworth lowpass filter
@@ -62,18 +86,21 @@ def bw_lowpass(img, order, cutoff_ratio):
     order: Butterworth order
     cutoff_ratio: cutoff ratio in frequency domain
     """
+    img_shape = img.shape
+    if img_shape[0] != img_shape[1]:
+        img = pad_to_square(img)
     r = img_to_polar(img) # Convert to polar indices
-    bw = 1/(1+0.414*(r/(cutoff_ratio * img.shape[0]))**(2*order))
+    bw = 1/(1+0.414*(r/(cutoff_ratio * r.shape[0]))**(2*order))
     
     # Compute the FFT to find the frequency transform
     fshift = fftshift(fft2(img))
-    
+
     # Apply the filter to the frequency domain representation of the image
     filtered_fshift = fshift * bw
 
     # Apply the inverse FFT to return to the spatial domain
-    img_bw = ifft2(ifftshift(filtered_fshift))
-    img_bw = np.real(img_bw)
+    img_bw = ifft2(ifftshift(filtered_fshift)).real
+    img_bw = img_bw[:img_shape[0], :img_shape[1]]
     return img_bw
 
 # Radial integration
@@ -127,8 +154,6 @@ def get_avg_background(img, delta=5):
     f_noedge = fftshift(fft2(noedgeimg))
     # Light filter the FFT for processing
     f_mag = medfilt2d(np.abs(f_noedge),kernel_size=5)
-    # f_mag = np.abs(f_noedge)
-
 
     # Get the radial integration and masks
 
@@ -138,84 +163,6 @@ def get_avg_background(img, delta=5):
 
     return f_mag
 
-def remove_peaks_bin_old(img, masks, means, delta=5):
-    delta_factor = 1 + delta / 100
-    # Remove the peaks in each bin below the defined delta
-    for i in range(len(means)):
-        mean = means[i] * delta_factor
-        mask_i = masks[i]
-        # Initialize difference as infinity
-        diff_pc = np.inf
-        
-        # While the percentage difference between mean values is greater than the threshold
-        max_iter = 100
-        iter_count = 0
-        while diff_pc > delta and mean > 0 and iter_count < max_iter:
-            # Replace any data > mean
-            condition_mask = mask_i & (img > mean)
-            img[condition_mask] = mean 
-            iter_count += 1
-
-            # Recalculate mean
-            new_mean = img[mask_i].mean() * delta_factor
-            # Calculate the percentage difference
-            diff_pc = abs((new_mean - mean) / mean) * 100    
-            # Update the mean value
-            mean = new_mean
-    return img
-
-# @njit(parallel=True, fastmath=True)
-# def remove_peaks_bin(img, masks, means, delta=5):
-#     """
-#     Optimized version that pre-extracts ROI coordinates for faster iteration.
-#     """
-#     delta_factor = 1.0 + delta / 100.0
-#     img_out = img.copy()
-    
-#     for i in prange(len(means)):
-#         if means[i] <= 0:
-#             continue
-            
-#         mask = masks[i]
-#         mean_val = means[i] * delta_factor
-#         diff_pc = np.inf
-#         iter_count = 0
-#         max_iter = 100
-        
-#         # Pre-extract ROI coordinates
-#         roi_coords = []
-#         for y in range(mask.shape[0]):
-#             for x in range(mask.shape[1]):
-#                 if mask[y, x]:
-#                     roi_coords.append((y, x))
-        
-#         if not roi_coords:
-#             continue  # Skip empty masks
-        
-#         while diff_pc > delta and mean_val > 0 and iter_count < max_iter:
-#             total_sum = 0.0
-#             count = len(roi_coords)
-            
-#             # Process only the ROI coordinates
-#             for coord in roi_coords:
-#                 y, x = coord
-#                 if img_out[y, x] > mean_val:
-#                     img_out[y, x] = mean_val
-#                 total_sum += img_out[y, x]
-            
-#             # Calculate new mean
-#             new_mean = (total_sum / count) * delta_factor
-            
-#             # Calculate percentage difference
-#             if mean_val > 1e-10:
-#                 diff_pc = abs((new_mean - mean_val) / mean_val) * 100.0
-#             else:
-#                 diff_pc = 0.0
-            
-#             mean_val = new_mean
-#             iter_count += 1
-    
-#     return img_out
 
 @njit(parallel=True, fastmath=True)
 def remove_peaks_bin(img, masks, means, delta=5):
@@ -285,6 +232,10 @@ def wiener_filter(img, delta=5, lowpass=True, lowpass_cutoff=0.3, lowpass_order=
     lowpass_order: order for the Butterworth filter; smaller int retults more tapered cutoff
     Return: filtered image array and difference
     """
+    img_shape = img.shape
+    if img_shape[0] != img_shape[1]:
+        img = pad_to_square(img)
+
     f_img = fftshift(fft2(img))
     fu = np.abs(f_img)
     fa = get_avg_background(img, delta=delta)
@@ -293,8 +244,9 @@ def wiener_filter(img, delta=5, lowpass=True, lowpass_cutoff=0.3, lowpass_order=
     wf = (fu_squared - fa_squared)/fu_squared
     wf[wf<0] = 0
     f_img_wf = f_img * wf
-    img_wf = ifft2(ifftshift(f_img_wf))
-    img_wf = np.real(img_wf)
+    img_wf_padded = ifft2(ifftshift(f_img_wf)).real
+    img_wf = img_wf_padded[:img_shape[0], :img_shape[1]]
+    img = img[:img_shape[0], :img_shape[1]]
     if lowpass:
         img_wf = bw_lowpass(img_wf, lowpass_order, lowpass_cutoff)
     img_wf = np.single(img_wf)
@@ -312,14 +264,18 @@ def abs_filter(img, delta=5, lowpass=True, lowpass_cutoff=0.3, lowpass_order=2):
     lowpass_order: order for the Butterworth filter; smaller int retults more tapered cutoff
     Return: filtered image array and difference
     """
+    img_shape = img.shape
+    if img_shape[0] != img_shape[1]:
+        img = pad_to_square(img)
     f_img = fftshift(fft2(img))
     fu = np.abs(f_img)
     fa = get_avg_background(img, delta=delta)
     absf = (fu - fa)/fu
     absf[absf<0] = 0
     f_img_absf = f_img * absf
-    img_absf = ifft2(ifftshift(f_img_absf))
-    img_absf = np.real(img_absf)
+    img_absf = ifft2(ifftshift(f_img_absf)).real
+    img_absf = img_absf[:img_shape[0], :img_shape[1]]
+    img = img[:img_shape[0], :img_shape[1]]
     if lowpass:
         img_absf = bw_lowpass(img_absf, lowpass_order, lowpass_cutoff)
     img_absf = np.single(img_absf)
@@ -338,6 +294,9 @@ def nlfilter(img, N=50, delta=10, lowpass_cutoff=0.3, lowpass = True, lowpass_or
     The Butterworth filter will use lowpass_order and lowpass_cutoff
     Return: filtered image array and difference
     """
+    img_shape = img.shape
+    if img_shape[0] != img_shape[1]:
+        img = pad_to_square(img)
     x_in = img
     i=0
     while i < N:
@@ -351,6 +310,8 @@ def nlfilter(img, N=50, delta=10, lowpass_cutoff=0.3, lowpass = True, lowpass_or
         x_in = x_lp + x_diff_wf
         i = i+1
 
-    img_filtered = np.single(x_in) # Convert to 32 bit float
+    img_filtered = x_in[:img_shape[0], :img_shape[1]]
+    img_filtered = np.single(img_filtered) # Convert to 32 bit float
+    img = img[:img_shape[0], :img_shape[1]]
     img_diff = img - img_filtered
     return img_filtered, img_diff

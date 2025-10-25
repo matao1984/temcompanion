@@ -131,8 +131,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QListWidget, QListWidgetItem, QButtonGroup, QProgressBar, QToolBar
                              )
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread, QRectF, QSize
-from PyQt5.QtGui import QImage, QIcon, QDropEvent, QDragEnterEvent, QFont
-from superqt import QDoubleRangeSlider
+from PyQt5.QtGui import QImage, QPixmap, QIcon, QDropEvent, QDragEnterEvent, QFont
+
 
 import sys
 import os
@@ -146,20 +146,9 @@ import pickle
 import json
 
 from PIL import Image, ImageDraw, ImageFont
-import matplotlib
-matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-
-from matplotlib.figure import Figure
-from matplotlib_scalebar.scalebar import ScaleBar
-from matplotlib.widgets import Slider, RectangleSelector, SpanSelector
-from matplotlib.patches import Circle
-from matplotlib.colors import LinearSegmentedColormap, PowerNorm, LogNorm
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
-from pyqtgraph import GraphicsView
 
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.filters import window
@@ -176,6 +165,11 @@ rdate = '2025-10-22'
 from GPA import GPA, norm_img, create_mask, refine_center
 from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 import filters
+
+
+# Global colormap storage
+with open('colormaps.pkl', 'rb') as f:
+    custom_cmap = pickle.load(f)
 
 #===================Redirect output to the main window===============================
 # Custom stream class to capture output
@@ -205,29 +199,6 @@ class Worker(QThread):
         self.finished.emit()
         self.result.emit(result)
 
-#============ Redefined custom color maps transitioning from black ============
-# Redefine color maps for pure colors to transition from black
-custom_cmap = {}
-base_colors = {'Red': (255,0,0),
-               'Orange': (255,176,0),
-               'Yellow': (255,255,0),
-               'Green': (0,255,0),
-               'Cyan': (0,255,255),
-               'Lime': (0,0,255),
-               'Purple': (128,0,128),
-               'Magenta': (255,0,255),
-               'Pink': (255,192,203),
-               'Blue': (0,39,76),
-               'Maize': (255,203,5)
-                }
-# Generate colors from the base color dictionary
-for key, value in base_colors.items():
-    colors = [(0,0,0), value] # Black to the color    
-    # Create a colormap
-    cmap_name = key
-    # cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=n_bins)
-    cm = pg.ColorMap([0, 1], colors)
-    custom_cmap[key] = cm
 
         
 #=====================Main Window UI ===============================================
@@ -599,11 +570,14 @@ class MainFrameCanvas(QWidget):
         self.timer.timeout.connect(self.next_frame)
 
         self.plot = pg.PlotWidget()
+        self.plot.setBackground('white')
         self.plot.plotItem.showAxis('left', False)
         self.plot.plotItem.showAxis('bottom', False)
         self.plot.plotItem.setContentsMargins(0, 0, 0, 0)
+        self.plot.plotItem.setMenuEnabled(False, enableViewBoxMenu=True)
         self.plot.disableAutoRange()
         self.plot.hideButtons()
+        
 
         self.viewbox = self.plot.getViewBox()
         self.viewbox.setDefaultPadding(0)
@@ -644,12 +618,13 @@ class MainFrameCanvas(QWidget):
         self._resize_event(self.size())    
         
         # Some default settings
+        sb_color = pg.mkColor('yellow')
         self.attribute = {'cmap': 'gray',
                           'vmin': None,
                           'vmax': None,
                           'gamma': 1.0,
                           'scalebar': True,
-                          'color': 'yellow',
+                          'color': sb_color,
                           'location': 'lower left',
                           'dimension': 'si-length',
                           'colorbar': False}
@@ -744,7 +719,7 @@ class MainFrameCanvas(QWidget):
         else:
             self.slider.setValue(0)
 
-    def create_img(self, cmap='gray', pvmin=0.1, pvmax=99.9):
+    def create_img(self, cmap='gray', pvmin=0.1, pvmax=99.9, gamma=1.0):
         scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
         self.center = self.img_size[-1]//2, self.img_size[-2]//2
         self.offset_x = self.data['axes'][-1]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-1].keys() else 0
@@ -763,11 +738,10 @@ class MainFrameCanvas(QWidget):
         self.image_item = pg.ImageItem(self.current_img, axisOrder='row-major', 
                                        autoLevels=False,
                                        levels=(self.attribute['vmin'], self.attribute['vmax']))
-        if cmap in custom_cmap.keys():
-            cm = custom_cmap[cmap]
-        else:
-            cm = pg.colormap.get(cmap, source='matplotlib')
-        self.image_item.setColorMap(cm)  # Set colormap
+        
+        lut = custom_cmap[cmap]
+        lut = gamma_correct_lut(lut, gamma)
+        self.image_item.setLookupTable(lut)
         self.image_item.setScale(scale)
         self.viewbox.addItem(self.image_item)
         self.viewbox.invertY(True)  # To match the image coordinate system
@@ -784,10 +758,18 @@ class MainFrameCanvas(QWidget):
             if self.colorbar is None:
                 if self.image_item is not None:
                     cb_width = 25
-                    cm = self.image_item.getColorMap()
-                    self.colorbar = pg.ColorBarItem(values=(self.attribute['vmin'], self.attribute['vmax']), 
-                                                    width=cb_width,colorMap=cm, interactive=False)
+                    lut = custom_cmap[self.attribute['cmap']]
+                    lut = gamma_correct_lut(lut, self.attribute['gamma'])
+                    cm = pg.ColorMap(pos=np.linspace(0, 1, 256), color=lut)
+                    self.colorbar = pg.ColorBarItem(values=(self.attribute['vmin'], self.attribute['vmax']),
+                                                    width=cb_width, colorMap=cm, interactive=False)
                     self.colorbar.setImageItem(self.image_item, insert_in=self.plot.plotItem)
+
+                    # Set the colorbar text color
+                    axis = self.colorbar.axis
+                    axis.setTextPen(pg.mkPen('black')) 
+                    axis.setPen(pg.mkPen('black'))
+
                     layout = self.plot.plotItem.layout
                     layout.setColumnFixedWidth(5, cb_width + 40)
                     self.cb_width = 77
@@ -2490,7 +2472,7 @@ class PlotCanvas(QMainWindow):
         y0 = y_range * 0.375
         window_size = min(x_range, y_range) * 0.01
         selector = pg.CircleROI([x0, y0], radius=window_size,
-                                    pen=pg.mkPen('y', width=2),
+                                    pen=pg.mkPen('y', width=3),
                                     movable=True,
                                     rotatable=False,
                                     resizable=False,
@@ -2564,7 +2546,7 @@ class PlotCanvas(QMainWindow):
             y0 = y_range * 0.5 
             window_size = min(x_range, y_range) * 0.01
             selector = pg.CircleROI([x0 - window_size, y0 - window_size], radius=window_size,
-                                    pen=pg.mkPen('r', width=2),
+                                    pen=pg.mkPen('r', width=3),
                                     movable=True,
                                     rotatable=False,
                                     resizable=False,
@@ -2583,14 +2565,14 @@ class PlotCanvas(QMainWindow):
             y0_2 = y_range * 0.5 
             window_size = min(x_range, y_range) * 0.01
             selector1 = pg.CircleROI([x0_1, y0_1], radius=window_size,
-                                                pen=pg.mkPen('r', width=2),
+                                                pen=pg.mkPen('r', width=3),
                                                 movable=True,
                                                 rotatable=False,
                                                 resizable=False,
                                                 maxBounds=QRectF(0, 0, x_range, y_range)
                                                 )
             selector2 = pg.CircleROI([x0_2, y0_2], radius=window_size,
-                                                pen=pg.mkPen('r', width=2),
+                                                pen=pg.mkPen('r', width=3),
                                                 movable=True,
                                                 rotatable=False,
                                                 resizable=False,
@@ -3598,7 +3580,7 @@ class PlotCanvasFFT(PlotCanvas):
         y0 = 0.5 * y_range
         radius = 0.01 * min(x_range, y_range)
 
-        mask0 = pg.CircleROI([x0, y0], radius=radius, pen=pg.mkPen('r', width=2), 
+        mask0 = pg.CircleROI([x0, y0], radius=radius, pen=pg.mkPen('r', width=3), 
                                 movable=True, 
                                 rotatable=False, 
                                 resizable=True,
@@ -3708,6 +3690,7 @@ class PlotCanvasSpectrum(QMainWindow):
         super().__init__(parent)
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.resize(600, 400)
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.x = x
         self.y = y
         self.title = None
@@ -4012,9 +3995,111 @@ class PlotCanvasSpectrum(QMainWindow):
 
     def plotsetting(self):
         dialog = PlotSettingDialog(parent=self)
-        dialog.exec_()
+        dialog.show()
 
 
+#========= SimpleLevelsWidget ================================================
+class SimpleLevelsWidget(QtWidgets.QWidget):
+    """Minimal histogram + level control for an ImageItem."""
+    sigLevelsChanged = pyqtSignal(object)
+    sigLevelChangeFinished = pyqtSignal(object)
+
+    def __init__(self, image_item, orientation='horizontal', bins=512, parent=None):
+        super().__init__(parent)
+        self.item = self  # for compatibility with previous self.lut.item usage
+        self.image_item = image_item
+        self.orientation = orientation
+        self.bins = bins
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.plot = pg.PlotWidget(parent=self)
+        self.plot.setBackground('k')
+        self.plot_item = self.plot.getPlotItem()
+        self.plot_item.hideButtons()
+        self.plot_item.setContentsMargins(0, 0, 0, 0)
+        self.plot_item.vb.setMenuEnabled(False)
+        self.plot_item.showAxis('top', True)
+        self.plot_item.hideAxis('bottom')
+        self.plot_item.hideAxis('left')
+        self.plot.setMouseEnabled(x=True, y=False)
+
+        self.curve = self.plot.plot(pen=pg.mkPen((200, 200, 200, 100), width=1))
+        layout.addWidget(self.plot)
+
+        # LinearRegionItem along X to select min/max levels
+        region_orientation = 'vertical'  # x-axis range selection
+        self.region = pg.LinearRegionItem(orientation=region_orientation, movable=True, swapMode='block')
+        self.plot.addItem(self.region)
+
+        # Connect signals
+        self.region.sigRegionChanged.connect(self._region_changing)
+        self.region.sigRegionChangeFinished.connect(self._region_changed)
+
+        # Track image changes to refresh histogram
+        if hasattr(self.image_item, 'sigImageChanged'):
+            self.image_item.sigImageChanged.connect(self.update_histogram)
+
+        # Init histogram and region range
+        self.update_histogram()
+        levels = self.image_item.getLevels()
+        if levels[0] is not None and levels[1] is not None:
+            self.region.setRegion(levels)
+        else:
+            # fall back to data bounds
+            mn, mx = self._data_min_max()
+            self.region.setRegion([mn, mx])
+
+        # Disable any context menu on the widget itself
+        self.setContextMenuPolicy(Qt.NoContextMenu)
+
+    # API compatibility with HistogramLUTItem
+    def getLevels(self):
+        return tuple(self.region.getRegion())
+
+    def setLevels(self, min=None, max=None, rgba=None):
+        if min is None or max is None:
+            if rgba is not None and rgba[0] is not None:
+                min, max = rgba[0]
+            else:
+                raise ValueError("Must specify min and max levels")
+        self.region.setRegion((min, max))
+        # Immediately push to image
+        if self.image_item is not None:
+            self.image_item.setLevels((min, max))
+        self.sigLevelChangeFinished.emit(self)
+
+    # Internal slots
+    def _region_changing(self):
+        if self.image_item is not None:
+            self.image_item.setLevels(self.getLevels())
+        self.sigLevelsChanged.emit(self)
+
+    def _region_changed(self):
+        if self.image_item is not None:
+            self.image_item.setLevels(self.getLevels())
+        self.sigLevelChangeFinished.emit(self)
+
+    # Helpers
+    def _data_min_max(self):
+        img = getattr(self.image_item, 'image', None)
+        if img is None:
+            return (0.0, 1.0)
+        arr = np.asarray(img)
+        if arr.size == 0:
+            return (0.0, 1.0)
+        arr = arr[np.isfinite(arr)]
+        if arr.size == 0:
+            return (0.0, 1.0)
+        return (float(arr.min()), float(arr.max()))
+
+    def update_histogram(self):
+        h = self.image_item.getHistogram()
+        self.curve.setData(*h)
+        # Fill the curve
+        self.curve.setFillLevel(0)
+        self.curve.setBrush(pg.mkBrush(100, 100, 200))
 
 
 
@@ -4051,20 +4136,71 @@ class CustomSettingsDialog(QDialog):
         vmin, vmax = levels[0], levels[1]
         self.original_settings['vmin'] = vmin
         self.original_settings['vmax'] = vmax
-        self.lut = pg.HistogramLUTWidget(parent=self, image=self.image_item, orientation='horizontal')
+
+        self.lut = SimpleLevelsWidget(self.image_item, orientation='horizontal', bins=512, parent=self)
         self.lut.item.setLevels(vmin, vmax)
-        self.lut.item.gradient.setColorMap(pg.colormap.getFromMatplotlib(self.attribute['cmap']))
+        self.lut.setMinimumHeight(100)
+
+        
         self.lut.item.sigLevelsChanged.connect(self.update_colorbar_levels)
+        self.lut.item.sigLevelsChanged.connect(self.update_level_labels)
         display_layout.addWidget(self.lut)
+        
+        # for comparison
+        # self.pglut = pg.HistogramLUTWidget(parent=self, image=self.image_item, orientation='horizontal')
+        # self.pglut.item.setLevels(vmin, vmax)
+        # display_layout.addWidget(self.pglut)
+
+        # vmin and vmax inputs
+        h_layout_vmin = QHBoxLayout()
+        vmin_label = QLabel("Vmin:")
+        self.vmin_input = QLineEdit()
+        self.vmin_set = QPushButton("Set")
+        h_layout_vmin.addWidget(vmin_label)
+        h_layout_vmin.addWidget(self.vmin_input)
+        h_layout_vmin.addWidget(self.vmin_set)
+        display_layout.addLayout(h_layout_vmin)
+
+        h_layout_vmax = QHBoxLayout()
+        vmax_label = QLabel("Vmax:")
+        self.vmax_input = QLineEdit()
+        self.vmax_set = QPushButton("Set")
+        h_layout_vmax.addWidget(vmax_label)
+        h_layout_vmax.addWidget(self.vmax_input)
+        h_layout_vmax.addWidget(self.vmax_set)
+        display_layout.addLayout(h_layout_vmax)
+
+        
+
+        self.vmin_set.clicked.connect(self.set_levels)
+        self.vmax_set.clicked.connect(self.set_levels)
+
+        # Set initial vmin and vmax
+        self.vmin_input.setText(f"{vmin:.4g}")
+        self.vmax_input.setText(f"{vmax:.4g}")
+
+        # Gamma correction
+        h_layout_gamma = QHBoxLayout()
+        gamma_label = QLabel("Gamma:")
+        self.gamma_slider = QSlider(Qt.Horizontal)
+        self.gamma_slider.setMinimum(1)
+        self.gamma_slider.setMaximum(20)
+        self.gamma_slider.setValue(int(self.attribute['gamma'] * 10))
+        self.gamma_value_label = QLabel(f"{self.attribute['gamma']:.1f}")
+        h_layout_gamma.addWidget(gamma_label)
+        h_layout_gamma.addWidget(self.gamma_slider)
+        h_layout_gamma.addWidget(self.gamma_value_label)
+        display_layout.addLayout(h_layout_gamma)
+        self.gamma_slider.valueChanged.connect(self.update_gamma)
 
         display_group.setLayout(display_layout)
         layout.addWidget(display_group)
-         
 
         # Colormap dropdown
         h_layout_cmap = QHBoxLayout()
         self.cmap_label = QLabel("Preset Maps:")
         self.cmap_combobox = QComboBox()
+        self.cmap_combobox.setIconSize(QSize(80, 20))
         colormaps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis',
                      'gray', 'spring', 'summer', 'autumn', 'winter', 'cool',
                       'Wistia', 'hot',
@@ -4072,7 +4208,10 @@ class CustomSettingsDialog(QDialog):
                      'Magenta', 'Pink', 'Blue', 'Maize',
                      'jet', 'rainbow', 'turbo', 'hsv', 'seismic'
                      ]
-        self.cmap_combobox.addItems(colormaps)
+        for cmap_name in colormaps:
+            icon = self.create_colormap_icon(cmap_name)
+            self.cmap_combobox.addItem(icon, cmap_name)
+        #  self.cmap_combobox.addItems(colormaps)
         h_layout_cmap.addWidget(self.cmap_label)
         h_layout_cmap.addWidget(self.cmap_combobox)
         h_layout_cmap.addWidget(self.colorbar)
@@ -4096,10 +4235,9 @@ class CustomSettingsDialog(QDialog):
 
         h_layout_scalebar = QHBoxLayout()
         self.sbcolor_label = QLabel('Scalebar color')
-        self.sbcolor_combobox = QComboBox()
-        sbcolor = ['black', 'white', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
-        self.sbcolor_combobox.addItems(sbcolor)
-        self.sbcolor_combobox.setCurrentText(self.attribute['color'])
+        self.sbcolor_combobox = pg.ColorButton()
+        self.sbcolor_combobox.setColor(pg.mkColor(self.attribute['color']))
+        
         
         
         h_layout_scalebar.addWidget(self.sbcolor_label)
@@ -4121,8 +4259,9 @@ class CustomSettingsDialog(QDialog):
 
         # Connect all functions
         self.cmap_combobox.currentTextChanged.connect(self.update_colormap)
+        self.sbcolor_combobox.sigColorChanged.connect(self.update_scalebar)
         self.scalebar_check.stateChanged.connect(self.update_scalebar)     
-        self.sbcolor_combobox.currentTextChanged.connect(self.update_scalebar)
+        # self.sbcolor_combobox.currentTextChanged.connect(self.update_scalebar)
         self.sblocation_combox.currentTextChanged.connect(self.update_scalebar)
 
         
@@ -4137,6 +4276,41 @@ class CustomSettingsDialog(QDialog):
         
 
         self.setLayout(layout)
+
+    def create_colormap_icon(self, cmap_name):
+        lut = custom_cmap[cmap_name]
+        width = 40
+        strip = np.repeat(lut[None, :, :], width, axis=0)
+        qimg = QImage(strip, 256, width, 256*4, QImage.Format.Format_RGBA8888)
+        pixmap = QPixmap.fromImage(qimg)
+        icon = QIcon(pixmap)
+        return icon
+
+    def update_level_labels(self):
+        levels = self.lut.item.getLevels()
+        vmin, vmax = levels[0], levels[1]
+        self.vmin_input.setText(f"{vmin:.4g}")
+        self.vmax_input.setText(f"{vmax:.4g}")
+
+    def set_levels(self):
+        try:
+            vmin = float(self.vmin_input.text())
+            vmax = float(self.vmax_input.text())
+            if vmin >= vmax:
+                QMessageBox.warning(self, "Invalid Input", 
+                                        "Vmin must be less than Vmax.")
+                return
+            self.lut.item.setLevels(min=vmin, max=vmax)
+        except ValueError as e:
+            QMessageBox.warning(self, "Invalid Input", f"Invalid input for vmin/vmax: {e}")
+
+    def update_gamma(self):
+        gamma_value = self.gamma_slider.value() / 10.0
+        self.gamma_value_label.setText(f"{gamma_value:.1f}")
+        self.parent().canvas.attribute['gamma'] = gamma_value
+        # Apply gamma to LUT 
+        self.update_colormap()
+
         
 
     def set_colorbar(self):
@@ -4153,22 +4327,25 @@ class CustomSettingsDialog(QDialog):
     def update_colormap(self):
         # Apply colormap
         self.cmap_name = self.cmap_combobox.currentText()
-        if self.cmap_name in custom_cmap.keys():
-            cmap = custom_cmap[self.cmap_name]
-        else:
-            cmap = pg.colormap.getFromMatplotlib(self.cmap_name)
-        self.parent().canvas.image_item.setColorMap(cmap)
+        lut = custom_cmap[self.cmap_name]
+        # Apply gamma correction
+        g = self.gamma_slider.value() / 10.0
+        lut = gamma_correct_lut(lut, g)
+
+        self.parent().canvas.image_item.setLookupTable(lut)
         self.parent().canvas.attribute['cmap'] = self.cmap_name
         # Update the LUT widget
-        self.lut.item.gradient.setColorMap(cmap)
-        # Uopdate the colorbar if exists
+        # cmap = pg.ColorMap(pos=np.linspace(0, 1, 256), color=lut)
+        # self.lut.item.gradient.setColorMap(cmap)
+        # Update the colorbar if exists
         if self.parent().canvas.colorbar is not None:
+            cmap = pg.ColorMap(pos=np.linspace(0, 1, 256), color=lut)
             self.parent().canvas.colorbar.setColorMap(cmap)
 
     def update_scalebar(self):
         # Apply scalebar styles
         self.parent().canvas.attribute['scalebar'] = self.scalebar_check.isChecked()
-        self.parent().canvas.attribute['color'] = self.sbcolor_combobox.currentText()
+        self.parent().canvas.attribute['color'] = self.sbcolor_combobox.color()
         self.parent().canvas.attribute['location'] = self.sblocation_combox.currentText()
         
         self.parent().create_scalebar()
@@ -4177,13 +4354,16 @@ class CustomSettingsDialog(QDialog):
     def reset_settings(self):
         # Reset scalebar
         self.scalebar_check.setChecked(self.original_settings['scalebar'])
-        self.sbcolor_combobox.setCurrentText(self.original_settings['color'])
+        self.colorbar.setChecked(self.original_settings['colorbar'])
+        self.sbcolor_combobox.setColor(pg.mkColor(self.original_settings['color']))      
         self.sblocation_combox.setCurrentText(self.original_settings['location'])
         
         # Reset vmin vmax
         self.lut.item.setLevels(min=self.original_settings['vmin'], max=self.original_settings['vmax'])
         # Reset colormap
-        self.cmap_combobox.setCurrentText(self.original_settings['cmap'])
+        self.gamma_slider.setValue(int(self.original_settings['gamma'] * 10))
+        cmap = self.original_settings['cmap']
+        self.cmap_combobox.setCurrentText(cmap)
 
             
 
@@ -4757,20 +4937,17 @@ class PlotSettingDialog(QDialog):
         # Line color dropdown
         h_layout_color = QHBoxLayout()
         color_label = QLabel("Line Color:")
-        self.color_combobox = QComboBox()
-        colors = ['black', 'white', 'gray', 'brown', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
-        self.color_combobox.addItems(colors)
+        self.color_combobox = pg.ColorButton(parent=self)
+        # colors = ['black', 'white', 'gray', 'brown', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
+        # self.color_combobox.addItems(colors)
         h_layout_color.addWidget(color_label)
         h_layout_color.addWidget(self.color_combobox)
         layout.addLayout(h_layout_color)
 
         # Set current color
         line = self.parent().plot_data_item
-        line_color = line.opts['pen'].color().name()
-        if line_color in colors:
-            self.color_combobox.setCurrentText(line_color)
-        else:
-            self.color_combobox.setCurrentText('blue')
+        line_color = line.opts['pen'].color()
+        self.color_combobox.setColor(line_color)
 
         # Line width input
         h_layout_linewidth = QHBoxLayout()
@@ -4787,36 +4964,27 @@ class PlotSettingDialog(QDialog):
         # Background color dropdown
         h_layout_bgcolor = QHBoxLayout()
         bgcolor_label = QLabel("Background Color:")
-        self.bgcolor_combobox = QComboBox()
-        bg_colors = ['black', 'white', 'gray', 'brown', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'None']
-        self.bgcolor_combobox.addItems(bg_colors)
+        self.bgcolor_combobox = pg.ColorButton(parent=self)
         h_layout_bgcolor.addWidget(bgcolor_label)
         h_layout_bgcolor.addWidget(self.bgcolor_combobox)
         layout.addLayout(h_layout_bgcolor)
 
         # Set current background color
         bg_color = self.parent().plot._background
-        if bg_color in bg_colors:
-            self.bgcolor_combobox.setCurrentText(bg_color)
-        else:
-            self.bgcolor_combobox.setCurrentText('black')
+        self.bgcolor_combobox.setColor(pg.mkColor(bg_color))
+
 
         # Axis color dropdown
         h_layout_axcolor = QHBoxLayout()
         axcolor_label = QLabel("Axis Color:")
-        self.axcolor_combobox = QComboBox()
-        ax_colors = ['black', 'white', 'gray', 'brown', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
-        self.axcolor_combobox.addItems(ax_colors)
+        self.axcolor_combobox = pg.ColorButton(parent=self)
         h_layout_axcolor.addWidget(axcolor_label)
         h_layout_axcolor.addWidget(self.axcolor_combobox)
         layout.addLayout(h_layout_axcolor)
 
         # Set current axis color
-        ax_color = self.parent().plot.getPlotItem().getAxis('bottom').pen().color().name()
-        if ax_color in ax_colors:
-            self.axcolor_combobox.setCurrentText(ax_color)
-        else:
-            self.axcolor_combobox.setCurrentText('gray')
+        ax_color = self.parent().plot.getPlotItem().getAxis('bottom').pen().color()
+        self.axcolor_combobox.setColor(ax_color)
 
 
         # Turn on/off grid
@@ -4870,25 +5038,25 @@ class PlotSettingDialog(QDialog):
             
 
         # Apply color and width
-        color_name = self.color_combobox.currentText()
+        line_color = self.color_combobox.color()
         linewidth = int(self.linewidth_input.text())
-        pen = pg.mkPen(color=color_name, width=linewidth)
+        pen = pg.mkPen(color=line_color, width=linewidth)
         line.setPen(pen)
 
         # Apply background color
-        bg_color = self.bgcolor_combobox.currentText()
-        if bg_color == 'None':
-            bg_color = None
+        bg_color = self.bgcolor_combobox.color()
+        # if bg_color == 'None':
+        #     bg_color = None
         plot.setBackground(bg_color)
 
         # Apply axis color
-        ax_color = self.axcolor_combobox.currentText()
+        ax_color = self.axcolor_combobox.color()
         x_axis = plot.getPlotItem().getAxis('bottom')
         y_axis = plot.getPlotItem().getAxis('left')
-        x_axis.setPen(pg.mkPen(color=ax_color))
-        y_axis.setPen(pg.mkPen(color=ax_color))
-        x_axis.setTextPen(pg.mkPen(color=ax_color))
-        y_axis.setTextPen(pg.mkPen(color=ax_color))
+        x_axis.setPen(ax_color)
+        y_axis.setPen(ax_color)
+        x_axis.setTextPen(ax_color)
+        y_axis.setTextPen(ax_color)
 
 
         # Apply grid
@@ -6260,6 +6428,30 @@ def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwar
                     new_name = title + '_{}'.format(idx)
                     
                     save_file_as(new_img, new_name, new_dir, f_type, **kwargs)
+
+def gamma_correct_lut(lut: np.ndarray, gamma: float) -> np.ndarray:
+    """Return a gamma-corrected copy of LUT (Nx4 uint8), where input x in [0,1]
+    is remapped by x' = x ** (1/gamma) before sampling the base LUT."""
+    try:
+        g = float(gamma)
+    except Exception:
+        g = 1.0
+    if g <= 0:
+        g = 1.0
+    if abs(g - 1.0) < 1e-6:
+        return lut
+
+    n = lut.shape[0]
+    x = np.linspace(0.0, 1.0, n, dtype=np.float32)
+    y = np.power(x, g)  # remapped positions
+    idx = y * (n - 1)
+    i0 = np.floor(idx).astype(np.int32)
+    i1 = np.clip(i0 + 1, 0, n - 1)
+    t = (idx - i0).astype(np.float32)[:, None]
+
+    lut_f = lut.astype(np.float32)
+    out = (1.0 - t) * lut_f[i0] + t * lut_f[i1]
+    return out.astype(np.uint8)
                     
 
 #================Batch Conversion Worker Thread====================================

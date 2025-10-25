@@ -166,9 +166,10 @@ from .GPA import GPA, norm_img, create_mask, refine_center
 from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 from . import filters
 
+wkdir = os.path.dirname(os.path.abspath(__file__))
 
 # Global colormap storage
-with open('colormaps.pkl', 'rb') as f:
+with open(os.path.join(wkdir, 'colormaps.pkl'), 'rb') as f:
     custom_cmap = pickle.load(f)
 
 #===================Redirect output to the main window===============================
@@ -1117,7 +1118,7 @@ class PlotCanvas(QMainWindow):
         self.addToolBar(self.toolbar)
 
         # Add actions to the toolbar
-        home_icon = 'icons/home.png'
+        home_icon = os.path.join(wkdir, 'icons/home.png')
         home_action = QAction(QIcon(home_icon), "Home", self)
         home_action.setStatusTip("Auto scale to fit the window")
         home_action.triggered.connect(self.canvas.custom_auto_range)
@@ -1125,19 +1126,19 @@ class PlotCanvas(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        save_icon = "icons/save.png"
+        save_icon = os.path.join(wkdir, 'icons/save.png')
         save_action = QAction(QIcon(save_icon), "Save", self)
         save_action.setStatusTip("Save the current image")
         save_action.triggered.connect(self.save_figure)
         self.toolbar.addAction(save_action)
 
-        copy_icon = "icons/copy.png"
+        copy_icon = os.path.join(wkdir, 'icons/copy.png')
         copy_action = QAction(QIcon(copy_icon), "Copy", self)
         copy_action.setStatusTip("Copy the current image")
         copy_action.triggered.connect(self.copy_img)
         self.toolbar.addAction(copy_action)
 
-        setting_icon = "icons/settings.png"
+        setting_icon = os.path.join(wkdir, 'icons/settings.png')
         setting_action = QAction(QIcon(setting_icon), "Settings", self)
         setting_action.setStatusTip("Open settings")
         setting_action.triggered.connect(self.image_settings)
@@ -1145,25 +1146,25 @@ class PlotCanvas(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        crop_icon = "icons/crop.png"
+        crop_icon = os.path.join(wkdir, 'icons/crop.png')
         crop_action = QAction(QIcon(crop_icon), "Crop", self)
         crop_action.setStatusTip("Crop the image")
         crop_action.triggered.connect(self.crop)
         self.toolbar.addAction(crop_action)
 
-        measure_icon = "icons/measure.png"
+        measure_icon = os.path.join(wkdir, 'icons/measure.png')
         measure_action = QAction(QIcon(measure_icon), "Measure", self)
         measure_action.setStatusTip("Measure distance and angle")
         measure_action.triggered.connect(self.measure)
         self.toolbar.addAction(measure_action)
 
-        measurefft_icon = "icons/measure_fft.png"
+        measurefft_icon = os.path.join(wkdir, 'icons/measure_fft.png')
         measurefft_action = QAction(QIcon(measurefft_icon), 'Measure FFT', self)
         measurefft_action.setStatusTip('Measure distance and angle in Diffraction/FFT')
         measurefft_action.triggered.connect(self.measure_fft)
         self.toolbar.addAction(measurefft_action)
 
-        lineprofile_icon = "icons/lineprofile.png"
+        lineprofile_icon = os.path.join(wkdir, 'icons/lineprofile.png')
         lineprofile_action = QAction(QIcon(lineprofile_icon), "Line Profile", self)
         lineprofile_action.setStatusTip("Extract line profile")
         lineprofile_action.triggered.connect(self.lineprofile)
@@ -1171,13 +1172,13 @@ class PlotCanvas(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        fft_icon = "icons/fft.png"
+        fft_icon = os.path.join(wkdir, "icons/fft.png")
         fft_action = QAction(QIcon(fft_icon), "FFT", self)
         fft_action.setStatusTip("Compute FFT of the image")
         fft_action.triggered.connect(self.fft)
         self.toolbar.addAction(fft_action)
 
-        livefft_icon = "icons/live-fft.png"
+        livefft_icon = os.path.join(wkdir, "icons/live-fft.png")
         livefft_action = QAction(QIcon(livefft_icon), "Live FFT", self)
         livefft_action.setStatusTip("Compute live FFT of the image")
         livefft_action.triggered.connect(self.live_fft)
@@ -1185,33 +1186,33 @@ class PlotCanvas(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        wf_icon = "icons/WF.png"
+        wf_icon = os.path.join(wkdir, "icons/WF.png")
         wf_action = QAction(QIcon(wf_icon), "Wiener Filter", self)
         wf_action.setStatusTip("Apply Wiener filter to the image")
         wf_action.triggered.connect(self.wiener_filter)
         self.toolbar.addAction(wf_action)
 
-        absf_icon = "icons/ABSF.png"
+        absf_icon = os.path.join(wkdir, "icons/ABSF.png")
         absf_action = QAction(QIcon(absf_icon), "ABS Filter", self)
         absf_action.setStatusTip("Apply ABSF to the image")
         absf_action.triggered.connect(self.absf_filter)
         self.toolbar.addAction(absf_action)
 
-        nl_icon = "icons/NL.png"
+        nl_icon = os.path.join(wkdir, "icons/NL.png")
         nl_action = QAction(QIcon(nl_icon), "Non-linear Filter", self)
         nl_action.setStatusTip("Apply Non-linear filter to the image")
         nl_action.triggered.connect(self.non_linear_filter)
         self.toolbar.addAction(nl_action)
 
-        gaussian_icon = "icons/GS.png"
+        gaussian_icon = os.path.join(wkdir, "icons/GS.png")
         gaussian_action = QAction(QIcon(gaussian_icon), "Gaussian Filter", self)
         gaussian_action.setStatusTip("Apply Gaussian filter to the image")
-        gaussian_action.triggered.connect(self.gaussion_filter)
+        gaussian_action.triggered.connect(self.gaussian_filter)
         self.toolbar.addAction(gaussian_action)
 
         self.toolbar.addSeparator()
 
-        info_icon = "icons/info.png"
+        info_icon = os.path.join(wkdir, "icons/info.png")
         info_action = QAction(QIcon(info_icon), "Info", self)
         info_action.setStatusTip("Show image info")
         info_action.triggered.connect(self.show_axes)
@@ -1484,7 +1485,7 @@ class PlotCanvas(QMainWindow):
         filter_menu.addAction(bw_action)
         gaussian_action = QAction('&Apply Gaussian low pass', self)
         gaussian_action.setShortcut('ctrl+shift+g')
-        gaussian_action.triggered.connect(self.gaussion_filter)
+        gaussian_action.triggered.connect(self.gaussian_filter)
         filter_menu.addAction(gaussian_action)
 
         # Stack menu
@@ -1980,7 +1981,7 @@ class PlotCanvas(QMainWindow):
 
         
 
-    def gaussion_filter(self):
+    def gaussian_filter(self):
         filter_parameters = UI_TemCompanion.filter_parameters        
         cutoff_gaussian = float(filter_parameters['GS-cutoff'])
         img_gaussian = self.get_original_img_dict()
@@ -2211,20 +2212,20 @@ class PlotCanvas(QMainWindow):
         self.canvas.viewbox.addItem(selector)
 
         # Add buttons for confirm, cancel, and manual input
-        OK_icon = 'icons/OK.png'
+        OK_icon = os.path.join(wkdir, 'icons/OK.png')
         self.buttons['ok'] = QAction(QIcon(OK_icon), 'Confirm Crop', parent=self)
         self.buttons['ok'].setShortcut('Return')
         self.buttons['ok'].setStatusTip('Confirm Crop (Enter)')
         self.buttons['ok'].triggered.connect(self.confirm_crop)
         self.toolbar.addAction(self.buttons['ok'])
-        cancel_icon = 'icons/cancel.png'
+        cancel_icon = os.path.join(wkdir, 'icons/cancel.png')
         self.buttons['cancel'] = QAction(QIcon(cancel_icon), 'Cancel Crop', parent=self)
         self.buttons['cancel'].setShortcut('Esc')
         self.buttons['cancel'].setStatusTip('Cancel Crop (Esc)')
         self.buttons['cancel'].triggered.connect(self.cancel_crop)
         self.toolbar.addAction(self.buttons['cancel'])
 
-        hand_icon = 'icons/hand.png'
+        hand_icon = os.path.join(wkdir, 'icons/hand.png')
         self.buttons['crop_hand'] = QAction(QIcon(hand_icon), 'Manual Input', parent=self)
         self.buttons['crop_hand'].setStatusTip('Manual Input of Crop Coordinates')
         self.buttons['crop_hand'].triggered.connect(self.manual_crop)
@@ -2298,7 +2299,7 @@ class PlotCanvas(QMainWindow):
         self.statusBar.showMessage("Drag the line to measure distance and angle.")
         
         # Buttons for finish
-        OK_icon = 'icons/OK.png'
+        OK_icon = os.path.join(wkdir, 'icons/OK.png')
         self.buttons['ok'] = QAction(QIcon(OK_icon), 'OK', parent=self)
         self.buttons['ok'].setStatusTip('Finish Measurement')
         self.buttons['ok'].setShortcut('Esc')
@@ -2346,7 +2347,7 @@ class PlotCanvas(QMainWindow):
         self.statusBar.showMessage("Drag the line to display line profile.")
 
         # Buttons for finish
-        OK_icon = 'icons/OK.png'
+        OK_icon = os.path.join(wkdir, 'icons/OK.png')
         self.buttons['ok'] = QAction(QIcon(OK_icon), 'Finish', parent=self)
         self.buttons['ok'].setStatusTip('Finish Line Profile')
         self.buttons['ok'].setShortcut('Esc')
@@ -2473,18 +2474,18 @@ class PlotCanvas(QMainWindow):
         self.statusBar.showMessage("Drag the circle over spots to measure. Define center as needed.")
 
         # Buttons for finish and center
-        OK_icon = 'icons/OK.png'
+        OK_icon = os.path.join(wkdir, 'icons/OK.png')
         self.buttons['ok'] = QAction(QIcon(OK_icon), 'Finish', parent=self)
         self.buttons['ok'].setStatusTip('Finish Measurement')
         self.buttons['ok'].setShortcut('Esc')
         self.buttons['ok'].triggered.connect(self.stop_fft_measurement)
         self.toolbar.addAction(self.buttons['ok'])
-        center_icon = 'icons/dp_center.png'
+        center_icon = os.path.join(wkdir, 'icons/dp_center.png')
         self.buttons['define_center'] = QAction(QIcon(center_icon), 'Define Center', parent=self)
         self.buttons['define_center'].setStatusTip('Define the center of FFT')
         self.buttons['define_center'].triggered.connect(lambda: self.define_center_dp(method='center'))
         self.toolbar.addAction(self.buttons['define_center'])
-        center2_icon = 'icons/dp_center2.png'
+        center2_icon = os.path.join(wkdir, 'icons/dp_center2.png')
         self.buttons['define_center2'] = QAction(QIcon(center2_icon), 'Define Center 2', parent=self)
         self.buttons['define_center2'].setStatusTip('Define the FFT center by two symmetric points')
         self.buttons['define_center2'].triggered.connect(lambda: self.define_center_dp(method='two-point'))
@@ -2551,13 +2552,13 @@ class PlotCanvas(QMainWindow):
         # method: 'center' or 'two-point'
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
         # Add buttons for confirm and cancel
-        OK_icon = 'icons/OK.png'
+        OK_icon = os.path.join(wkdir, 'icons/OK.png')
         self.buttons['ok'] = QAction(QIcon(OK_icon), 'Confirm', parent=self)
         self.buttons['ok'].setStatusTip('Confirm Center Definition')
         self.buttons['ok'].setShortcut('Return')
         self.buttons['ok'].triggered.connect(self.accept_define_center)
         self.toolbar.addAction(self.buttons['ok'])
-        cancel_icon = 'icons/cancel.png'
+        cancel_icon = os.path.join(wkdir, 'icons/cancel.png')
         self.buttons['cancel'] = QAction(QIcon(cancel_icon), 'Cancel', parent=self)
         self.buttons['cancel'].setStatusTip('Cancel Center Definition')
         self.buttons['cancel'].setShortcut('Esc')
@@ -2736,32 +2737,32 @@ class PlotCanvas(QMainWindow):
         preview_fft.statusBar.showMessage('Drag the masks on noncolinear strong spots.')
 
         # Buttons
-        ok_icon = 'icons/OK.png'
+        ok_icon = os.path.join(wkdir, 'icons/OK.png')
         preview_fft.buttons['ok'] = QAction(QIcon(ok_icon), 'Run GPA', parent=preview_fft)
         preview_fft.buttons['ok'].setStatusTip('Run GPA')
         preview_fft.toolbar.addAction(preview_fft.buttons['ok'])
         preview_fft.buttons['ok'].triggered.connect(self.run_gpa)
-        cancel_icon = 'icons/cancel.png'
+        cancel_icon = os.path.join(wkdir, 'icons/cancel.png')
         preview_fft.buttons['cancel'] = QAction(QIcon(cancel_icon), 'Close', parent=preview_fft)
         preview_fft.buttons['cancel'].setStatusTip('Close'),
         preview_fft.toolbar.addAction(preview_fft.buttons['cancel'])
         preview_fft.buttons['cancel'].triggered.connect(self.stop_gpa)
-        settings_icon = 'icons/settings.png'
+        settings_icon = os.path.join(wkdir, 'icons/settings.png')
         preview_fft.buttons['settings'] = QAction(QIcon(settings_icon), 'GPA Settings', parent=preview_fft)
         preview_fft.buttons['settings'].setStatusTip('GPA Settings')
         preview_fft.toolbar.addAction(preview_fft.buttons['settings'])
         preview_fft.buttons['settings'].triggered.connect(self.gpa_settings)
-        add_icon = 'icons/plus.png'
+        add_icon = os.path.join(wkdir, 'icons/plus.png')
         preview_fft.buttons['add_mask'] = QAction(QIcon(add_icon), 'Add Mask', parent=preview_fft)
         preview_fft.buttons['add_mask'].setStatusTip('Add Mask')
         preview_fft.toolbar.addAction(preview_fft.buttons['add_mask'])
         preview_fft.buttons['add_mask'].triggered.connect(lambda: preview_fft.add_mask(pairs=False))
-        remove_icon = 'icons/minus.png'
+        remove_icon = os.path.join(wkdir, 'icons/minus.png')
         preview_fft.buttons['remove_mask'] = QAction(QIcon(remove_icon), 'Remove Mask', parent=preview_fft)
         preview_fft.buttons['remove_mask'].setStatusTip('Remove Mask')
         preview_fft.toolbar.addAction(preview_fft.buttons['remove_mask'])
         preview_fft.buttons['remove_mask'].triggered.connect(preview_fft.remove_mask)
-        refine_icon = 'icons/measure_fft.png'
+        refine_icon = os.path.join(wkdir, 'icons/measure_fft.png')
         preview_fft.buttons['refine_center'] = QAction(QIcon(refine_icon), 'Refine Center', parent=preview_fft)
         preview_fft.buttons['refine_center'].setStatusTip('Refine the mask positions using CoM.')
         preview_fft.toolbar.addAction(preview_fft.buttons['refine_center'])
@@ -3042,14 +3043,14 @@ class PlotCanvas(QMainWindow):
         self.statusBar.showMessage("Drag the line to reslice.")
         
         # Buttons for finish
-        OK_icon = 'icons/OK.png'
+        OK_icon = os.path.join(wkdir, 'icons/OK.png')
         self.buttons['ok'] = QAction(QIcon(OK_icon), 'OK', parent=self)
         self.buttons['ok'].setStatusTip('Reslice from the line')
         self.buttons['ok'].setShortcut('Esc')
         self.buttons['ok'].triggered.connect(self.reslice_from_line)
         self.toolbar.addAction(self.buttons['ok'])
 
-        cancel_icon = 'icons/cancel.png'
+        cancel_icon = os.path.join(wkdir, 'icons/cancel.png')
         self.buttons['cancel'] = QAction(QIcon(cancel_icon), 'Cancel', parent=self)
         self.buttons['cancel'].setStatusTip('Cancel Reslice')
         self.buttons['cancel'].setShortcut('Esc')
@@ -3439,7 +3440,7 @@ class PlotCanvasFFT(PlotCanvas):
                 toolbar.removeAction(action)    
 
         # Add mask button
-        mask_icon = 'icons/masks.png'   
+        mask_icon = os.path.join(wkdir, 'icons/masks.png')
         mask_action = QAction(QIcon(mask_icon), 'Mask and iFFT', self)
         mask_action.setStatusTip('Add masks to FFT spots and perform inverse FFT.')
         mask_action.triggered.connect(self.mask)
@@ -3551,20 +3552,20 @@ class PlotCanvasFFT(PlotCanvas):
         self.statusBar.showMessage("Drag masks on FFT spots. Add more if needed.")
 
         # Add buttons
-        ok_icon = 'icons/ok.png'
+        ok_icon = os.path.join(wkdir, 'icons/ok.png')
         self.buttons['ok'] = QAction(QIcon(ok_icon), 'Finish', self)
         self.buttons['ok'].setShortcut('Esc')
         self.buttons['ok'].setStatusTip('Finish iFFT filtering.')
         self.buttons['ok'].triggered.connect(self.stop_mask_ifft)
         self.toolbar.addAction(self.buttons['ok'])
 
-        add_icon = 'icons/plus.png'
+        add_icon = os.path.join(wkdir, 'icons/plus.png')
         self.buttons['add'] = QAction(QIcon(add_icon), 'Add Mask', self)
         self.buttons['add'].setStatusTip('Add new masks.')
         self.buttons['add'].triggered.connect(lambda: self.add_mask())
         self.toolbar.addAction(self.buttons['add'])   
 
-        remove_icon = 'icons/minus.png'
+        remove_icon = os.path.join(wkdir, 'icons/minus.png')
         self.buttons['remove'] = QAction(QIcon(remove_icon), 'Remove Mask', self)
         self.buttons['remove'].setStatusTip('Remove masks.')
         self.buttons['remove'].triggered.connect(self.remove_mask)
@@ -3801,25 +3802,25 @@ class PlotCanvasSpectrum(QMainWindow):
         self.toolbar.setIconSize(QtCore.QSize(16,16))
         self.addToolBar(self.toolbar)
 
-        home_icon = 'icons/home.png'
+        home_icon = os.path.join(wkdir, 'icons/home.png')
         home_action = QAction(QIcon(home_icon), "Home", self)
         home_action.setStatusTip("Reset to original view")
         home_action.triggered.connect(self.custom_auto_range)
         self.toolbar.addAction(home_action)
 
-        save_icon = 'icons/save.png'
+        save_icon = os.path.join(wkdir, 'icons/save.png')
         save_action = QAction(QIcon(save_icon), "Save", self)
         save_action.setStatusTip("Save plot as image or CSV")
         save_action.triggered.connect(self.save_plot)
         self.toolbar.addAction(save_action)
 
-        copy_icon = 'icons/copy.png'
+        copy_icon = os.path.join(wkdir, 'icons/copy.png')
         copy_action = QAction(QIcon(copy_icon), "Copy", self)
         copy_action.setStatusTip("Copy plot to clipboard")
         copy_action.triggered.connect(self.copy_plot)
         self.toolbar.addAction(copy_action)
 
-        settings_icon = 'icons/settings.png'
+        settings_icon = os.path.join(wkdir, 'icons/settings.png')
         settings_action = QAction(QIcon(settings_icon), "Settings", self)
         settings_action.setStatusTip("Plot settings")
         settings_action.triggered.connect(self.plotsetting)
@@ -3827,12 +3828,12 @@ class PlotCanvasSpectrum(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        h_measure_icon = 'icons/h_measure.png'
+        h_measure_icon = os.path.join(wkdir, 'icons/h_measure.png')
         h_measure_action = QAction(QIcon(h_measure_icon), "Measure horizontal", self)
         h_measure_action.triggered.connect(lambda: self.measure('vertical'))
         self.toolbar.addAction(h_measure_action)
 
-        v_measure_icon = 'icons/v_measure.png'
+        v_measure_icon = os.path.join(wkdir, 'icons/v_measure.png')
         v_measure_action = QAction(QIcon(v_measure_icon), "Measure vertical", self)
         v_measure_action.triggered.connect(lambda: self.measure('horizontal'))
         self.toolbar.addAction(v_measure_action)
@@ -3979,7 +3980,8 @@ class PlotCanvasSpectrum(QMainWindow):
         # orientation: 'horizontal' or 'vertical'
         self.cleanup()
         # Finish button
-        self.buttons['ok'] = QAction(QIcon('icons/ok.png'), "OK", self)
+        ok_icon = os.path.join(wkdir, 'icons/ok.png')
+        self.buttons['ok'] = QAction(QIcon(ok_icon), "OK", self)
         self.buttons['ok'].setStatusTip("Finish measurement")
         self.buttons['ok'].setShortcut('Esc')
         self.buttons['ok'].triggered.connect(self.cleanup)

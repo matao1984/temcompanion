@@ -162,9 +162,9 @@ ver = '1.3'
 rdate = '2025-10-22'
 
 #===================Import internal modules==========================================
-from GPA import GPA, norm_img, create_mask, refine_center
-from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
-import filters
+from .GPA import GPA, norm_img, create_mask, refine_center
+from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+from . import filters
 
 
 # Global colormap storage
@@ -181,6 +181,28 @@ class EmittingStream(QObject):
 
     def flush(self):
         pass  # Required for compatibility with sys.stdout
+
+class TeeStream:
+    """Write to both the original stream and the EmittingStream."""
+    def __init__(self, emitter: EmittingStream, orig):
+        self.emitter = emitter
+        self.orig = orig
+
+    def write(self, text):
+        try:
+            self.orig.write(text)
+        except Exception:
+            pass
+        try:
+            self.emitter.write(text)
+        except Exception:
+            pass
+
+    def flush(self):
+        try:
+            self.orig.flush()
+        except Exception:
+            pass
         
 
 #===================QThread for background processing================================
@@ -215,8 +237,14 @@ class UI_TemCompanion(QWidget):
         self.stream.text_written.connect(self.append_text)
    
         # Redirect sys.stdout and sys.stderr to the custom stream
-        # sys.stdout = self.stream
-        # sys.stderr = self.stream
+        sys.stdout = self.stream
+        sys.stderr = self.stream
+
+        # Tee stdout/stderr to both console and UI
+        self.stdout_tee = TeeStream(self.stream, sys.__stdout__)
+        self.stderr_tee = TeeStream(self.stream, sys.__stderr__)
+        sys.stdout = self.stdout_tee
+        sys.stderr = self.stderr_tee
         
         # Drag and drop file function
         self.setAcceptDrops(True)
@@ -6655,7 +6683,6 @@ def main():
 
 
 if __name__ == "__main__":
-    
     main()
     
 

@@ -162,9 +162,9 @@ ver = '1.3'
 rdate = '2025-10-25'
 
 #===================Import internal modules==========================================
-from .GPA import GPA, norm_img, create_mask, refine_center
-from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
-from . import filters
+from GPA import GPA, norm_img, create_mask, refine_center
+from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+import filters
 
 if getattr(sys, 'frozen', False):
     wkdir = sys._MEIPASS
@@ -2835,7 +2835,7 @@ class PlotCanvas(QMainWindow):
         exy = exy[:im_y, :im_x]
         oxy = oxy[:im_y, :im_x]
         img = self.get_img_dict_from_canvas()
-        cm = pg.colormap.get('seismic', source='matplotlib')
+        cm = custom_cmap['seismic']
         
 
         # Display the strain tensors
@@ -2847,7 +2847,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.image_item.setLevels((self.vmin, self.vmax))
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.attribute['vmin'] = self.vmin
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.attribute['vmax'] = self.vmax
-        UI_TemCompanion.preview_dict[preview_name_exx].canvas.image_item.setColorMap(cm)
+        UI_TemCompanion.preview_dict[preview_name_exx].canvas.image_item.setLookupTable(cm)
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.attribute['cmap'] = 'seismic'
         UI_TemCompanion.preview_dict[preview_name_exx].canvas.toggle_colorbar(show=True)
         
@@ -2859,7 +2859,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.image_item.setLevels((self.vmin, self.vmax))
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.attribute['vmin'] = self.vmin
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.attribute['vmax'] = self.vmax
-        UI_TemCompanion.preview_dict[preview_name_eyy].canvas.image_item.setColorMap(cm)
+        UI_TemCompanion.preview_dict[preview_name_eyy].canvas.image_item.setLookupTable(cm)
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.attribute['cmap'] = 'seismic'
         UI_TemCompanion.preview_dict[preview_name_eyy].canvas.toggle_colorbar(show=True)
         
@@ -2871,7 +2871,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.image_item.setLevels((self.vmin, self.vmax))
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.attribute['vmin'] = self.vmin
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.attribute['vmax'] = self.vmax
-        UI_TemCompanion.preview_dict[preview_name_exy].canvas.image_item.setColorMap(cm)
+        UI_TemCompanion.preview_dict[preview_name_exy].canvas.image_item.setLookupTable(cm)
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.attribute['cmap'] = 'seismic'
         UI_TemCompanion.preview_dict[preview_name_exy].canvas.toggle_colorbar(show=True)
         
@@ -2883,7 +2883,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.image_item.setLevels((self.vmin, self.vmax))
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.attribute['vmin'] = self.vmin
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.attribute['vmax'] = self.vmax
-        UI_TemCompanion.preview_dict[preview_name_oxy].canvas.image_item.setColorMap(cm)
+        UI_TemCompanion.preview_dict[preview_name_oxy].canvas.image_item.setLookupTable(cm)
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.attribute['cmap'] = 'seismic'
         UI_TemCompanion.preview_dict[preview_name_oxy].canvas.toggle_colorbar(show=True)
     
@@ -3936,19 +3936,26 @@ class PlotCanvasSpectrum(QMainWindow):
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(self.parent(), 
                                                    "Export Figure", 
                                                    "", 
-                                                   "Color PNG Files (*.png);;Color JPEG Files (*.jpg);;Color TIFF Files (*.tiff);;Comma Separated Values (*.csv)", 
+                                                   "Vector SVG Files (*.svg);;Color PNG Files (*.png);;Color JPEG Files (*.jpg);;Color TIFF Files (*.tiff);;Comma Separated Values (*.csv)", 
                                                    options=options)
         if self.file_path:
             self.file_type = getFileType(self.file_path)
             if self.selected_type in ['Color PNG Files (*.png)', 'Color JPEG Files (*.jpg)', 'Color TIFF Files (*.tiff)']:
                 print(f'Saving plot to {self.file_path}')
-                scene = self.plot.scene()
-                size = scene.sceneRect().size()
-                save_size = int(size.width()), int(size.height())
-                exporter = pg.exporters.ImageExporter(scene)
-                exporter.parameters()['width'] = save_size[0]  # Set export width to current view width
-                exporter.parameters()['height'] = save_size[1]  # Set export height to current view height
-                exporter.export(self.file_path)
+                # scene = self.plot.scene()
+                # size = scene.sceneRect().size()
+                # save_size = int(size.width()), int(size.height())
+                # exporter = pg.exporters.ImageExporter(scene)
+                # exporter.parameters()['width'] = save_size[0]  # Set export width to current view width
+                # exporter.parameters()['height'] = save_size[1]  # Set export height to current view height
+                # exporter.export(self.file_path)
+                self.plot.plotItem.writeImage(self.file_path)
+
+            elif self.selected_type == 'Vector SVG Files (*.svg)':
+                print(f'Saving plot to {self.file_path}')
+                self.plot.plotItem.writeSvg(self.file_path)
+                
+
                 
                 
                 

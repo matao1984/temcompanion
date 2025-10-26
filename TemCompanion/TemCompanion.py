@@ -157,6 +157,8 @@ from scipy.ndimage import rotate, shift
 from skimage.registration import phase_cross_correlation, optical_flow_ilk
 from skimage.transform import warp, rescale, resize
 
+from numba import njit, prange
+
 
 ver = '1.3'
 rdate = '2025-10-25'
@@ -166,7 +168,11 @@ from .GPA import GPA, norm_img, create_mask, refine_center
 from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 from . import filters
 
-wkdir = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    wkdir = sys._MEIPASS
+elif __file__:
+    wkdir = os.path.dirname(__file__)
+# app.setWindowIcon(QIcon(os.path.join(wkdir, "Icon.ico")))
 
 # Global colormap storage
 with open(os.path.join(wkdir, 'colormaps.pkl'), 'rb') as f:
@@ -567,6 +573,7 @@ class MainFrameCanvas(QWidget):
         # Image canvas that keeps the aspect ratio
         # data is the image dictionary
         super().__init__(parent)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.data = data
         self.img_size = self.data['data'].shape
         if len(self.img_size) == 2:
@@ -2366,8 +2373,9 @@ class PlotCanvas(QMainWindow):
                                         resizable=True
                                         )
         self.canvas.selector.append(selector)
-        self._make_active_selector(selector)
         self.canvas.viewbox.addItem(selector)
+        self._make_active_selector(selector)
+        
 
         line_x, line_profile = self.extract_line_profile()
         x_label = f'Distance ({self.units})'
@@ -2486,7 +2494,7 @@ class PlotCanvas(QMainWindow):
         self.buttons['define_center'].triggered.connect(lambda: self.define_center_dp(method='center'))
         self.toolbar.addAction(self.buttons['define_center'])
         center2_icon = os.path.join(wkdir, 'icons/dp_center2.png')
-        self.buttons['define_center2'] = QAction(QIcon(center2_icon), 'Define Center 2', parent=self)
+        self.buttons['define_center2'] = QAction(QIcon(center2_icon), 'Define Center with Two Points', parent=self)
         self.buttons['define_center2'].setStatusTip('Define the FFT center by two symmetric points')
         self.buttons['define_center2'].triggered.connect(lambda: self.define_center_dp(method='two-point'))
         self.toolbar.addAction(self.buttons['define_center2'])
@@ -6368,17 +6376,18 @@ def load_file(file, file_type):
         
     return f_valid
 
+@njit(parallel=True)
 def rgb2gray(im):
     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
     im_x, im_y = im.shape
     gray = np.zeros((im_x, im_y), dtype='int16')
-    for i in range(im_x):
-        for j in range(im_y):
+    for i in prange(im_x):
+        for j in prange(im_y):
             r = im[i,j][0]
             g = im[i,j][1]
             b = im[i,j][2]
             intensity = r * 0.2125 + g * 0.7154 + b * 0.0721
-            gray[i,j] = intensity.astype('int16')
+            gray[i,j] = np.int16(intensity)
     return gray
 
 
@@ -6669,12 +6678,7 @@ def main():
     app = QApplication(sys.argv)
     
     # Setup window icon for windows app
-    # if getattr(sys, 'frozen', False):
-    #     applicationPath = sys._MEIPASS
-    # elif __file__:
-    #     applicationPath = os.path.dirname(__file__)
-    # app.setWindowIcon(QIcon(os.path.join(applicationPath, "Icon.ico")))
-    
+
     
     temcom = UI_TemCompanion()
     temcom.show()

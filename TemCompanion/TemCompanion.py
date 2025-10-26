@@ -128,7 +128,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QComboBox, QInputDialog, QCheckBox, QGroupBox, 
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
-                             QListWidget, QListWidgetItem, QButtonGroup, QProgressBar, QToolBar
+                             QListWidget, QListWidgetItem, QButtonGroup, QProgressBar, QToolBar,
+                             QTextBrowser
                              )
 from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread, QRectF, QSize
 from PyQt5.QtGui import QImage, QPixmap, QIcon, QDropEvent, QDragEnterEvent, QFont
@@ -144,6 +145,7 @@ import copy
 
 import pickle
 import json
+from collections import OrderedDict
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -383,10 +385,19 @@ class UI_TemCompanion(QWidget):
         self.authorlabel.setText(f'TemCompanion by Dr. Tao Ma   {rdate}')
         
         
-        self.outputBox = QTextEdit(self, readOnly=True)
-        #self.outputBox.setGeometry(35, 90, 350, 210)
-        self.outputBox.resize(350, 210)
-        layout.addWidget(self.outputBox)   
+        # self.outputBox = QTextEdit(self, readOnly=True)
+        # #self.outputBox.setGeometry(35, 90, 350, 210)
+        # self.outputBox.resize(350, 240)
+        # layout.addWidget(self.outputBox)   
+        
+
+        self.outputBox = QTextBrowser(self)
+        self.outputBox.setOpenExternalLinks(True)  # open http(s) links in default browser
+        self.outputBox.setOpenLinks(True)          # allow internal anchors (if any)
+        self.outputBox.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.outputBox.resize(350, 220)
+        layout.addWidget(self.outputBox)
+
         layout.addWidget(self.authorlabel)
         
         self.setLayout(layout)
@@ -405,16 +416,38 @@ class UI_TemCompanion(QWidget):
         
         
     def print_info(self):
-        print('='*42)
-        print('''
-        TemCompanion 
---- a convenient tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg.     
-Address your questions and suggestions to matao1984@gmail.com.
-See the "About" for more details. Buy me a lunch if you like it!
-              ''')
-                    
-        print('          Version: ' + ver + ' Released: ' + rdate)
-        print('='*42)
+        html_text = '''
+        <div style="font-family: Arial, sans-serif;">
+            <h3 style="color: #2196F3; text-align: center;">TemCompanion</h3>
+            <p style="text-align: center; font-size: 12px;">
+                <b>A comprehensive package for TEM image processing and analysis</b>
+            </p>
+            <p style="text-align: center; font-style: italic;">
+                Designed by Dr. Tao Ma
+            </p>
+            <p style="font-size: 12px;">
+                If TemCompanion helped your TEM image analysis in a publication, please cite:
+            </p>
+            <p style="font-size: 11px; margin-left: 20px; color: #555;">
+                Tao Ma, <i>TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis</i>, 
+                <b>SoftwareX</b>, 2025, <b>31</b>, 102212. 
+                <a href="https://doi.org/10.1016/j.softx.2025.102212">doi:10.1016/j.softx.2025.102212</a>
+            </p>
+            <p style="font-size: 12px;">
+                Address your questions and suggestions to 
+                <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a>
+            </p>
+            <p style="font-size: 12px;">
+                See the <b>About</b> for more details. Buy me a lunch if you like it!
+            </p>
+            <p style="text-align: left; font-size: 12px; color: #666;">
+                Version: <b>{ver}</b> | Released: <b>{rdate}</b>
+            </p>
+        </div>
+        '''.format(ver=ver, rdate=rdate)
+        
+        self.outputBox.append(html_text)
+        self.outputBox.append("")
 
         
 #===================================================================
@@ -1219,7 +1252,7 @@ class PlotCanvas(QMainWindow):
         info_icon = os.path.join(wkdir, "icons/info.png")
         info_action = QAction(QIcon(info_icon), "Info", self)
         info_action.setStatusTip("Show image info")
-        info_action.triggered.connect(self.show_axes)
+        info_action.triggered.connect(self.show_info)
         self.toolbar.addAction(info_action)
 
 
@@ -1537,10 +1570,10 @@ class PlotCanvas(QMainWindow):
 
         # Info menu
         info_menu = menubar.addMenu('&Info')
-        axes_action = QAction('Image Axes', self)
-        axes_action.triggered.connect(self.show_axes)
-        info_menu.addAction(axes_action)
-        info_action = QAction('&View Metadata', self)
+        # axes_action = QAction('Image Axes', self)
+        # axes_action.triggered.connect(self.show_axes)
+        # info_menu.addAction(axes_action)
+        info_action = QAction('&Image Info', self)
         info_action.setShortcut('ctrl+i')
         info_action.triggered.connect(self.show_info)
         info_menu.addAction(info_action)
@@ -2026,18 +2059,9 @@ class PlotCanvas(QMainWindow):
             self.worker.result.connect(lambda: UI_TemCompanion.preview_dict[preview_name].position_window('center right'))
             self.thread.start()
 
-    def show_axes(self):
-        # Show image axes including size, scale, etc.
-        axes = self.get_img_dict_from_canvas()['axes']
-        axes_dict = {}
-        for ax in axes:
-            axes_dict[ax['name']] = ax
-            
-        self.axes_viewer = DictionaryTreeWidget(axes_dict, parent=self)
-        self.axes_viewer.show()
 
     def show_info(self):
-        # Show image infomation function here
+        # Show image infomation including metadata
         img_dict = self.get_img_dict_from_canvas()
         metadata = img_dict['metadata']
         
@@ -2046,7 +2070,24 @@ class PlotCanvas(QMainWindow):
             metadata.update(extra_metadata)
         except Exception as e:
             pass
-        self.metadata_viewer = MetadataViewer(metadata, parent=self)
+        
+        img_info = OrderedDict()
+        img_info['File Name'] = self.parent().file
+        img_info['Data Type'] = self.canvas.data_type
+        img_info['Image Size (pixels)'] = f"{img_dict['data'].shape}"
+        img_info['Calibrated Image Size'] = f"{self.canvas.img_size[-1] * self.scale:.4g} x {self.canvas.img_size[-2] * self.scale:.4g} {self.units}"
+        img_info['Pixel Calibration'] = f"{self.scale:.4g} {self.units}"
+        # Add axes info to metadata
+        axes = img_dict['axes']
+        axes_dict = {}
+        for ax in axes:
+            axes_dict[ax['name']] = ax
+        img_info['Axes'] = axes_dict
+        img_info['Processing History'] = metadata.pop('process')
+
+        img_info['Metadata'] = metadata
+
+        self.metadata_viewer = MetadataViewer(img_info, parent=self)
         self.metadata_viewer.show()
 
     def fft(self):
@@ -4786,13 +4827,18 @@ class MetadataViewer(QMainWindow):
         self.setWindowTitle('Metadata Viewer')
         self.setGeometry(100, 100, 800, 600)
 
-        self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(['Metadata'])
-        self.setCentralWidget(self.tree)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
+        
         self.metadata = metadata
         self.create_menubar()
 
-        self.populate_tree(metadata)
+        # Create DataTreeWidget and set the data
+        self.data_tree_widget = pg.DataTreeWidget()
+        self.data_tree_widget.setData(metadata)
+        self.data_tree_widget.setColumnHidden(1, True)  # Hide the 'Type' column
+        layout.addWidget(self.data_tree_widget)
         
     def create_menubar(self):        
         menubar = self.menuBar()  # Create a menu bar
@@ -4806,23 +4852,6 @@ class MetadataViewer(QMainWindow):
         close_action.triggered.connect(self.close)
         file_menu.addAction(close_action)
 
-    def populate_tree(self, data, parent=None):
-        if parent is None:
-            parent = self.tree.invisibleRootItem()
-
-        if isinstance(data, dict):
-            for key, value in data.items():
-                item = QTreeWidgetItem([key])
-                parent.addChild(item)
-                self.populate_tree(value, item)
-        elif isinstance(data, list):
-            for index, value in enumerate(data):
-                item = QTreeWidgetItem([f"[{index}]"])
-                parent.addChild(item)
-                self.populate_tree(value, item)
-        else:
-            item = QTreeWidgetItem([str(data)])
-            parent.addChild(item)
             
     def export(self):
         options = QFileDialog.Options()

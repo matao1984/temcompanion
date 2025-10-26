@@ -166,7 +166,11 @@ from .GPA import GPA, norm_img, create_mask, refine_center
 from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 from . import filters
 
-wkdir = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    wkdir = sys._MEIPASS
+elif __file__:
+    wkdir = os.path.dirname(__file__)
+# app.setWindowIcon(QIcon(os.path.join(wkdir, "Icon.ico")))
 
 # Global colormap storage
 with open(os.path.join(wkdir, 'colormaps.pkl'), 'rb') as f:

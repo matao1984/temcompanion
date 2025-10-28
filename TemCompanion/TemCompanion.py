@@ -129,9 +129,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout,
                              QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
                              QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
                              QListWidget, QListWidgetItem, QButtonGroup, QProgressBar, QToolBar,
-                             QTextBrowser
+                             QTextBrowser, QDockWidget
                              )
-from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread, QRectF, QSize
+from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread, QRect, QRectF, QSize, QTimer
 from PyQt5.QtGui import QImage, QPixmap, QIcon, QDropEvent, QDragEnterEvent, QFont
 
 
@@ -233,7 +233,7 @@ class Worker(QThread):
 #=====================Main Window UI ===============================================
 
 
-class UI_TemCompanion(QWidget):
+class UI_TemCompanion(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setupUi()
@@ -324,24 +324,29 @@ class UI_TemCompanion(QWidget):
 
 
     def setupUi(self):
-        
+        # Window size 
+        self.size_with_dock = 400, 450
+        self.size_without_dock = 400, 100
         self.setObjectName("TemCompanion")
         self.setWindowTitle(f"TemCompanion Ver {ver}")
-        self.resize(400, 400)
+        self.resize(*self.size_with_dock)
         
+        
+        # Central widget + layout 
+        central = QWidget(self)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
         buttonlayout = QHBoxLayout()
         
         self.openfileButton = QPushButton(self)
-        #self.openfileButton.setGeometry(QtCore.QRect(30, 20, 80, 60))
-        self.openfileButton.resize(80, 60)
+        self.openfileButton.setFixedSize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
         self.openfileButton.setText('Open \nImages')
         
         
         
         self.convertButton = QPushButton(self)
-        #self.convertButton.setGeometry(QtCore.QRect(100, 20, 80, 60))
-        self.convertButton.resize(80, 60)
+        self.convertButton.setFixedSize(80, 60)
         self.convertButton.setObjectName("BatchConvert")
         self.convertButton.setText("Batch \nConvert")
         
@@ -349,41 +354,50 @@ class UI_TemCompanion(QWidget):
         
         
         self.aboutButton = QPushButton(self)
-        #self.aboutButton.setGeometry(QtCore.QRect(170, 20, 80, 60))
-        self.aboutButton.resize(80, 60)
-        self.aboutButton.setSizePolicy(QSizePolicy.Preferred,QSizePolicy.Preferred)
-
+        self.aboutButton.setFixedSize(80, 60)
         self.aboutButton.setObjectName("aboutButton")
         self.aboutButton.setText("About")
         
         self.contactButton = QPushButton(self)
-        #self.contactButton.setGeometry(QtCore.QRect(240, 20, 80, 60))
-        self.contactButton.resize(80, 60)
+        self.contactButton.setFixedSize(80, 60)
         self.contactButton.setObjectName("contactButton")
         self.contactButton.setText("Contact")
-        self.contactButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
+
         self.donateButton = QPushButton(self)
-        #self.donateButton.setGeometry(QtCore.QRect(310, 20, 80, 60))
-        self.donateButton.resize(80, 60)
+        self.donateButton.setFixedSize(80, 60)
         self.donateButton.setObjectName("donateButton")
         self.donateButton.setText("Buy me\n a LUNCH!")
-        self.donateButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
+
         buttonlayout.addWidget(self.openfileButton)
         buttonlayout.addWidget(self.convertButton)
         buttonlayout.addWidget(self.aboutButton)
         buttonlayout.addWidget(self.contactButton)
         buttonlayout.addWidget(self.donateButton)
-        
-        layout = QVBoxLayout()
+
         layout.addLayout(buttonlayout)
+
+        # Add a horizontal layout for author label and output dock toggle
+        author_layout = QHBoxLayout()
         
         self.authorlabel = QLabel(self)
-        #self.authorlabel.setGeometry(QtCore.QRect(30, 320, 350, 16))
         self.authorlabel.setObjectName("authorlabel")
         self.authorlabel.setText(f'TemCompanion by Dr. Tao Ma   {rdate}')
+        author_layout.addWidget(self.authorlabel)
         
+        # Add stretch to push the checkbox to the right
+        author_layout.addStretch(1)
+        
+        # Add the output dock toggle checkbox
+        self.output_toggle = QCheckBox("Show Output", self)
+        self.output_toggle.setChecked(True)
+        author_layout.addWidget(self.output_toggle)
+        
+        layout.addLayout(author_layout)
+
+        layout.addStretch(1)
+
+        central.setLayout(layout)
+        self.setCentralWidget(central)
         
         # self.outputBox = QTextEdit(self, readOnly=True)
         # #self.outputBox.setGeometry(35, 90, 350, 210)
@@ -396,21 +410,85 @@ class UI_TemCompanion(QWidget):
         self.outputBox.setOpenLinks(True)          # allow internal anchors (if any)
         self.outputBox.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.outputBox.resize(350, 220)
-        layout.addWidget(self.outputBox)
+        # layout.addWidget(self.outputBox)
 
-        layout.addWidget(self.authorlabel)
+        # Add the dock widget at the bottom (sticky to bottom, detachable)
+        self.outputDock = QDockWidget("Output", self)
+        self.outputDock.setObjectName("OutputDock")
+        self.outputDock.setAllowedAreas(Qt.BottomDockWidgetArea)  # stick to bottom area
+        self.outputDock.setFeatures(
+            QDockWidget.DockWidgetMovable |
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetClosable
+        )
+        self.outputDock.setWidget(self.outputBox)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.outputDock)
+        self.resizeDocks([self.outputDock], [350], Qt.Vertical)
         
-        self.setLayout(layout)
+        # Connect signal to handle dock detachment
+        self.outputDock.topLevelChanged.connect(self._on_dock_toplevel_changed)
 
-        
-#====================================================================
-# Connect all functions
-        self.openfileButton.clicked.connect(self.openfile)
-        
+        # Connect the checkbox to the dock's toggleViewAction
+        # toggle_action = self.outputDock.toggleViewAction()
+        self.output_toggle.toggled.connect(self.toggle_dock)
+        self.outputDock.visibilityChanged.connect(self._on_dock_visibility_changed)
+        # toggle_action.toggled.connect(self.output_toggle.setChecked)
+
+
+        # Connect all functions
+        self.openfileButton.clicked.connect(self.openfile)       
         self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
         self.contactButton.clicked.connect(self.show_contact)
-        self.donateButton.clicked.connect(self.donate)
+        self.donateButton.clicked.connect(self.donate) 
+
+
+    def _on_dock_toplevel_changed(self, topLevel):
+        """Handle dock widget detach/reattach to maintain main window size"""
+        if topLevel:
+            # Use QTimer with a direct connection instead of lambda
+            QTimer.singleShot(10, lambda: self.resize(*self.size_without_dock))
+        else:
+            # Dock is being reattached
+            # Restore the stored geometry if it exists
+            QTimer.singleShot(10, self.restore_dock)
+
+    def _on_dock_visibility_changed(self, visible):
+        """Update checkbox state when dock is closed/shown"""
+        # Block signals to prevent triggering toggle_dock
+        self.output_toggle.blockSignals(True)
+        self.output_toggle.setChecked(visible)
+        self.output_toggle.blockSignals(False)       
+        # Resize main window according to visibility
+        if visible:
+            QTimer.singleShot(10, self.restore_dock)
+        else:
+            QTimer.singleShot(10, lambda: self.resize(*self.size_without_dock))
+
+                
+
+    def restore_dock(self):
+        """Helper function to reattach the dock if needed"""
+        self.resize(*self.size_with_dock)
+        self.resizeDocks([self.outputDock], [350], Qt.Vertical)
+        
+    def toggle_dock(self, checked):
+        """Show or hide the output dock based on checkbox state"""
+        if checked:
+            self.outputDock.blockSignals(True)
+            self.outputDock.setFloating(False)  # Reattach if floating
+            self.outputDock.setVisible(True)
+            self.restore_dock()
+            self.outputDock.blockSignals(False)
+        else:
+            self.outputDock.setVisible(False)
+            self.resize(*self.size_without_dock)
+
+        
+        
+
+        
+
         
 
         
@@ -428,7 +506,7 @@ class UI_TemCompanion(QWidget):
             <p style="font-size: 12px;">
                 If TemCompanion helped your TEM image analysis in a publication, please cite:
             </p>
-            <p style="font-size: 11px; margin-left: 20px; color: #555;">
+            <p style="font-size: 11px; margin-left: 20px">
                 Tao Ma, <i>TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis</i>, 
                 <b>SoftwareX</b>, 2025, <b>31</b>, 102212. 
                 <a href="https://doi.org/10.1016/j.softx.2025.102212">doi:10.1016/j.softx.2025.102212</a>
@@ -438,9 +516,9 @@ class UI_TemCompanion(QWidget):
                 <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a>
             </p>
             <p style="font-size: 12px;">
-                See the <b>About</b> for more details. Buy me a lunch if you like it!
+                See the <b>About</b> for more details. <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US">Buy me a lunch</a> if you like it!
             </p>
-            <p style="text-align: left; font-size: 12px; color: #666;">
+            <p style="text-align: left; font-size: 12px">
                 Version: <b>{ver}</b> | Released: <b>{rdate}</b>
             </p>
         </div>
@@ -461,6 +539,17 @@ class UI_TemCompanion(QWidget):
            
         else: 
             self.file = None # Canceled, set back to None
+
+        # Position the UI to top center
+        # screen_geometry = QApplication.primaryScreen().availableGeometry()
+        # width = screen_geometry.width()
+        # height = screen_geometry.height()
+        # frame_size = self.frameGeometry()
+        x = self.geometry().x()
+        # x = (width - frame_size.width()) // 2
+        y = 0
+        self.move(x, y)
+
                 
 
 
@@ -476,13 +565,17 @@ class UI_TemCompanion(QWidget):
     def show_about(cls):
         msg = QMessageBox()
 #        msg.setIcon(QMessageBox.Information)
-        msg.setText("TemCompanion: a tool to view, edit, filter, and convert TEM image files to tiff, png, and jpg."\
+        msg.setText("TemCompanion: a comprehensive package for TEM data processing and analysis."\
                     "<br>"\
                     "This app was designed by Dr. Tao Ma"\
                     "<br>"\
                     "Version: {}  Released: {}"\
                     "<br>"\
-                    "Hope you get good results and publications from it!"\
+                    "If TemCompanion helped your TEM image analysis in a publication, please cite:"\
+                    "<br>"
+                    "Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, "\
+                    "SoftwareX, 2025, 31, 102212. "\
+                    "<a href=\"https://doi.org/10.1016/j.softx.2025.102212\">doi:10.1016/j.softx.2025.102212</a>"
                     "<br>"\
                     "Get more information and source code from <a href=\"https://github.com/matao1984/temcompanion\">here</a>.".format(ver, rdate))
         msg.setWindowTitle(ver + ": About")
@@ -504,8 +597,7 @@ class UI_TemCompanion(QWidget):
         
     def donate(self):
         msg = QMessageBox()
-        msg.setText("I will make this app freely available for the society.<br>"\
-                    "If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a lunch!</a>"\
+        msg.setText("If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a lunch!</a>"\
                     "<br>"\
                     "Your support is my motivation!")
         msg.setWindowTitle(ver + ": Buy me a LUNCH!")
@@ -632,7 +724,7 @@ class MainFrameCanvas(QWidget):
 
         # Playback control for stack images
         self.isPlaying = False
-        self.timer = QtCore.QTimer()
+        self.timer = QTimer()
         self.timer.timeout.connect(self.next_frame)
 
         self.plot = pg.PlotWidget()
@@ -1773,6 +1865,7 @@ class PlotCanvas(QMainWindow):
             title = self.windowTitle()
             preview_name = self.canvas.canvas_name + '_Resampled'
             self.plot_new_image(img, preview_name, parent=self.parent(),metadata=f'Resampled {title} by a factor of {rescale_factor}.')
+            print(f'Resampled {title} by a factor of {rescale_factor}.')
             
             # Positioning
             self.position_window('center left')
@@ -1832,8 +1925,10 @@ class PlotCanvas(QMainWindow):
 
             if operation == 'Inverse':
                 metadata = f'Inversed signal of {signal1}'
+                print(f'Inversed signal of {signal1}.')
             else:
                 metadata = f'Processed by {signal1} {operation} {signal2}'
+                print(f'Processed {signal1} {operation} {signal2}.')
 
             self.plot_new_image(img1, canvas_name=preview_name, parent=self.parent(), metadata=metadata)
             # Positioning
@@ -2103,6 +2198,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].update_metadata(f'FFT of {title}.')
         UI_TemCompanion.preview_dict[preview_name].show()
+        print(f'Performed FFT on {title}.')
         
         # Positioning
         self.position_window('center left')
@@ -2135,6 +2231,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].canvas.canvas_name = preview_name
         UI_TemCompanion.preview_dict[preview_name].update_metadata(f'Windowed FFT of {title}.')
         UI_TemCompanion.preview_dict[preview_name].show()
+        print(f'Performed FFT on {title} with a Hann window.')
         
         # Positioning
         self.position_window('center left')
@@ -2721,7 +2818,7 @@ class PlotCanvas(QMainWindow):
 
          
 
-    def clean_up(self, selector=False, buttons=False, modes=False, cid=False, status_bar=False):
+    def clean_up(self, selector=False, buttons=False, modes=False, status_bar=False):
         # Remove selectors and buttons if any
         if selector and self.canvas.selector:
             for sel in self.canvas.selector:
@@ -2741,9 +2838,6 @@ class PlotCanvas(QMainWindow):
             for mode in self.mode_control.values():
                 if mode:
                     mode = False
-
-        if cid:
-            pass
 
         # Reset status bar
         if status_bar:
@@ -3153,6 +3247,7 @@ class PlotCanvas(QMainWindow):
             self.plot_new_image(img, preview_name, parent=self.parent(), metadata=metadata)
             self.position_window('center left')
             UI_TemCompanion.preview_dict[preview_name].position_window('center right')
+            print(metadata)
 
             # Clean up
             self.clean_up(buttons=True, selector=True, status_bar=True)
@@ -3181,7 +3276,7 @@ class PlotCanvas(QMainWindow):
         metadata = f'Sorted the entire stack of {title} by the order of {sorted_order}.'
         self.plot_new_image(sorted_img, preview_name, parent=self.parent(), metadata=metadata)
 
-        print(f'{title} has been sorted.')
+        print(metadata)
         self.position_window('center left')
         UI_TemCompanion.preview_dict[preview_name].position_window('center right')
         
@@ -3875,11 +3970,13 @@ class PlotCanvasSpectrum(QMainWindow):
 
         h_measure_icon = os.path.join(wkdir, 'icons/h_measure.png')
         h_measure_action = QAction(QIcon(h_measure_icon), "Measure horizontal", self)
+        h_measure_action.setStatusTip("Measure horizontal distance")
         h_measure_action.triggered.connect(lambda: self.measure('vertical'))
         self.toolbar.addAction(h_measure_action)
 
         v_measure_icon = os.path.join(wkdir, 'icons/v_measure.png')
         v_measure_action = QAction(QIcon(v_measure_icon), "Measure vertical", self)
+        v_measure_action.setStatusTip("Measure vertical distance")
         v_measure_action.triggered.connect(lambda: self.measure('horizontal'))
         self.toolbar.addAction(v_measure_action)
 
@@ -4869,52 +4966,8 @@ class MetadataViewer(QMainWindow):
             if self.selected_type == 'Pickle Dictionary Files (*.pkl)':
                 with open(self.file_path, 'wb') as f:
                     pickle.dump(self.metadata, f)
-                    
-                    
-# ================== Axes Viewer =================================
-class DictionaryTreeWidget(QMainWindow):
-    def __init__(self, axes_dict, parent=None):
-        super().__init__(parent)
 
-        self.setWindowTitle('Axes Information')
-        self.setGeometry(100, 100, 400, 350)
-
-        # Create a QTreeWidget
-        self.tree = QTreeWidget(self)
-        self.setCentralWidget(self.tree)
-
-        # Set Up Columns
-        self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(['Item', 'Value'])
-        
-        # Set default column widths
-        self.tree.setColumnWidth(0, 150)  # Width for the 'Key' column
-        self.tree.setColumnWidth(1, 250)  # Width for the 'Value' column
-
-
-        # Fill the tree with dictionary data
-        self.populate_tree(axes_dict)
-        
-        # Expand all items by default
-        self.tree.expandAll()
-
-
-    def populate_tree(self, dictionary, parent_item=None):
-        for key, value in dictionary.items():
-            # Create a QTreeWidgetItem for this key-value pair
-            if parent_item is None:
-                item = QTreeWidgetItem(self.tree)
-            else:
-                item = QTreeWidgetItem(parent_item)
-
-            item.setText(0, str(key))
-
-            if isinstance(value, dict):
-                item.setText(1, '')
-                # Recursive call to populate children
-                self.populate_tree(value, item)
-            else:
-                item.setText(1, str(value))
+            print(f'Exported metadata to {self.file_path} as {self.selected_type}.')
 
 # ================= Spectrum plot settings dialog ===================
 class PlotSettingDialog(QDialog):
@@ -5242,7 +5295,6 @@ class gpaSettings(QDialog):
         layout.addWidget(self.standard_radio)
         layout.addWidget(self.adaptive_radio)
         
-        #self.standardGroup = QGroupBox('Standard GPA Parameters')
         masksize_layout = QHBoxLayout()
         masksize_label = QLabel("Mask radius (px):")
         self.masksize_input = QLineEdit()
@@ -5623,6 +5675,7 @@ class DPCDialog(QDialog):
             return
         ang1, ang2 = find_rotation_ang_max_contrast(DPCx, DPCy)
         text = f'Two possible rotation angles are {ang1} deg and {ang2} deg. Choose the one that gives the correct contrast!'
+        print(text)
         QMessageBox.information(self, 'Rotation angle', text)
         
     def guess_rotation_min_curl(self):
@@ -5631,6 +5684,7 @@ class DPCDialog(QDialog):
             return
         ang = find_rotation_ang_min_curl(DPCx, DPCy)
         text = f'The possible rotation angle that gives the minimum curl is {ang} deg.'
+        print(text)
         QMessageBox.information(self, 'Rotation angle', text)
 
     def reconstruct_iDPC(self):
@@ -5642,11 +5696,12 @@ class DPCDialog(QDialog):
         iDPC_img['data'] = reconstruct_iDPC(DPCx, DPCy, rotation=float(self.rot.text()), cutoff=float(self.hp_cutoff.text()))
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_iDPC'
         if self.from4_img.isChecked():
-            metadata = f'Reconstructed from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
+            metadata = f'Reconstructed iDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
         else:
-            metadata = f'Reconstructed from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
+            metadata = f'Reconstructed iDPC from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
         self.parent().plot_new_image(iDPC_img, preview_name, metadata=metadata)
         UI_TemCompanion.preview_dict[preview_name].position_window('center')
+        print(metadata)
         
     
     def reconstruct_dDPC(self):
@@ -5658,11 +5713,12 @@ class DPCDialog(QDialog):
         dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=float(self.rot.text()))
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_dDPC'
         if self.from4_img.isChecked():
-            metadata = f'Reconstructed from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
+            metadata = f'Reconstructed dDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
         else:
-            metadata = f'Reconstructed from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
+            metadata = f'Reconstructed dDPC from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
         self.parent().plot_new_image(dDPC_img, preview_name, metadata=metadata)
         UI_TemCompanion.preview_dict[preview_name].position_window('center')
+        print(metadata)
         
         
 #======================== list reorder dialog =========================

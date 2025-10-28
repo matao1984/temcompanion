@@ -159,6 +159,7 @@ from scipy.ndimage import rotate, shift
 from skimage.registration import phase_cross_correlation, optical_flow_ilk
 from skimage.transform import warp, rescale, resize
 
+from numba import njit, prange
 
 ver = '1.3'
 rdate = '2025-10-27'
@@ -6464,17 +6465,18 @@ def load_file(file, file_type):
         
     return f_valid
 
+@njit(nopython=True, parallel=True)
 def rgb2gray(im):
     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
     im_x, im_y = im.shape
     gray = np.zeros((im_x, im_y), dtype='int16')
-    for i in range(im_x):
-        for j in range(im_y):
+    for i in prange(im_x):
+        for j in prange(im_y):
             r = im[i,j][0]
             g = im[i,j][1]
             b = im[i,j][2]
             intensity = r * 0.2125 + g * 0.7154 + b * 0.0721
-            gray[i,j] = intensity.astype('int16')
+            gray[i,j] = np.int16(intensity)
     return gray
 
 
@@ -6763,15 +6765,8 @@ default_font = find_system_font()
 
 def main():    
     app = QApplication(sys.argv)
-    
-    # Setup window icon for windows app
-    # if getattr(sys, 'frozen', False):
-    #     applicationPath = sys._MEIPASS
-    # elif __file__:
-    #     applicationPath = os.path.dirname(__file__)
-    # app.setWindowIcon(QIcon(os.path.join(applicationPath, "Icon.ico")))
-    
-    
+    # app.setWindowIcon(QIcon(os.path.join(wkdir, "Icon.ico")))
+
     temcom = UI_TemCompanion()
     temcom.show()
     temcom.raise_()

@@ -165,9 +165,15 @@ ver = '1.3'
 rdate = '2025-10-27'
 
 #===================Import internal modules==========================================
-from GPA import GPA, norm_img, create_mask, refine_center
-from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
-import filters
+try: 
+    from .GPA import GPA, norm_img, create_mask, refine_center
+    from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+    from . import filters
+
+except ImportError:
+    from GPA import GPA, norm_img, create_mask, refine_center
+    from DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+    import filters
 
 if getattr(sys, 'frozen', False):
     wkdir = sys._MEIPASS
@@ -2239,7 +2245,7 @@ class PlotCanvas(QMainWindow):
         UI_TemCompanion.preview_dict[preview_name].position_window('next to parent')
 
     def live_fft(self, fullsize=False, windowed=False, resize_fft=False):
-        self.clean_up(selector=True, buttons=True, modes=True, cid=True, status_bar=True)  # Clean up any existing modes or selectors
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
         # Activate live FFT mode
         self.mode_control['Live_FFT'] = True
         self.statusBar.showMessage("Drag the square to display FFT.")
@@ -2332,7 +2338,7 @@ class PlotCanvas(QMainWindow):
 
             
     def crop(self):
-        self.clean_up(selector=True, buttons=True, modes=True, cid=True, status_bar=True)  # Clean up any existing modes or selectors
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
 
         # Display a message in the status bar
         self.statusBar.showMessage("Drag the rectangle to crop.")
@@ -6465,7 +6471,7 @@ def load_file(file, file_type):
         
     return f_valid
 
-@njit(nopython=True, parallel=True)
+@njit(parallel=True)
 def rgb2gray(im):
     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
     im_x, im_y = im.shape

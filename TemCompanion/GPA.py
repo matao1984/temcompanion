@@ -159,52 +159,7 @@ def calc_derivative(arr, axis):
 
 
 
-# # Least square fit to solve the strain tensors with at least two g vectors
-# @njit(parallel=True)
-# def extract_strain_lstsqr(g, dPdx, dPdy):
-#     '''g: n x 2 array of g vectors, n >= 2
-#     dPdx, dPdy: n x m x m array of corresponding phase derivatives
-#     solve exx, exy, eyx, oxy with least square
-#     '''
-#     n = g.shape[0]
-#     m = dPdx.shape[1]
-    
-#     # Initialize solutions
-#     Exx = np.zeros((m,m))
-#     Exy = np.zeros((m,m))
-#     Eyx = np.zeros((m,m))
-#     Eyy = np.zeros((m,m))
-    
-#     # Solve elemental wise
-#     for i in prange(m):
-#         for j in prange(m):
-#             # Construct linear equations
-#             A = np.zeros((2 * n, 4))  # 4 unknowns: Exx_ij, Exy_ij, Eyx_ij, Oxy_ij
-#             b = np.zeros(2 * n)
-            
-#             for k in prange(n):
-#                 gx, gy = g[k]
-
-#                 # First equation: gx * Exx_ij + gy * Exy_ij = -1/(2pi) * dP_dx[k, i, j]
-#                 A[2 * k, 0] = gx  # coefficient for Exx_ij
-#                 A[2 * k, 1] = gy   # coefficient for Exy_ij
-#                 b[2 * k] = -1 / (2 * np.pi) * dPdx[k, i, j]
-
-#                 # Second equation: gx * Eyx_ij + gy * Oxy_ij = -1/(2pi) * dP_dy[k, i, j]
-#                 A[2 * k + 1, 2] = gx  # coefficient for Eyx_ij
-#                 A[2 * k + 1, 3] = gy  # coefficient for Eyy_ij
-#                 b[2 * k + 1] = -1 / (2 * np.pi) * dPdy[k, i, j]
-        
-#             # Solve least squares for this (i,j) element
-#             x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-#             Exx[i, j], Exy[i, j], Eyx[i, j], Eyy[i, j] = x
-    
-#     exy = (Exy + Eyx) / 2
-#     Oxy = (Eyx - Exy) /2
-            
-#     return Exx, Eyy, exy, Oxy
-
-@njit(parallel=True, fastmath=True)
+# Least square fit to solve the strain tensors with at least two g vectors
 def extract_strain_lstsqr(g, dPdx, dPdy):
     """
     g: (n,2) array of g-vectors
@@ -213,75 +168,40 @@ def extract_strain_lstsqr(g, dPdx, dPdy):
     """
     n = g.shape[0]
     m = dPdx.shape[1]
-
-    # Outputs
-    Exx = np.zeros((m, m), dtype=np.float64)
-    Exy = np.zeros((m, m), dtype=np.float64)
-    Eyx = np.zeros((m, m), dtype=np.float64)
-    Eyy = np.zeros((m, m), dtype=np.float64)
-
-    # Precompute M = sum_k [[gx^2, gx*gy],[gx*gy, gy^2]] and its inverse
-    Sxx = 0.0
-    Sxy = 0.0
-    Syy = 0.0
-    for k in range(n):
-        gx = g[k, 0]
-        gy = g[k, 1]
-        Sxx += gx * gx
-        Sxy += gx * gy
-        Syy += gy * gy
-
-    det = Sxx * Syy - Sxy * Sxy
-    # Simple guard; if degenerate, fall back to identity to avoid crash
-    if abs(det) < 1e-18:
-        invM00 = 1.0
-        invM01 = 0.0
-        invM10 = 0.0
-        invM11 = 1.0
-    else:
-        invDet = 1.0 / det
-        invM00 =  Syy * invDet
-        invM01 = -Sxy * invDet
-        invM10 = -Sxy * invDet
-        invM11 =  Sxx * invDet
-
-    c = -1.0 / (2.0 * np.pi)  # factor for RHS
-
-    # Parallelize over rows; inner loop is serial (no nested prange)
-    for i in prange(m):
+    
+    # Initialize solutions
+    Exx = np.zeros((m,m))
+    Exy = np.zeros((m,m))
+    Eyx = np.zeros((m,m))
+    Eyy = np.zeros((m,m))
+    
+    # Solve elemental wise
+    for i in range(m):
         for j in range(m):
-            # Build RHS sums for the two 2x2 systems
-            r0x = 0.0  # sum_k gx * b0k
-            r0y = 0.0  # sum_k gy * b0k
-            r1x = 0.0  # sum_k gx * b1k
-            r1y = 0.0  # sum_k gy * b1k
-
+            # Construct linear equations
+            A = np.zeros((2 * n, 4))  # 4 unknowns: Exx_ij, Exy_ij, Eyx_ij, Oxy_ij
+            b = np.zeros(2 * n)
+            
             for k in range(n):
-                gx = g[k, 0]
-                gy = g[k, 1]
-                b0 = c * dPdx[k, i, j]
-                b1 = c * dPdy[k, i, j]
-                r0x += gx * b0
-                r0y += gy * b0
-                r1x += gx * b1
-                r1y += gy * b1
+                gx, gy = g[k]
 
-            # Solve M * [Exx, Exy] = [r0x, r0y]
-            exx = invM00 * r0x + invM01 * r0y
-            exy_ = invM10 * r0x + invM11 * r0y
+                # First equation: gx * Exx_ij + gy * Exy_ij = -1/(2pi) * dP_dx[k, i, j]
+                A[2 * k, 0] = gx  # coefficient for Exx_ij
+                A[2 * k, 1] = gy   # coefficient for Exy_ij
+                b[2 * k] = -1 / (2 * np.pi) * dPdx[k, i, j]
 
-            # Solve M * [Eyx, Eyy] = [r1x, r1y]
-            eyx = invM00 * r1x + invM01 * r1y
-            eyy = invM10 * r1x + invM11 * r1y
-
-            Exx[i, j] = exx
-            Exy[i, j] = exy_
-            Eyx[i, j] = eyx
-            Eyy[i, j] = eyy
-
-    # Symmetric shear and rotation
-    exy = (Exy + Eyx) / 2.0
-    Oxy = (Eyx - Exy) / 2.0
+                # Second equation: gx * Eyx_ij + gy * Oxy_ij = -1/(2pi) * dP_dy[k, i, j]
+                A[2 * k + 1, 2] = gx  # coefficient for Eyx_ij
+                A[2 * k + 1, 3] = gy  # coefficient for Eyy_ij
+                b[2 * k + 1] = -1 / (2 * np.pi) * dPdy[k, i, j]
+        
+            # Solve least squares for this (i,j) element
+            x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+            Exx[i, j], Exy[i, j], Eyx[i, j], Eyy[i, j] = x
+    
+    exy = (Exy + Eyx) / 2
+    Oxy = (Eyx - Exy) /2
+            
     return Exx, Eyy, exy, Oxy
 
 # Adaptive GPA with Windowed Fourier Ridge phase retrieval

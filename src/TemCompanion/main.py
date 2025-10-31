@@ -2101,7 +2101,7 @@ class PlotCanvas(QMainWindow):
                                         resizable=True
                                         )
         self.canvas.selector.append(selector)
-        self._make_active_selector(selector)
+        # self._make_active_selector(selector)
         self.canvas.viewbox.addItem(selector)
 
         # Connect signals for line change
@@ -3395,6 +3395,10 @@ class PlotCanvasFFT(PlotCanvas):
             axes['units'] = img_units
             axes['scale'] = img_scale
             axes['offset'] = 0
+        live_ifft['metadata']['TemCompanion']['Pixel Calibration'] = f"{img_scale:.4g} {img_units}"
+        live_ifft['metadata']['TemCompanion']['Image Size (pixels)'] = f"{live_ifft['data'].shape[1]} x {live_ifft['data'].shape[0]}"
+        live_ifft['metadata']['TemCompanion']['Calibrated Image Size'] = f"{live_ifft['data'].shape[1] * img_scale:.4g} x {live_ifft['data'].shape[0] * img_scale:.4g} {img_units}"
+        
 
 
         metadata = f'iFFT with masks from {title}'

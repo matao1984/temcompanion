@@ -58,7 +58,6 @@ class MainFrameCanvas(QWidget):
         # Image canvas that keeps the aspect ratio
         # data is the image dictionary
         super().__init__(parent)
-        self.setFocusPolicy(Qt.StrongFocus)
         self.data = data
         self.img_size = self.data['data'].shape
 
@@ -71,8 +70,7 @@ class MainFrameCanvas(QWidget):
             return
         
         # Load colormap
-        with importlib.resources.files('TemCompanion').joinpath('colormaps.pkl').open('rb') as f:
-            self.colormap = pickle.load(f)
+        self.colormap = self.parent().colormap
         
         self.ratio = self.img_size[-1] / self.img_size[-2]       
         self.img_data = self.data['data']

@@ -112,7 +112,7 @@
 # Added using arrow keys to move the crop region, live FFT region, and masks on FFT
 # iFFT filtered image is automatically updated if a mask is present
 
-# 2025-10-20 v1.3
+# 2025-10-20 v1.3.0
 # Reorganized the project structure
 # Redesigned the main UI with pyqtgraph
 # Optimized operation workflow with pyqtgraph functions
@@ -133,7 +133,7 @@ import os
 
 #===================Import internal modules==========================================
 
-from .functions import load_file, getDirectory, getFileNameType
+from .functions import load_file, getFileNameType
 from .batch_convert import BatchConverter
 from .canvas import PlotCanvas
 
@@ -156,10 +156,12 @@ class UI_TemCompanion(QMainWindow):
     def __init__(self, config):
         super().__init__()
         # Environment variables
-        self.ver = config['version']
-        self.rdate = config['release_date']
-        self.wkdir = config['working_directory']
-        self.colormap = config['colormap']
+        self.ver = config.pop('version')
+        self.rdate = config.pop('release_date')
+        self.wkdir = config.pop('working_directory')
+        self.colormap = config.pop('colormap')
+
+        self.attribute = config  # Remaining config items are default image settings
 
         self.setupUi()
 

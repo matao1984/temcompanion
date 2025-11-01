@@ -52,6 +52,7 @@ class PlotCanvas(QMainWindow):
         self.ver = self.parent().ver
         self.wkdir = self.parent().wkdir
         self.colormap = self.parent().colormap
+        self.attribute = copy.deepcopy(self.parent().attribute)  # Default image settings
 
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setFocusPolicy(Qt.StrongFocus)
@@ -153,7 +154,11 @@ class PlotCanvas(QMainWindow):
         self.set_scalebar_units()
 
         # Make image
-        self.canvas.create_img()
+        self.canvas.create_img(cmap=self.attribute['cmap'],
+                               pvmin=self.attribute['pvmin'],
+                               pvmax=self.attribute['pvmax'],
+                               gamma=self.attribute['gamma']
+                               )
 
         # Tool bar
         self.create_toolbar()
@@ -213,7 +218,7 @@ class PlotCanvas(QMainWindow):
 
             self.scalebar = CustomScaleBar(scale_dx, units, parent=self.canvas.viewbox)
             font = 20
-            color = self.canvas.attribute['color']
+            color = pg.mkColor(self.canvas.attribute['color'])
             location = self.canvas.attribute['location']
             self.scalebar.set_properties(font, color, location)
         
@@ -2656,9 +2661,11 @@ class PlotCanvasFFT(PlotCanvas):
         
         self.calculate_fft()
         self.set_scalebar_units()
-        self.canvas.attribute['cmap'] = 'inferno'
+        
 
-        self.canvas.create_img(cmap=self.canvas.attribute['cmap'], pvmin=30, pvmax=99.9)
+        self.canvas.create_img(cmap=self.canvas.attribute['fft_cmap'], 
+                               pvmin=self.attribute['fft_pvmin'], 
+                               pvmax=self.attribute['fft_pvmax'])
 
         # Update data type in the image dictionary
         self.canvas.data['metadata']['TemCompanion']['Data Type'] = 'FFT'

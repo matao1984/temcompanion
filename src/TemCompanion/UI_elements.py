@@ -142,16 +142,17 @@ class MainFrameCanvas(QWidget):
         self._resize_event(self.size())    
         
         # Some default settings
-        sb_color = pg.mkColor('yellow')
-        self.attribute = {'cmap': 'gray',
-                          'vmin': None,
-                          'vmax': None,
-                          'gamma': 1.0,
-                          'scalebar': True,
-                          'color': sb_color,
-                          'location': 'lower left',
-                          'dimension': 'si-length',
-                          'colorbar': False}
+        # sb_color = pg.mkColor('yellow')
+        # self.attribute = {'cmap': 'gray',
+        #                   'vmin': None,
+        #                   'vmax': None,
+        #                   'gamma': 1.0,
+        #                   'scalebar': True,
+        #                   'color': sb_color,
+        #                   'location': 'lower left',
+        #                   'dimension': 'si-length',
+        #                   'colorbar': False}
+        self.attribute = self.parent().attribute
 
         
     def keyPressEvent(self, event):

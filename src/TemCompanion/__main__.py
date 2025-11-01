@@ -17,7 +17,22 @@ def setup_config():
         'version': version,
         'release_date': release_date,
         'working_directory': wkdir,
-        'colormap': colormap
+        'colormap': colormap,
+        # Some default image settings
+        'cmap': 'gray',
+        'fft_cmap': 'inferno',
+        'vmin': None,
+        'vmax': None,
+        'pvmin': 0.1,
+        'pvmax': 99.9,
+        'fft_pvmin': 30,
+        'fft_pvmax': 99.9,
+        'gamma': 1.0,
+        'scalebar': True,
+        'color': 'yellow',
+        'location': 'lower left',
+        'dimension': 'si-length',
+        'colorbar': False
     }
     return config
 

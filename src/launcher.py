@@ -5,7 +5,7 @@ Also can be used to run the application directly from source.
 import sys
 import os
 import pickle
-from TemCompanion.main import main
+from TemCompanion.main import main as app_entry
 
 
 def setup_config():
@@ -44,9 +44,10 @@ def setup_config():
     }
     return config
 
-
+def main():
+    config = setup_config()
+    app_entry(config)
 
 
 if __name__ == "__main__":
-    config = setup_config()
-    main(config)
+    main()

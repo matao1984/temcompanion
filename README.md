@@ -101,6 +101,13 @@ author = {Tao Ma}
 
 ## 6. Change history
 
+### v1.3.1
+- Reorganized the project structure
+- Redesigned the main UI with pyqtgraph that improves the rendering performance
+- Optimized operation workflow with pyqtgraph functions
+- Modified filteres to take non-square images
+- Live iFFT also takes non-square images
+
 ### v1.3.0dev
 - Restructured codes with DPC, GPA and filters codes separately
 - Use a separate thread for time-consuming tasks while keeping the GUI responsive

@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-temcom = "TemCompanion.main:main"
+temcom = "TemCompanion.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

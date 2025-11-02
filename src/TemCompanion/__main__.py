@@ -1,9 +1,9 @@
 import sys
 import os
 import pickle
-from .main import main
+from .main import main as app_entry
 
-
+# Default configuration setup
 def setup_config():
     version = '1.3.1'
     release_date = '2025-11-02'
@@ -38,11 +38,15 @@ def setup_config():
         'dimension': 'si-length',
         'colorbar': False
     }
+
     return config
 
+
+def main():
+    config = setup_config()
+    app_entry(config)
 
 
 
 if __name__ == "__main__":
-    config = setup_config()
-    main(config)
+    main()

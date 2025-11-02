@@ -614,7 +614,7 @@ def main(config):
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
     wkdir = config['working_directory']
-    app.setWindowIcon(QIcon(os.path.join(wkdir, "Icon.ico")))
+    app.setWindowIcon(QIcon(os.path.join(wkdir, "icons/icon.ico")))
 
     temcom = UI_TemCompanion(config)
     temcom.show()

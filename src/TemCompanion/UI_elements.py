@@ -743,6 +743,55 @@ class CustomSettingsDialog(QDialog):
         cmap = self.original_settings['cmap']
         self.cmap_combobox.setCurrentText(cmap)
 
+    def position_window(self, pos='center'):
+        # Set the window pop up position
+        # Possible positions are:
+        # 'center': screen center
+        # 'center left': left side with the right edge on the screen center
+        # 'center right': right side with the left edge on the screen
+        # 'next to parent': the left edge next to its parent window
+        # tuple (x, y): specific position of screen fraction (0-1)
+        
+        # Get screen resolution
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        width = screen_geometry.width()
+        height = screen_geometry.height()
+        screen_top = screen_geometry.top()
+        screen_left = screen_geometry.left()
+        frame_size = self.frameGeometry()
+        
+        if pos == 'center':
+            x = screen_left + (width - frame_size.width()) // 2
+            y = screen_top + (height - frame_size.height()) // 2
+
+        elif pos == 'center left':
+            x = screen_left + (width // 2 - frame_size.width())
+            y = screen_top + (height - frame_size.height()) // 2
+
+        elif pos == 'center right':
+            x = screen_left + (width // 2)
+            y = screen_top + (height - frame_size.height()) // 2
+
+        elif pos == 'next to parent':
+            if self.parent() is not None:
+                parent = self.parent()
+                parent_geometry = parent.frameGeometry()
+                x = parent_geometry.x() + parent_geometry.width()
+                y = parent_geometry.y()
+        
+        else:
+            # Handle tuple case
+            if isinstance(pos, tuple) and len(pos) == 2:
+                x = int(width * pos[0])
+                y = int(height * pos[1])   
+
+        # Clamp coordinates to screen bounds (including top screen offset)
+        
+        x = max(screen_left, min(x, screen_left + width - frame_size.width()))
+        y = max(screen_top, min(y, screen_top + height - frame_size.height()))   
+                
+        self.move(x, y)
+
             
 
 #============ Filter settings dialog for plot canvas ===========================
@@ -757,7 +806,7 @@ class FilterSettingDialog(QDialog):
         self.parameters = {}
 
         # Wiener Filter Section      
-        self.wiener_group = QGroupBox()
+        self.wiener_group = QGroupBox('Wiener Filter Settings', self)
         form_layout = QFormLayout()
         self.delta_wf = QLabel('WF Delta')
         self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
@@ -779,7 +828,7 @@ class FilterSettingDialog(QDialog):
         layout.addWidget(self.wiener_group)
 
         # ABS Filter Section
-        self.absf_group = QGroupBox()
+        self.absf_group = QGroupBox('ABS Filter Settings', self)
         form_layout = QFormLayout()
         self.delta_absf = QLabel('ABSF Delta')
         self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
@@ -803,7 +852,7 @@ class FilterSettingDialog(QDialog):
         layout.addWidget(self.absf_group)
 
         # Non-Linear Filter Section
-        self.nl_group = QGroupBox()
+        self.nl_group = QGroupBox('Non-Linear Filter Settings', self)
         form_layout = QFormLayout()
         self.N = QLabel('NL Cycles')
         self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
@@ -832,7 +881,7 @@ class FilterSettingDialog(QDialog):
         layout.addWidget(self.nl_group)
         
         # Butterworth filter Section
-        self.bw_group = QGroupBox()
+        self.bw_group = QGroupBox('Butterworth Filter Settings', self)
         form_layout = QFormLayout()
         self.order_bw = QLabel('Bw-order')
         self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
@@ -849,7 +898,7 @@ class FilterSettingDialog(QDialog):
         layout.addWidget(self.bw_group)
         
         # Gaussian filter Section
-        self.gaussian_group = QGroupBox()
+        self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
         form_layout = QFormLayout()
         self.cutoff_gaussian = QLabel('Gaussian cutoff')
         self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
@@ -888,6 +937,8 @@ class FilterSettingDialog(QDialog):
         
         self.accept()
 
+    
+
 #============ Define a dialogue for filter settings for batch convert ===========================
 class FilterSettingBatchConvert(QDialog):
     def __init__(self, apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian, parameters, parent=None):
@@ -901,8 +952,8 @@ class FilterSettingBatchConvert(QDialog):
         # Wiener Filter Section
         self.wiener_check = QCheckBox("Apply Wiener Filter")
         self.wiener_check.setChecked(apply_wf)
-        
-        self.wiener_group = QGroupBox()
+
+        self.wiener_group = QGroupBox('Wiener Filter Settings', self)
         form_layout = QFormLayout()
         self.delta_wf = QLabel('WF Delta')
         self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
@@ -928,7 +979,7 @@ class FilterSettingBatchConvert(QDialog):
         # ABS Filter Section
         self.absf_check = QCheckBox("Apply ABS Filter")
         self.absf_check.setChecked(apply_absf)
-        self.absf_group = QGroupBox()
+        self.absf_group = QGroupBox('ABS Filter Settings', self)
         form_layout = QFormLayout()
         self.delta_absf = QLabel('ABSF Delta')
         self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
@@ -954,7 +1005,7 @@ class FilterSettingBatchConvert(QDialog):
         # Non-Linear Filter Section
         self.nl_check = QCheckBox("Apply Non-Linear Filter")
         self.nl_check.setChecked(apply_nl)
-        self.nl_group = QGroupBox()
+        self.nl_group = QGroupBox('Non-Linear Filter Settings', self)
         form_layout = QFormLayout()
         self.N = QLabel('NL Cycles')
         self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
@@ -985,7 +1036,7 @@ class FilterSettingBatchConvert(QDialog):
         # Butterworth filter 
         self.bw_check = QCheckBox("Apply Butterworth Filter")
         self.bw_check.setChecked(apply_bw)
-        self.bw_group = QGroupBox()
+        self.bw_group = QGroupBox('Butterworth Filter Settings', self)
         form_layout = QFormLayout()
         self.order_bw = QLabel('Bw-order')
         self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
@@ -1006,7 +1057,7 @@ class FilterSettingBatchConvert(QDialog):
         # Gaussian filter 
         self.gaussian_check = QCheckBox("Apply Gaussian Filter")
         self.gaussian_check.setChecked(apply_gaussian)
-        self.gaussian_group = QGroupBox()
+        self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
         form_layout = QFormLayout()
         self.cutoff_gaussian = QLabel('Gaussian cutoff')
         self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
@@ -1163,7 +1214,7 @@ class ManualCropDialog(QDialog):
             QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be positive!')
             return
         
-        elif xmax > img_size[0] or ymax > img_size[1]:
+        elif xmax > img_size[-1] or ymax > img_size[-2]:
             QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be smaller than the image size!')
             return
         
@@ -1473,6 +1524,8 @@ class PlotSettingDialog(QDialog):
 
         self.setLayout(layout)
 
+
+
     def apply_settings(self):
         plot = self.parent().plot
         line = self.parent().plot_data_item
@@ -1530,6 +1583,54 @@ class PlotSettingDialog(QDialog):
         self.apply_settings()
         self.accept()
 
+    def position_window(self, pos='center'):
+        # Set the window pop up position
+        # Possible positions are:
+        # 'center': screen center
+        # 'center left': left side with the right edge on the screen center
+        # 'center right': right side with the left edge on the screen
+        # 'next to parent': the left edge next to its parent window
+        # tuple (x, y): specific position of screen fraction (0-1)
+        
+        # Get screen resolution
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        width = screen_geometry.width()
+        height = screen_geometry.height()
+        screen_top = screen_geometry.top()
+        screen_left = screen_geometry.left()
+        frame_size = self.frameGeometry()
+        
+        if pos == 'center':
+            x = screen_left + (width - frame_size.width()) // 2
+            y = screen_top + (height - frame_size.height()) // 2
+
+        elif pos == 'center left':
+            x = screen_left + (width // 2 - frame_size.width())
+            y = screen_top + (height - frame_size.height()) // 2
+
+        elif pos == 'center right':
+            x = screen_left + (width // 2)
+            y = screen_top + (height - frame_size.height()) // 2
+
+        elif pos == 'next to parent':
+            if self.parent() is not None:
+                parent = self.parent()
+                parent_geometry = parent.frameGeometry()
+                x = parent_geometry.x() + parent_geometry.width()
+                y = parent_geometry.y()
+        
+        else:
+            # Handle tuple case
+            if isinstance(pos, tuple) and len(pos) == 2:
+                x = int(width * pos[0])
+                y = int(height * pos[1])   
+
+        # Clamp coordinates to screen bounds (including top screen offset)
+        
+        x = max(screen_left, min(x, screen_left + width - frame_size.width()))
+        y = max(screen_top, min(y, screen_top + height - frame_size.height()))   
+                
+        self.move(x, y)
     
         
 

@@ -750,6 +750,8 @@ class PlotCanvas(QMainWindow):
     def image_settings(self):
         dialog = CustomSettingsDialog(self.canvas.image_item, parent=self)
         dialog.show()
+        # Move the dialog next to the main window
+        dialog.position_window('next to parent')
 
 
     def save_figure(self):
@@ -1385,7 +1387,7 @@ class PlotCanvas(QMainWindow):
                 print(f'Displaying live FFT of {self.canvas.canvas_name} from {x0},{y0},{x1},{y1}.')
 
     def stop_live_fft(self):
-        self.clean_up(selector=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
 
             
     def crop(self):
@@ -1915,9 +1917,9 @@ class PlotCanvas(QMainWindow):
 
         # Turn off any active modes
         if modes:
-            for mode in self.mode_control.values():
-                if mode:
-                    mode = False
+            for mode in self.mode_control.keys():
+                if self.mode_control[mode]:
+                    self.mode_control[mode] = False
 
         # Reset status bar
         if status_bar:
@@ -3264,6 +3266,7 @@ class PlotCanvasSpectrum(QMainWindow):
     def plotsetting(self):
         dialog = PlotSettingDialog(parent=self)
         dialog.show()
+        dialog.position_window('next to parent')
 
 
 

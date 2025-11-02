@@ -309,9 +309,26 @@ def load_file(file, file_type):
     elif file_type == 'Tiff Files (*.tif *.tiff)':
         try:
             f = tif_reader(file)
+            # Add RGB to grayscale conversion for TIFF files too
+            for img in f:
+                # Check if the data is RGB/RGBA
+                if img['data'].dtype.names is not None:  # Structured array (RGB/RGBA)
+                    # Convert structured RGB array to regular 3D array
+                    if 'R' in img['data'].dtype.names:
+                        h, w = img['data'].shape
+                        rgb_array = np.zeros((h, w, 3), dtype=np.uint8)
+                        rgb_array[:, :, 0] = img['data']['R']
+                        rgb_array[:, :, 1] = img['data']['G']
+                        rgb_array[:, :, 2] = img['data']['B']
+                        img['data'] = rgb2gray(rgb_array)
+                elif img['data'].ndim == 3 and img['data'].shape[2] in [3, 4]:  # Regular RGB/RGBA array
+                    img['data'] = rgb2gray(img['data'])
+
         except Exception as e: # Error, fall back to image format
             print(f"Error loading TIFF file: {e}. Try loading as image format.")
-            f = im_reader(file)
+            # f = im_reader(file)
+            file_type = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+            f = load_file(file, file_type)
 
     #Load MRC TIFF stack
     elif file_type == 'MRC Files (*.mrc)':
@@ -385,7 +402,7 @@ def load_file(file, file_type):
                 img = load_file(img_file, file_type)
                 stack_img.append(img[0])
             except Exception as e:
-                print(f"Error loading {img_file}: {e} Ignored.")
+                print(f"Error loading {img_file}: {e} Skipped.")
         
         stack_dict = stack_img[0]
         img_size = stack_dict['data'].shape

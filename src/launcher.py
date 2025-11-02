@@ -1,7 +1,11 @@
+"""Launcher entry for PyInstaller bundle.
+Also can be used to run the application directly from source.
+"""
+
 import sys
 import os
 import pickle
-from .main import main
+from TemCompanion.main import main
 
 
 def setup_config():
@@ -10,7 +14,7 @@ def setup_config():
     if getattr(sys, 'frozen', False):
         wkdir = os.path.join(sys._MEIPASS, 'TemCompanion')
     elif __file__:
-        wkdir = os.path.dirname(__file__)
+        wkdir = os.path.join(os.path.dirname(__file__), 'TemCompanion')
     colormap_path = os.path.join(wkdir, 'colormap.pkl')
     with open(colormap_path, 'rb') as f:
         colormap = pickle.load(f)

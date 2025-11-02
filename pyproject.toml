@@ -11,14 +11,14 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8, <3.13"
 dependencies = [
-    'rosettasciio[all]',
-    'pyqt5',
-    'pyqtgraph',
-    'scikit-image', 
-    'scipy', 
-    'numpy', 
-    'numba', 
-    'pillow'
+    'rosettasciio[all]>=0.10.0',
+    'pyqt5>=5.15',
+    'pyqtgraph>=0.13.7',
+    'scikit-image>=0.25', 
+    'scipy>=1.16', 
+    'numpy>=2', 
+    'numba>=0.62', 
+    'pillow>=12'
 ]
 
 [project.scripts]

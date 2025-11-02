@@ -218,7 +218,7 @@ class PlotCanvas(QMainWindow):
 
             self.scalebar = CustomScaleBar(scale_dx, units, parent=self.canvas.viewbox)
             font = 20
-            color = pg.mkColor(self.canvas.attribute['color'])
+            color = self.canvas.attribute['color']
             location = self.canvas.attribute['location']
             self.scalebar.set_properties(font, color, location)
         

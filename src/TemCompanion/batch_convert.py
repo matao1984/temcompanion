@@ -1,8 +1,10 @@
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import (QApplication,QWidget, QMainWindow, QFileDialog, QSizePolicy, QVBoxLayout, QDialog,
-                             QHBoxLayout, QApplication, QMessageBox, QProgressBar, QCheckBox)
+                             QHBoxLayout, QApplication, QMessageBox, QProgressBar, QCheckBox, QSpinBox, QLabel)
 from PyQt5.QtGui import QDropEvent, QDragEnterEvent
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 
 from .functions import getDirectory, getFileNameType, convert_file
@@ -86,6 +88,15 @@ class BatchConverter(QMainWindow):
         self.convertButton.setObjectName("convertButton")
         self.convertButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         
+        # Thread count control
+        self.thread_label = QLabel("Number of threads:", self)
+        self.thread_spinbox = QSpinBox(self)
+        self.thread_spinbox.setMinimum(1)
+        self.thread_spinbox.setMaximum(os.cpu_count() or 8)
+        self.thread_spinbox.setValue(min(8, os.cpu_count() or 8))
+        self.thread_spinbox.setToolTip(f"Number of parallel threads for batch processing (1-{os.cpu_count() or 8})")
+        self.thread_spinbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        
         self.convertbox = QtWidgets.QTextEdit(self, readOnly=True)
         self.convertbox.resize(240,40)
         self.convertbox.setObjectName("convertbox")
@@ -119,11 +130,16 @@ class BatchConverter(QMainWindow):
         layout4 = QHBoxLayout()
         layout4.addWidget(self.convertButton)
         layout4.addWidget(self.convertbox)
+        layout5 = QHBoxLayout()
+        layout5.addWidget(self.thread_label)
+        layout5.addWidget(self.thread_spinbox)
+        layout5.addStretch(1)
         layout.addLayout(layout1)
         layout.addLayout(layout2_1_1)
         layout.addLayout(layout2)
         layout.addLayout(layout3)
         layout.addLayout(layout4)
+        layout.addLayout(layout5)
         layout.addWidget(self.progress_bar)
         
         self.central_widget.setLayout(layout)
@@ -225,6 +241,9 @@ class BatchConverter(QMainWindow):
             cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
             
             save_metadata = self.metadatacheck.isChecked()
+            
+            # Get thread count from spinbox
+            num_threads = self.thread_spinbox.value()
 
             # A separate thread for file conversion
             self.thread = QThread()
@@ -234,7 +253,8 @@ class BatchConverter(QMainWindow):
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
                                  apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
                                  apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
-                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian)
+                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian,
+                                 num_threads = num_threads)
 
             self.worker.moveToThread(self.thread)
 
@@ -254,7 +274,7 @@ class BatchConverter(QMainWindow):
     
     def filter_settings(self):
         dialog = FilterSettingBatchConvert(self.apply_wf, self.apply_absf, self.apply_nl,
-                                      self.apply_bw, self.apply_gaussian,
+                                      self.apply_bw, self.apply_gaussian, 
                                       self.filter_parameters, parent=self)
         if dialog.exec_() == QDialog.Accepted:
             # Update filter settings based on user input
@@ -269,48 +289,158 @@ class BatchConverter(QMainWindow):
 
                     
 
-#================Batch Conversion Worker Thread====================================
+# #================Batch Conversion Worker Thread====================================
+# class BatchConversionWorker(QThread):
+#     progress = pyqtSignal(str)
+#     finished = pyqtSignal()
+
+#     def __init__(self, files, *args, num_threads=None, **kwargs):
+#         super().__init__()
+#         self.files = files
+#         self.args = args
+#         self.kwargs = kwargs
+#         # Use provided thread count, or default to 8 (but don't exceed available CPU count)
+#         if num_threads is not None:
+#             self.max_workers = num_threads
+#         else:
+#             self.max_workers = min(8, os.cpu_count() or 1)
+
+#     def process_single_file(self, file):
+#         """Process a single file - will be called by each thread"""
+#         try:
+#             ext = getFileNameType(file)[1].lower()
+#             if ext == 'emd':
+#                 filetype = 'Velox emd Files (*.emd)'
+#             elif ext in ['dm3', 'dm4']:
+#                 filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
+#             elif ext == 'ser':
+#                 filetype = 'TIA ser Files (*.ser)'
+#             elif ext in ['tif', 'tiff']:
+#                 filetype = 'Tiff Files (*.tif *.tiff)'
+#             elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
+#                 filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+#             elif ext == 'pkl':
+#                 filetype = 'Pickle Dictionary Files (*.pkl)'
+#             else:
+#                 return (file, False, 'Unsupported file format')
+
+#             convert_file(file, filetype, *self.args, **self.kwargs)
+#             return (file, True, 'Converted successfully')
+
+#         except Exception as e:
+#             return (file, False, str(e))
+
+#     def run(self):
+#         """Run batch conversion with multithreading"""
+#         total_files = len(self.files)
+#         completed = 0
+        
+#         msg = f"Starting batch conversion of {total_files} file(s) using {self.max_workers} threads..."
+#         self.progress.emit(msg)
+
+#         # Use ThreadPoolExecutor for parallel processing
+#         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+#             # Submit all files for processing
+#             future_to_file = {executor.submit(self.process_single_file, file): file 
+#                              for file in self.files}
+            
+#             # Process completed tasks as they finish
+#             for future in as_completed(future_to_file):
+#                 file, success, message = future.result()
+#                 completed += 1
+                
+#                 if success:
+#                     msg = f"[{completed}/{total_files}] '{file}' has been converted"
+#                 else:
+#                     msg = f"[{completed}/{total_files}] '{file}' has been skipped. Error: {message}"
+                
+#                 self.progress.emit(msg)
+
+#         self.finished.emit()
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+
+# Top-level function for pickling (required for multiprocessing)
+def process_file_worker(file_data):
+    """Worker function that runs in separate process"""
+    file, args, kwargs = file_data
+    
+    # Import here to avoid issues with process spawning
+    from .functions import getFileNameType, convert_file
+    
+    try:
+        ext = getFileNameType(file)[1].lower()
+        if ext == 'emd':
+            filetype = 'Velox emd Files (*.emd)'
+        elif ext in ['dm3', 'dm4']:
+            filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
+        elif ext == 'ser':
+            filetype = 'TIA ser Files (*.ser)'
+        elif ext in ['tif', 'tiff']:
+            filetype = 'Tiff Files (*.tif *.tiff)'
+        elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
+            filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
+        elif ext == 'pkl':
+            filetype = 'Pickle Dictionary Files (*.pkl)'
+        else:
+            return (file, False, 'Unsupported file format')
+
+        convert_file(file, filetype, *args, **kwargs)
+        return (file, True, 'Converted successfully')
+
+    except Exception as e:
+        import traceback
+        return (file, False, f"{str(e)}\n{traceback.format_exc()}")
+
+
 class BatchConversionWorker(QThread):
     progress = pyqtSignal(str)
     finished = pyqtSignal()
 
-    def __init__(self, files, *args, **kwargs):
+    def __init__(self, files, *args, num_threads=None, **kwargs):
         super().__init__()
         self.files = files
         self.args = args
         self.kwargs = kwargs
+        # Use provided thread count
+        if num_threads is not None:
+            self.max_workers = num_threads
+        else:
+            self.max_workers = min(8, os.cpu_count() or 1)
 
     def run(self):
-        for file in self.files:
-            # Identify the file types
-            msg = f"Converting '{file}'..."
-            self.progress.emit(msg)
+        """Run batch conversion with multiprocessing"""
+        total_files = len(self.files)
+        completed = 0
+        
+        msg = f"Starting batch conversion of {total_files} file(s) using {self.max_workers} processes..."
+        self.progress.emit(msg)
 
-            ext = getFileNameType(file)[1].lower()
-            if ext == 'emd':
-                filetype = 'Velox emd Files (*.emd)'
-            elif ext in ['dm3', 'dm4']:
-                filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
-            elif ext == 'ser':
-                filetype = 'TIA ser Files (*.ser)'
-            elif ext in ['tif', 'tiff']:
-                filetype = 'Tiff Files (*.tif *.tiff)'
-            elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
-                filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
-            elif ext == 'pkl':
-                filetype = 'Pickle Dictionary Files (*.pkl)'
-            else:
-                QMessageBox.warning(self, 'Open File', 'Unsupported file formats!')
-                return
+        # Prepare data for each process (must be picklable)
+        file_data = [(file, self.args, self.kwargs) for file in self.files]
 
-            try:
-                convert_file(file, filetype, *self.args, **self.kwargs)
-
-                msg = f"'{file}' has been converted"
-                self.progress.emit(msg)
-
-            except Exception as e:
-                msg = f"'{file}' has been skipped. Error: {e}"
-                self.progress.emit(msg)
+        # Use ProcessPoolExecutor for true parallel processing
+        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all files for processing
+            future_to_file = {executor.submit(process_file_worker, data): data[0] 
+                             for data in file_data}
+            
+            # Process completed tasks as they finish
+            for future in as_completed(future_to_file):
+                try:
+                    file, success, message = future.result()
+                    completed += 1
+                    
+                    if success:
+                        msg = f"[{completed}/{total_files}] '{file}' has been converted"
+                    else:
+                        msg = f"[{completed}/{total_files}] '{file}' has been skipped. Error: {message}"
+                    
+                    self.progress.emit(msg)
+                except Exception as e:
+                    completed += 1
+                    msg = f"[{completed}/{total_files}] Process error: {str(e)}"
+                    self.progress.emit(msg)
 
         self.finished.emit()

@@ -2,11 +2,12 @@ import sys
 import os
 import pickle
 from .main import main as app_entry
+from multiprocessing import freeze_support
 
 # Default configuration setup
 def setup_config():
-    version = '1.3.1'
-    release_date = '2025-11-02'
+    version = '1.3.2dev'
+    release_date = '2025-11-03'
     if getattr(sys, 'frozen', False):
         wkdir = os.path.join(sys._MEIPASS, 'TemCompanion')
     elif __file__:
@@ -43,6 +44,7 @@ def setup_config():
 
 
 def main():
+    freeze_support()
     config = setup_config()
     app_entry(config)
 

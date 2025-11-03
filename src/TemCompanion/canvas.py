@@ -2664,8 +2664,9 @@ class PlotCanvasFFT(PlotCanvas):
         self.calculate_fft()
         self.set_scalebar_units()
         
-
-        self.canvas.create_img(cmap=self.canvas.attribute['fft_cmap'], 
+        # Update the colormap in attribute
+        self.canvas.attribute['cmap'] = self.canvas.attribute['fft_cmap']
+        self.canvas.create_img(cmap=self.canvas.attribute['cmap'], 
                                pvmin=self.attribute['fft_pvmin'], 
                                pvmax=self.attribute['fft_pvmax'])
 

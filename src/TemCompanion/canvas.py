@@ -395,6 +395,12 @@ class PlotCanvas(QMainWindow):
         gaussian_action.triggered.connect(self.gaussian_filter)
         self.toolbar.addAction(gaussian_action)
 
+        gaussian_hp_icon = os.path.join(self.wkdir, "icons/GS.png")  # Using same icon for now
+        gaussian_hp_action = QAction(QIcon(gaussian_hp_icon), "Gaussian Highpass Filter", self)
+        gaussian_hp_action.setStatusTip("Apply Gaussian highpass filter to enhance high-frequency features (useful for iDPC images)")
+        gaussian_hp_action.triggered.connect(self.gaussian_highpass_filter)
+        self.toolbar.addAction(gaussian_hp_action)
+
         self.toolbar.addSeparator()
 
         info_icon = os.path.join(self.wkdir, "icons/info.png")
@@ -687,6 +693,10 @@ class PlotCanvas(QMainWindow):
         gaussian_action.setShortcut('ctrl+shift+g')
         gaussian_action.triggered.connect(self.gaussian_filter)
         filter_menu.addAction(gaussian_action)
+        gaussian_hp_action = QAction('&Apply Gaussian high pass', self)
+        gaussian_hp_action.setShortcut('ctrl+shift+h')
+        gaussian_hp_action.triggered.connect(self.gaussian_highpass_filter)
+        filter_menu.addAction(gaussian_hp_action)
 
         # Stack menu
         if self.canvas.data_type == 'Image Stack':
@@ -1211,6 +1221,46 @@ class PlotCanvas(QMainWindow):
             self.worker.finished.connect(self.worker.deleteLater)           
             self.thread.finished.connect(self.thread.deleteLater)
             self.worker.finished.connect(lambda: print(f'Applied Gaussian filter to {title} with cutoff = {cutoff_gaussian}.'))
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
+            self.thread.start()
+
+    def gaussian_highpass_filter(self):
+        filter_parameters = self.filter_parameters
+        cutoff_gaussian_hp = float(filter_parameters['GS-HP-cutoff'])
+        img_gaussian_hp = self.get_original_img_dict()
+        title = self.windowTitle()
+        data = img_gaussian_hp['data']
+        apply_to = None
+        if self.canvas.data_type == 'Image Stack':
+            dialog = ApplyFilterDialog(parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                apply_to = dialog.apply_to
+                if apply_to == 'current':
+                    img_gaussian_hp = self.get_img_dict_from_canvas()
+                    data = img_gaussian_hp['data']
+            else:
+                return
+        elif self.canvas.data_type == 'Image':
+            apply_to = 'current'
+        if apply_to is not None:
+            preview_name = self.canvas.canvas_name + '_' + apply_to + '_Gaussian HP Filtered'
+            metadata = f'Gaussian highpass filter applied with cutoff = {cutoff_gaussian_hp}'
+            
+            # Position the current image
+            self.position_window('center left')
+
+            # Apply the filter in a separate thread
+            print(f'Applying Gaussian highpass filter to {title} with cutoff = {cutoff_gaussian_hp}...')
+            self.thread = QThread()
+            self.worker = Worker(apply_filter_on_img_dict, img_gaussian_hp, 'Gaussian-HP', cutoff_ratio=cutoff_gaussian_hp)
+            self.worker.moveToThread(self.thread)
+            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
+            self.thread.started.connect(self.worker.run)            
+            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)           
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.finished.connect(lambda: print(f'Applied Gaussian highpass filter to {title} with cutoff = {cutoff_gaussian_hp}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
             self.thread.start()
 

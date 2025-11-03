@@ -74,7 +74,8 @@ def apply_filter(img, filter_type, **kwargs):
                    'ABS': filters.abs_filter,
                    'NL': filters.nlfilter,
                    'BW': filters.bw_lowpass,
-                   'Gaussian': filters.gaussian_lowpass
+                   'Gaussian': filters.gaussian_lowpass,
+                   'Gaussian-HP': filters.gaussian_highpass
                    }
     if img.ndim == 2:
         # Apply the selected filter only on 2D array
@@ -82,7 +83,7 @@ def apply_filter(img, filter_type, **kwargs):
             result = filter_dict[filter_type](img, **kwargs)
             if filter_type in ['Wiener', 'ABS', 'NL']:
                 return result[0]
-            elif filter_type in ['BW', 'Gaussian']:
+            elif filter_type in ['BW', 'Gaussian', 'Gaussian-HP']:
                 return result
     elif img.ndim == 3:
         # Apply to image stacks
@@ -104,7 +105,7 @@ def apply_filter_on_img_dict(img_dict, *args, **kwargs):
     return filtered_dict
 
 def save_as_tif16(input_file, f_name, output_dir, dtype='int16',
-                  apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False):
+                  apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False, apply_gaussian_hp=False):
     img = copy.deepcopy(input_file)    
 
     img['data'] = img['data'].astype(dtype)
@@ -133,13 +134,17 @@ def save_as_tif16(input_file, f_name, output_dir, dtype='int16',
     if apply_gaussian:
         img['data'] = input_file['gaussian']
         save_as_tif16(img, f_name + '_Gaussian', output_dir, dtype)
+    
+    if apply_gaussian_hp:
+        img['data'] = input_file['gaussian_hp']
+        save_as_tif16(img, f_name + '_Gaussian_HP', output_dir, dtype)
         
        
     
     
 
 def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True, 
-                  apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False):
+                  apply_wf=False, apply_absf=False, apply_nl=False, apply_bw=False, apply_gaussian=False, apply_gaussian_hp=False):
     im_data = norm_img(input_file['data']) * 255
     im = Image.fromarray(im_data.astype('int16'))
     im = im.convert('L')
@@ -171,6 +176,10 @@ def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True,
     if apply_gaussian:
         gaussian = {'data': input_file['gaussian'], 'axes': input_file['axes'], 'metadata': input_file['metadata']}
         save_with_pil(gaussian, f_name + '_Gaussian', output_dir, f_type, scalebar=scalebar)
+    
+    if apply_gaussian_hp:
+        gaussian_hp = {'data': input_file['gaussian_hp'], 'axes': input_file['axes'], 'metadata': input_file['metadata']}
+        save_with_pil(gaussian_hp, f_name + '_Gaussian_HP', output_dir, f_type, scalebar=scalebar)
     
 
 def add_scalebar_to_pil(im, scale, unit):
@@ -236,7 +245,9 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
     order_bw = kwargs['order_bw']
     cutoff_bw = kwargs['cutoff_bw']
     apply_gaussian = kwargs['apply_gaussian']
-    cutoff_gaussian = kwargs['cutoff_gaussian']    
+    cutoff_gaussian = kwargs['cutoff_gaussian']
+    apply_gaussian_hp = kwargs['apply_gaussian_hp']
+    cutoff_gaussian_hp = kwargs['cutoff_gaussian_hp']
     scale_bar = kwargs['scalebar']
     #Save images
         
@@ -268,6 +279,12 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
         print(f'Applying Gaussian low-pass filter to {f_name}...')
         input_file['gaussian'] = apply_filter(input_file['data'], 'Gaussian',
                                               cutoff_ratio = cutoff_gaussian)
+    
+    if apply_gaussian_hp:
+        print(f'Applying Gaussian high-pass filter to {f_name}...')
+        input_file['gaussian_hp'] = apply_filter(input_file['data'], 'Gaussian-HP',
+                                                 cutoff_ratio = cutoff_gaussian_hp)
+    
     if f_type == 'tiff':
         # For tiff format, save directly as 16-bit with calibration, no scalebar
         # No manipulation of data but just set to int16
@@ -275,7 +292,7 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
             dtype = 'int16' #All integer values set to int16
         else:
             dtype = 'float32' #Float values set to float32
-        save_as_tif16(input_file, f_name, output_dir, dtype=dtype, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
+        save_as_tif16(input_file, f_name, output_dir, dtype=dtype, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian, apply_gaussian_hp=apply_gaussian_hp)
 
     else:
         if f_type == 'tiff + png':
@@ -283,10 +300,10 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
                 dtype = 'int16' #All integer values set to int16
             else:
                 dtype = 'float32' #Float values set to float32
-            save_as_tif16(input_file, f_name, output_dir, dtype=dtype, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
+            save_as_tif16(input_file, f_name, output_dir, dtype=dtype, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian, apply_gaussian_hp=apply_gaussian_hp)
             f_type = 'png'
             
-        save_with_pil(input_file, f_name, output_dir, f_type, scalebar=scale_bar, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian)
+        save_with_pil(input_file, f_name, output_dir, f_type, scalebar=scale_bar, apply_wf=apply_wf, apply_absf=apply_absf, apply_nl=apply_nl, apply_bw=apply_bw, apply_gaussian=apply_gaussian, apply_gaussian_hp=apply_gaussian_hp)
         
         
         

@@ -28,6 +28,7 @@ class BatchConverter(QMainWindow):
         self.apply_nl = False
         self.apply_bw = False
         self.apply_gaussian = False
+        self.apply_gaussian_hp = False
 
         self.setAcceptDrops(True)
 
@@ -223,6 +224,7 @@ class BatchConverter(QMainWindow):
             order_bw = int(self.filter_parameters['Bw-order'])
             cutoff_bw = float(self.filter_parameters['Bw-cutoff'])
             cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
+            cutoff_gaussian_hp = float(self.filter_parameters['GS-HP-cutoff'])
             
             save_metadata = self.metadatacheck.isChecked()
 
@@ -234,7 +236,8 @@ class BatchConverter(QMainWindow):
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
                                  apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
                                  apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
-                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian)
+                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian,
+                                 apply_gaussian_hp = self.apply_gaussian_hp, cutoff_gaussian_hp = cutoff_gaussian_hp)
 
             self.worker.moveToThread(self.thread)
 
@@ -254,7 +257,7 @@ class BatchConverter(QMainWindow):
     
     def filter_settings(self):
         dialog = FilterSettingBatchConvert(self.apply_wf, self.apply_absf, self.apply_nl,
-                                      self.apply_bw, self.apply_gaussian,
+                                      self.apply_bw, self.apply_gaussian, self.apply_gaussian_hp,
                                       self.filter_parameters, parent=self)
         if dialog.exec_() == QDialog.Accepted:
             # Update filter settings based on user input
@@ -263,6 +266,7 @@ class BatchConverter(QMainWindow):
             self.apply_nl = dialog.apply_nl
             self.apply_bw = dialog.apply_bw
             self.apply_gaussian = dialog.apply_gaussian
+            self.apply_gaussian_hp = dialog.apply_gaussian_hp
             self.filter_parameters = dialog.parameters
      
 

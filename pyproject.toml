@@ -9,7 +9,7 @@ description = "A GUI program for TEM data processing and analysis"
 authors = [{name = "Tao Ma", email = "matao1984@gmail.com"}]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.8, <3.13"
+requires-python = ">=3.8"
 dependencies = [
     'rosettasciio[all]>=0.10.0',
     'pyqt5>=5.15',

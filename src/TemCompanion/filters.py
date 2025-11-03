@@ -79,6 +79,36 @@ def gaussian_lowpass(img, cutoff_ratio):
     img_glp = img_glp[:img_shape[0], :img_shape[1]]
     return img_glp
 
+# Gaussian high pass filter
+def gaussian_highpass(img, cutoff_ratio):
+    """
+    Apply Gaussian highpass filter to enhance high-frequency features
+    Useful for improving contrast in iDPC images
+    img: image array to be filtered, must be square
+    cutoff_ratio: cutoff ratio in frequency domain (higher value = more high-freq content preserved)
+    """
+    img_shape = img.shape
+    if img_shape[0] != img_shape[1]:
+        img = pad_to_square(img)
+    r = img_to_polar(img)
+    
+    # Compute the FFT to find the frequency transform
+    fshift = fftshift(fft2(img))
+
+    # Calculate the cutoff frequency
+    cutoff = img.shape[0] * cutoff_ratio
+    
+    # Create Gaussian highpass mask (inverse of lowpass)
+    gaussian_filter = 1 - np.exp(- (r**2) / (2 * (cutoff**2)))
+    
+    # Apply the filter to the frequency domain representation of the image
+    filtered_fshift = fshift * gaussian_filter
+
+    # Apply the inverse FFT to return to the spatial domain
+    img_ghp = ifft2(ifftshift(filtered_fshift)).real
+    img_ghp = img_ghp[:img_shape[0], :img_shape[1]]
+    return img_ghp
+
 # Butterworth lowpass filter
 def bw_lowpass(img, order, cutoff_ratio):
     """

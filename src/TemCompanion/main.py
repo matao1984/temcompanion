@@ -148,7 +148,8 @@ class UI_TemCompanion(QMainWindow):
                         "ABSF Delta": "10", "ABSF Bw-order": "4", "ABSF Bw-cutoff": "0.3",
                         "NL Cycles": "10", "NL Delta": "10", "NL Bw-order": "4", "NL Bw-cutoff": "0.3",
                         "Bw-order": "4", "Bw-cutoff": "0.3",
-                        "GS-cutoff": "0.3"
+                        "GS-cutoff": "0.3",
+                        "GS-HP-cutoff": "0.005"
                         }
     
     #Preview dict as class variable

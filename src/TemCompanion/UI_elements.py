@@ -908,6 +908,18 @@ class FilterSettingDialog(QDialog):
         self.gaussian_group.setLayout(form_layout)
         self.gaussian_group.setEnabled(True)
         layout.addWidget(self.gaussian_group)
+        
+        # Gaussian Highpass filter Section
+        self.gaussian_hp_group = QGroupBox('Gaussian Highpass Filter Settings', self)
+        form_layout_hp = QFormLayout()
+        self.cutoff_gaussian_hp = QLabel('Gaussian HP cutoff')
+        self.cutoff_gaussian_hp.setToolTip('Fraction of radius in reciprocal space for highpass cutoff. Lower values preserve more high frequencies. Good for enhancing iDPC images.')
+        self.cutoff_gaussian_hp_input = QLineEdit()
+        self.cutoff_gaussian_hp_input.setText(default_values['GS-HP-cutoff'])
+        form_layout_hp.addRow(self.cutoff_gaussian_hp, self.cutoff_gaussian_hp_input)
+        self.gaussian_hp_group.setLayout(form_layout_hp)
+        self.gaussian_hp_group.setEnabled(True)
+        layout.addWidget(self.gaussian_hp_group)
 
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -930,7 +942,8 @@ class FilterSettingDialog(QDialog):
                       'NL Bw-cutoff': self.cutoff_nl_input.text(),
                       'Bw-order': self.order_bw_input.text(),
                       'Bw-cutoff': self.cutoff_bw_input.text(),
-                      'GS-cutoff': self.cutoff_gaussian_input.text()
+                      'GS-cutoff': self.cutoff_gaussian_input.text(),
+                      'GS-HP-cutoff': self.cutoff_gaussian_hp_input.text()
                         }
         
         self.parameters = parameters        
@@ -941,7 +954,7 @@ class FilterSettingDialog(QDialog):
 
 #============ Define a dialogue for filter settings for batch convert ===========================
 class FilterSettingBatchConvert(QDialog):
-    def __init__(self, apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian, parameters, parent=None):
+    def __init__(self, apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian, apply_gaussian_hp, parameters, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Filter Settings")        
         layout = QVBoxLayout()
@@ -1069,6 +1082,22 @@ class FilterSettingBatchConvert(QDialog):
         self.gaussian_check.stateChanged.connect(lambda: self.gaussian_group.setEnabled(self.gaussian_check.isChecked()))
         layout.addWidget(self.gaussian_check)
         layout.addWidget(self.gaussian_group)
+        
+        # Gaussian Highpass filter 
+        self.gaussian_hp_check = QCheckBox("Apply Gaussian Highpass Filter")
+        self.gaussian_hp_check.setChecked(apply_gaussian_hp)
+        self.gaussian_hp_group = QGroupBox('Gaussian Highpass Filter Settings', self)
+        form_layout_hp = QFormLayout()
+        self.cutoff_gaussian_hp = QLabel('Gaussian HP cutoff')
+        self.cutoff_gaussian_hp.setToolTip('Fraction of radius in reciprocal space for highpass cutoff. Lower values preserve more high frequencies. Good for enhancing iDPC images.')
+        self.cutoff_gaussian_hp_input = QLineEdit()
+        self.cutoff_gaussian_hp_input.setText(default_values['GS-HP-cutoff'])
+        form_layout_hp.addRow(self.cutoff_gaussian_hp, self.cutoff_gaussian_hp_input)
+        self.gaussian_hp_group.setLayout(form_layout_hp)
+        self.gaussian_hp_group.setEnabled(apply_gaussian_hp)
+        self.gaussian_hp_check.stateChanged.connect(lambda: self.gaussian_hp_group.setEnabled(self.gaussian_hp_check.isChecked()))
+        layout.addWidget(self.gaussian_hp_check)
+        layout.addWidget(self.gaussian_hp_group)
 
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1086,6 +1115,7 @@ class FilterSettingBatchConvert(QDialog):
         self.apply_nl = self.nl_check.isChecked()
         self.apply_bw = self.bw_check.isChecked()
         self.apply_gaussian = self.gaussian_check.isChecked()
+        self.apply_gaussian_hp = self.gaussian_hp_check.isChecked()
         parameters = {'WF Delta': self.delta_wf_input.text(),
                       'WF Bw-order': self.order_wf_input.text(),
                       'WF Bw-cutoff': self.cutoff_wf_input.text(),
@@ -1098,7 +1128,8 @@ class FilterSettingBatchConvert(QDialog):
                       'NL Bw-cutoff': self.cutoff_nl_input.text(),
                       'Bw-order': self.order_bw_input.text(),
                       'Bw-cutoff': self.cutoff_bw_input.text(),
-                      'GS-cutoff': self.cutoff_gaussian_input.text()
+                      'GS-cutoff': self.cutoff_gaussian_input.text(),
+                      'GS-HP-cutoff': self.cutoff_gaussian_hp_input.text()
             }
         
         self.parameters = parameters        

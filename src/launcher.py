@@ -10,8 +10,8 @@ from multiprocessing import freeze_support
 
 
 def setup_config():
-    version = '1.3.1'
-    release_date = '2025-11-02'
+    version = '1.3.2dev'
+    release_date = '2025-11-03'
     if getattr(sys, 'frozen', False):
         wkdir = os.path.join(sys._MEIPASS, 'TemCompanion')
     elif __file__:

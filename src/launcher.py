@@ -6,6 +6,7 @@ import sys
 import os
 import pickle
 from TemCompanion.main import main as app_entry
+from multiprocessing import freeze_support
 
 
 def setup_config():
@@ -45,6 +46,7 @@ def setup_config():
     return config
 
 def main():
+    freeze_support()
     config = setup_config()
     app_entry(config)
 

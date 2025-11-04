@@ -34,5 +34,6 @@ include-package-data = true
 "TemCompanion" = [
     "icons/*.png",
     "icons/*.ico", 
-    "colormaps.pkl"
+    "colormaps.pkl",
+    "default_config.json"
 ]

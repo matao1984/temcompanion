@@ -209,44 +209,90 @@ def extract_strain_lstsqr(g, dPdx, dPdy):
     """
     g: (n,2) array of g-vectors
     dPdx, dPdy: (n,m,m) phase derivatives
-    Solve Exx, Exy, Eyx, Eyy via least squares without np.linalg.lstsq (Numba-safe).
+    Solve Exx, Exy, Eyx, Eyy via least squares using normal equations (Numba-safe).
     """
     n = g.shape[0]
     m = dPdx.shape[1]
+
+    # Outputs
+    Exx = np.zeros((m, m), dtype=np.float64)
+    Exy = np.zeros((m, m), dtype=np.float64)
+    Eyx = np.zeros((m, m), dtype=np.float64)
+    Eyy = np.zeros((m, m), dtype=np.float64)
+
+    # Precompute normal equation matrices for the two 2x2 systems
+    # System 1: [gx, gy] * [Exx, Exy]^T = b0
+    # System 2: [gx, gy] * [Eyx, Eyy]^T = b1
     
-    # Initialize solutions
-    Exx = np.zeros((m,m))
-    Exy = np.zeros((m,m))
-    Eyx = np.zeros((m,m))
-    Eyy = np.zeros((m,m))
+    # M = sum_k [[gx^2, gx*gy], [gx*gy, gy^2]] is shared for both systems
+    M00 = 0.0
+    M01 = 0.0
+    M11 = 0.0
     
-    # Solve elemental wise
-    for i in range(m):
+    for k in range(n):
+        gx = g[k, 0]
+        gy = g[k, 1]
+        M00 += gx * gx
+        M01 += gx * gy
+        M11 += gy * gy
+    
+    # Invert M (2x2 symmetric matrix)
+    det = M00 * M11 - M01 * M01
+    if abs(det) < 1e-18:
+        # Degenerate case - use identity to avoid crash
+        invM00 = 1.0
+        invM01 = 0.0
+        invM11 = 1.0
+    else:
+        inv_det = 1.0 / det
+        invM00 = M11 * inv_det
+        invM01 = -M01 * inv_det
+        invM11 = M00 * inv_det
+
+    c = -1.0 / (2.0 * np.pi)
+
+    # Parallelize over pixels
+    for i in prange(m):
         for j in range(m):
-            # Construct linear equations
-            A = np.zeros((2 * n, 4))  # 4 unknowns: Exx_ij, Exy_ij, Eyx_ij, Oxy_ij
-            b = np.zeros(2 * n)
+            # Build RHS vectors for the two systems
+            # System 1: gx * Exx + gy * Exy = c * dPdx
+            rhs0_0 = 0.0  # sum_k gx * c * dPdx[k,i,j]
+            rhs0_1 = 0.0  # sum_k gy * c * dPdx[k,i,j]
+            
+            # System 2: gx * Eyx + gy * Eyy = c * dPdy
+            rhs1_0 = 0.0  # sum_k gx * c * dPdy[k,i,j]
+            rhs1_1 = 0.0  # sum_k gy * c * dPdy[k,i,j]
             
             for k in range(n):
-                gx, gy = g[k]
-
-                # First equation: gx * Exx_ij + gy * Exy_ij = -1/(2pi) * dP_dx[k, i, j]
-                A[2 * k, 0] = gx  # coefficient for Exx_ij
-                A[2 * k, 1] = gy   # coefficient for Exy_ij
-                b[2 * k] = -1 / (2 * np.pi) * dPdx[k, i, j]
-
-                # Second equation: gx * Eyx_ij + gy * Oxy_ij = -1/(2pi) * dP_dy[k, i, j]
-                A[2 * k + 1, 2] = gx  # coefficient for Eyx_ij
-                A[2 * k + 1, 3] = gy  # coefficient for Eyy_ij
-                b[2 * k + 1] = -1 / (2 * np.pi) * dPdy[k, i, j]
-        
-            # Solve least squares for this (i,j) element
-            x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-            Exx[i, j], Exy[i, j], Eyx[i, j], Eyy[i, j] = x
-    
-    exy = (Exy + Eyx) / 2
-    Oxy = (Eyx - Exy) /2
+                gx = g[k, 0]
+                gy = g[k, 1]
+                
+                b0 = c * dPdx[k, i, j]
+                b1 = c * dPdy[k, i, j]
+                
+                rhs0_0 += gx * b0
+                rhs0_1 += gy * b0
+                
+                rhs1_0 += gx * b1
+                rhs1_1 += gy * b1
             
+            # Solve M * [Exx, Exy]^T = [rhs0_0, rhs0_1]^T
+            exx = invM00 * rhs0_0 + invM01 * rhs0_1
+            exy_ = invM01 * rhs0_0 + invM11 * rhs0_1
+            
+            # Solve M * [Eyx, Eyy]^T = [rhs1_0, rhs1_1]^T
+            eyx = invM00 * rhs1_0 + invM01 * rhs1_1
+            eyy = invM01 * rhs1_0 + invM11 * rhs1_1
+            
+            Exx[i, j] = exx
+            Exy[i, j] = exy_
+            Eyx[i, j] = eyx
+            Eyy[i, j] = eyy
+
+    # Symmetric shear and rotation
+    exy = (Exy + Eyx) * 0.5
+    Oxy = (Eyx - Exy) * 0.5
+    
     return Exx, Eyy, exy, Oxy
 
 # Adaptive GPA with Windowed Fourier Ridge phase retrieval

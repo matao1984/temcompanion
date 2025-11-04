@@ -900,8 +900,13 @@ class FilterSettingDialog(QDialog):
         # Gaussian filter Section
         self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
         form_layout = QFormLayout()
-        self.cutoff_gaussian = QLabel('Gaussian cutoff')
-        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.hp_cutoff_gaussian = QLabel('High-pass Gaussian cutoff')
+        self.hp_cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the highpass starts. Set to 0 for no highpass.')
+        self.hp_cutoff_gaussian_input = QLineEdit()
+        self.hp_cutoff_gaussian_input.setText(default_values['GS-hp-cutoff'])
+        form_layout.addRow(self.hp_cutoff_gaussian, self.hp_cutoff_gaussian_input)
+        self.cutoff_gaussian = QLabel('Low-pass Gaussian cutoff')
+        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. set to 1 for no lowpass.')
         self.cutoff_gaussian_input = QLineEdit()
         self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
         form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
@@ -930,6 +935,7 @@ class FilterSettingDialog(QDialog):
                       'NL Bw-cutoff': self.cutoff_nl_input.text(),
                       'Bw-order': self.order_bw_input.text(),
                       'Bw-cutoff': self.cutoff_bw_input.text(),
+                      'GS-hp-cutoff': self.hp_cutoff_gaussian_input.text(),
                       'GS-cutoff': self.cutoff_gaussian_input.text()
                         }
         
@@ -1059,8 +1065,13 @@ class FilterSettingBatchConvert(QDialog):
         self.gaussian_check.setChecked(apply_gaussian)
         self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
         form_layout = QFormLayout()
-        self.cutoff_gaussian = QLabel('Gaussian cutoff')
-        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.hp_cutoff_gaussian = QLabel('High-pass Gaussian cutoff')
+        self.hp_cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the highpass starts. Set to 0 for no highpass.')
+        self.hp_cutoff_gaussian_input = QLineEdit()
+        self.hp_cutoff_gaussian_input.setText(default_values['GS-hp-cutoff'])
+        form_layout.addRow(self.hp_cutoff_gaussian, self.hp_cutoff_gaussian_input)
+        self.cutoff_gaussian = QLabel('Low-pass Gaussian cutoff')
+        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. set to 1 for no lowpass.')
         self.cutoff_gaussian_input = QLineEdit()
         self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
         form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
@@ -2151,7 +2162,7 @@ class DPCDialog(QDialog):
             return
             
         dDPC_img = copy.deepcopy(A)
-        dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=float(self.rot.text()))
+        dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=float(self.rot.text()), cutoff=float(self.hp_cutoff.text()))
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_dDPC'
         if self.from4_img.isChecked():
             metadata = f'Reconstructed dDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'

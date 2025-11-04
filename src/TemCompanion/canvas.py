@@ -2801,7 +2801,7 @@ class PlotCanvasFFT(PlotCanvas):
         preview_name = self.canvas.canvas_name + '_iFFT'
         live_ifft = self.get_img_dict_from_canvas()
         live_ifft['metadata']['TemCompanion']['Data Type'] = 'Image'
-        live_ifft_data = self.ifft_with_masks(live_ifft['data'], self.img_size)
+        live_ifft_data = self.ifft_with_masks(live_ifft['data'])
         live_ifft['data'] = live_ifft_data
 
         # Update scale and units
@@ -2868,13 +2868,12 @@ class PlotCanvasFFT(PlotCanvas):
             mask1.sigHoverEvent.connect(self._make_active_selector)  
 
             # Connect the signals for synchronized movement and live ifft update
-            mask0.sigRegionChanged.connect(self.update_mask_ifft)       
-            mask1.sigRegionChanged.connect(self.update_mask_ifft)
+            mask0.sigRegionChangeFinished.connect(self.update_mask_ifft)    
+            mask0.sigRegionChanged.connect(self.update_paired_mask)   
+            mask1.sigRegionChangeFinished.connect(self.update_mask_ifft)
+            mask1.sigRegionChanged.connect(self.update_paired_mask)
 
-            
-
-
-    def update_mask_ifft(self, mask):
+    def update_paired_mask(self, mask):
         mask_id = mask.id
         # Find the paired mask
         paired_mask = None
@@ -2891,14 +2890,17 @@ class PlotCanvasFFT(PlotCanvas):
         y_range = self.canvas.data['data'].shape[-2] * self.scale
         x1 = x_range - x0 - d0
         y1 = y_range - y0 - d0
-        paired_mask.sigRegionChanged.disconnect(self.update_mask_ifft)
+        paired_mask.sigRegionChanged.disconnect(self.update_paired_mask)
+        paired_mask.sigRegionChangeFinished.disconnect(self.update_mask_ifft)
         paired_mask.setPos([x1, y1], update=False, finish=False)
         paired_mask.setSize(d0)
-        paired_mask.sigRegionChanged.connect(self.update_mask_ifft)
+        paired_mask.sigRegionChanged.connect(self.update_paired_mask)
+        paired_mask.sigRegionChangeFinished.connect(self.update_mask_ifft)
 
+    def update_mask_ifft(self):
         # Update the live ifft image
         live_ifft_name = self.canvas.canvas_name + '_iFFT'
-        live_ifft_data = self.ifft_with_masks(self.canvas.data['fft'], self.img_size)
+        live_ifft_data = self.ifft_with_masks(self.canvas.data['fft'])
         if live_ifft_name in self.parent().preview_dict:
             live_ifft_canvas = self.parent().preview_dict[live_ifft_name]
             live_ifft_canvas.canvas.update_img(live_ifft_data, pvmin=0.1, pvmax=99.9)
@@ -2916,7 +2918,7 @@ class PlotCanvasFFT(PlotCanvas):
                 self.canvas.selector.remove(m)
             self.canvas.active_selector = None
 
-    def ifft_with_masks(self, fft_data, img_size):
+    def ifft_with_masks(self, fft_data):
         # Get the centers and radii of all masks
         center = []
         radius = []

@@ -52,27 +52,42 @@ def img_to_polar(img):
     return rho # rho is the radial distance
 
 # Gaussian low pass filter
-def gaussian_lowpass(img, cutoff_ratio):
+def gaussian_lowpass(img, cutoff_ratio, hp_cutoff_ratio=0, space='real'):
     """
     img: image array to be filtered, must be square
-    cutoff_ratio: cutoff ratio in frequency domain
+    cutoff_ratio: cutoff ratio in frequency domain. 
+    If cutoff_ratio = 1, no lowpass filtering is applied.
+    hp_cutoff_ratio: if specified, also apply a highpass filter
+    space: 'real' or 'fourier'. If 'fourier', the input img is FFT of a complex numpy array
     """
     img_shape = img.shape
     if img_shape[0] != img_shape[1]:
         img = pad_to_square(img)
     r = img_to_polar(img)
-    
-    # Compute the FFT to find the frequency transform
-    fshift = fftshift(fft2(img))
+
+    # Initialize Gaussian filter
+    lp_gaussian_filter = np.ones_like(r, dtype=np.float64)
+    hp_gaussian_filter = np.ones_like(r, dtype=np.float64)
+ 
 
     # Calculate the cutoff frequency
-    cutoff = img.shape[0] * cutoff_ratio
+    if cutoff_ratio < 1:
+        cutoff = r.shape[0] * cutoff_ratio
     
-    # Create Gaussian mask
-    gaussian_filter = np.exp(- (r**2) / (2 * (cutoff**2)))
+        # Create Gaussian mask
+        lp_gaussian_filter = np.exp(- (r**2) / (2 * (cutoff**2)))
     
+    if hp_cutoff_ratio > 0:
+        hp_cutoff = r.shape[0] * hp_cutoff_ratio
+        hp_gaussian_filter = 1 - np.exp(- (r**2) / (2 * (hp_cutoff**2)))
+    
+    if space == 'real':
+        # Compute the FFT to find the frequency transform
+        fshift = fftshift(fft2(img))
+    elif space == 'fourier':
+        fshift = img
     # Apply the filter to the frequency domain representation of the image
-    filtered_fshift = fshift * gaussian_filter
+    filtered_fshift = fshift * lp_gaussian_filter * hp_gaussian_filter
 
     # Apply the inverse FFT to return to the spatial domain
     img_glp = ifft2(ifftshift(filtered_fshift)).real

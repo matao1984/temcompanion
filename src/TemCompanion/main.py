@@ -142,15 +142,7 @@ from .canvas import PlotCanvas
 #=====================Main Window UI ===============================================
 
 
-class UI_TemCompanion(QMainWindow):
-    # Define filter parameters as class variables        
-    filter_parameters = {"WF Delta": "10", "WF Bw-order": "4", "WF Bw-cutoff": "0.3",
-                        "ABSF Delta": "10", "ABSF Bw-order": "4", "ABSF Bw-cutoff": "0.3",
-                        "NL Cycles": "10", "NL Delta": "10", "NL Bw-order": "4", "NL Bw-cutoff": "0.3",
-                        "Bw-order": "4", "Bw-cutoff": "0.3",
-                        "GS-cutoff": "0.3"
-                        }
-    
+class UI_TemCompanion(QMainWindow):    
     #Preview dict as class variable
     preview_dict = {}
 
@@ -161,6 +153,7 @@ class UI_TemCompanion(QMainWindow):
         self.rdate = config.pop('release_date')
         self.wkdir = config.pop('working_directory')
         self.colormap = config.pop('colormap')
+        self.filter_parameters = config.pop('filter_parameters')
 
         self.attribute = config  # Remaining config items are default image settings
 

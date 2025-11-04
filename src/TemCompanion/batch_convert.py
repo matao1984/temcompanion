@@ -25,11 +25,11 @@ class BatchConverter(QMainWindow):
         self.output_dir = None 
         self.get_filter_parameters()
         # Default filter settings
-        self.apply_wf = False
-        self.apply_absf = False
-        self.apply_nl = False
-        self.apply_bw = False
-        self.apply_gaussian = False
+        self.apply_wf = self.filter_parameters.get('Apply WF', False)
+        self.apply_absf = self.filter_parameters.get('Apply ABSF', False)
+        self.apply_nl = self.filter_parameters.get('Apply NL', False)
+        self.apply_bw = self.filter_parameters.get('Apply Bw', False)
+        self.apply_gaussian = self.filter_parameters.get('Apply GS', False)
 
         self.setAcceptDrops(True)
 

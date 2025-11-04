@@ -117,6 +117,10 @@ class PlotCanvas(QMainWindow):
         # Process history
         if 'TemCompanion' in img['metadata']:
             self.process = copy.deepcopy(img['metadata']['TemCompanion'])
+            # Update some info
+            self.process['Image Size (pixels)'] = f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}"
+            self.process['Calibrated Image Size'] = f"{self.canvas.img_size[-1] * self.scale:.4g} x {self.canvas.img_size[-2] * self.scale:.4g} {self.units}"
+            self.process['Pixel Calibration'] = f"{self.scale:.4g} {self.units}"
         else:
             # Make a new process history
             self.process = {'Version': f'TemCompanion v{self.ver}', 
@@ -1177,6 +1181,7 @@ class PlotCanvas(QMainWindow):
     def gaussian_filter(self):
         filter_parameters = self.filter_parameters
         cutoff_gaussian = float(filter_parameters['GS-cutoff'])
+        hp_cutoff_gaussian = float(filter_parameters['GS-hp-cutoff'])
         img_gaussian = self.get_original_img_dict()
         title = self.windowTitle()
         data = img_gaussian['data']
@@ -1202,7 +1207,7 @@ class PlotCanvas(QMainWindow):
             # Apply the filter in a separate thread
             print(f'Applying Gaussian filter to {title} with cutoff = {cutoff_gaussian}...')
             self.thread = QThread()
-            self.worker = Worker(apply_filter_on_img_dict, img_gaussian, 'Gaussian', cutoff_ratio=cutoff_gaussian)
+            self.worker = Worker(apply_filter_on_img_dict, img_gaussian, 'Gaussian', cutoff_ratio=cutoff_gaussian, hp_cutoff_ratio=hp_cutoff_gaussian)
             self.worker.moveToThread(self.thread)
             self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
             self.thread.started.connect(self.worker.run)            
@@ -1457,7 +1462,7 @@ class PlotCanvas(QMainWindow):
             x0, y0 = selector.pos()
             x1 = x0 + selector.size()[0]
             y1 = y0 + selector.size()[1]
-            x0, x1, y0, y1 = int(x0 / self.scale), int(x1 / self.scale), int(y0 / self.scale), int(y1 / self.scale)
+            x0, x1, y0, y1 = round(x0 / self.scale), round(x1 / self.scale), round(y0 / self.scale), round(y1 / self.scale)
             if abs(x1 - x0) > 5 and abs(y1 - y0) > 5: 
                 # Valid area is selected 
                 if stack:

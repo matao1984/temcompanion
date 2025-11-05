@@ -13,7 +13,7 @@ from multiprocessing import freeze_support
 # Default configuration setup
 def setup_config():
     version = '1.3.2dev'
-    release_date = '2025-11-04'
+    release_date = '2025-11-05'
     if getattr(sys, 'frozen', False):
         wkdir = os.path.join(sys._MEIPASS, 'TemCompanion')
     elif __file__:
@@ -26,8 +26,6 @@ def setup_config():
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
 
-    sb_color = 'yellow'
-
     config['version'] = version
     config['release_date'] = release_date
     config['working_directory'] = wkdir
@@ -39,6 +37,11 @@ def main():
     freeze_support()
     config = setup_config()
     app_entry(config)
+
+# ============== Splash screen for Windows executable =====================
+# import pyi_splash
+# pyi_splash.close()
+
 
 
 if __name__ == "__main__":

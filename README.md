@@ -100,6 +100,12 @@ author = {Tao Ma}
 ```
 
 ## 6. Change history
+### v1.3.2dev
+- Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
+- Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
+- Also update DPC reconstruction to take non square images
+- Added a default_config.json file for default parameters for image display and filter parameters. 
+- Multiprocess support in batch conversion that significantly speeds up the conversion.
 
 ### v1.3.1
 - Reorganized the project structure

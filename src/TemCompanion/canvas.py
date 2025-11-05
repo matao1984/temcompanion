@@ -1007,10 +1007,14 @@ class PlotCanvas(QMainWindow):
             self.filter_parameters = dialog.parameters
 
     def wiener_filter(self):        
-        filter_parameters = self.filter_parameters        
-        delta_wf = int(filter_parameters['WF Delta'])
-        order_wf = int(filter_parameters['WF Bw-order'])
-        cutoff_wf = float(filter_parameters['WF Bw-cutoff'])
+        filter_parameters = self.filter_parameters
+        try:
+            delta_wf = int(filter_parameters['WF Delta'])
+            order_wf = int(filter_parameters['WF Bw-order'])
+            cutoff_wf = float(filter_parameters['WF Bw-cutoff'])
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Parameters', 'Please enter valid numbers for the filter parameters.')
+            return
         img_wf = self.get_original_img_dict()
         title = self.windowTitle()
         data = img_wf['data']
@@ -1051,6 +1055,13 @@ class PlotCanvas(QMainWindow):
 
     def absf_filter(self):
         filter_parameters = self.filter_parameters
+        try: 
+            delta_absf = int(filter_parameters['ABSF Delta'])
+            order_absf = int(filter_parameters['ABSF Bw-order'])
+            cutoff_absf = float(filter_parameters['ABSF Bw-cutoff'])
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Parameters', 'Please enter valid numbers for the filter parameters.')
+            return
         delta_absf = int(filter_parameters['ABSF Delta'])
         order_absf = int(filter_parameters['ABSF Bw-order'])
         cutoff_absf = float(filter_parameters['ABSF Bw-cutoff'])
@@ -1093,7 +1104,15 @@ class PlotCanvas(QMainWindow):
 
     
     def non_linear_filter(self):
-        filter_parameters = self.filter_parameters        
+        filter_parameters = self.filter_parameters  
+        try: 
+            delta_nl = int(filter_parameters['NL Delta'])
+            order_nl = int(filter_parameters['NL Bw-order'])
+            cutoff_nl = float(filter_parameters['NL Bw-cutoff'])
+            N = int(filter_parameters['NL Cycles'])
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Parameters', 'Please enter valid numbers for the filter parameters.')
+            return      
         delta_nl = int(filter_parameters['NL Delta'])
         order_nl = int(filter_parameters['NL Bw-order'])
         cutoff_nl = float(filter_parameters['NL Bw-cutoff'])
@@ -1136,6 +1155,12 @@ class PlotCanvas(QMainWindow):
 
     def bw_filter(self):
         filter_parameters = self.filter_parameters
+        try: 
+            order_bw = int(filter_parameters['Bw-order'])
+            cutoff_bw = float(filter_parameters['Bw-cutoff'])
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Parameters', 'Please enter valid numbers for the filter parameters.')
+            return
         order_bw = int(filter_parameters['Bw-order'])
         cutoff_bw = float(filter_parameters['Bw-cutoff'])
         img_bw = self.get_original_img_dict()
@@ -1180,8 +1205,12 @@ class PlotCanvas(QMainWindow):
 
     def gaussian_filter(self):
         filter_parameters = self.filter_parameters
-        cutoff_gaussian = float(filter_parameters['GS-cutoff'])
-        hp_cutoff_gaussian = float(filter_parameters['GS-hp-cutoff'])
+        try: 
+            cutoff_gaussian = float(filter_parameters['GS-cutoff'])
+            hp_cutoff_gaussian = float(filter_parameters['GS-hp-cutoff'])
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Parameters', 'Please enter valid numbers for the filter parameters.')
+            return
         img_gaussian = self.get_original_img_dict()
         title = self.windowTitle()
         data = img_gaussian['data']

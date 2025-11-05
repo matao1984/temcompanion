@@ -1228,13 +1228,20 @@ class PlotCanvas(QMainWindow):
             apply_to = 'current'
         if apply_to is not None:
             preview_name = self.canvas.canvas_name + '_' + apply_to + '_Gaussian Filtered'
-            metadata = f'Gaussian filter applied with cutoff = {cutoff_gaussian}'
+            # Tailor metadata based on high-pass cutoff
+            if hp_cutoff_gaussian <= 0 or hp_cutoff_gaussian >=1: # No high-pass filter
+                metadata = f'Gaussian low-pass filter applied with cutoff = {cutoff_gaussian}'
+            elif cutoff_gaussian <= 0 or cutoff_gaussian >=1: # No low-pass filter
+                metadata = f'Gaussian high-pass filter applied with cutoff = {hp_cutoff_gaussian}'
+            else:
+                # Both filters applied, this is a band pass filter
+                metadata = f'Gaussian band-pass filter applied with low cutoff = {hp_cutoff_gaussian} and high cutoff = {cutoff_gaussian}'
             
             # Position the current image
             self.position_window('center left')
 
             # Apply the filter in a separate thread
-            print(f'Applying Gaussian filter to {title} with cutoff = {cutoff_gaussian}...')
+            print(f'Applying {metadata} to {title}...')
             self.thread = QThread()
             self.worker = Worker(apply_filter_on_img_dict, img_gaussian, 'Gaussian', cutoff_ratio=cutoff_gaussian, hp_cutoff_ratio=hp_cutoff_gaussian)
             self.worker.moveToThread(self.thread)
@@ -1244,7 +1251,7 @@ class PlotCanvas(QMainWindow):
             self.worker.finished.connect(self.thread.quit)
             self.worker.finished.connect(self.worker.deleteLater)           
             self.thread.finished.connect(self.thread.deleteLater)
-            self.worker.finished.connect(lambda: print(f'Applied Gaussian filter to {title} with cutoff = {cutoff_gaussian}.'))
+            self.worker.finished.connect(lambda: print(f'Applied {metadata}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
             self.thread.start()
 

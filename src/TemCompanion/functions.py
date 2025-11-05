@@ -5,7 +5,7 @@ from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_reader as im_reader
 from rsciio.mrc import file_reader as mrc_reader
-from rsciio.image import file_writer as im_writer
+# from rsciio.image import file_writer as im_writer
 import math
 import os
 import numpy as np
@@ -14,7 +14,6 @@ from PIL import Image, ImageDraw, ImageFont
 import copy
 import json
 import pickle
-from PyQt5.QtWidgets import QDialog
 
 # Internal modules
 from . import filters

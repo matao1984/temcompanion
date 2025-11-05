@@ -1,30 +1,26 @@
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtWidgets
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
                              QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
-                             QComboBox, QInputDialog, QCheckBox, QGroupBox, 
-                             QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
-                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
-                             QListWidget, QListWidgetItem, QButtonGroup, QProgressBar, QToolBar,
-                             QTextBrowser, QDockWidget
+                             QComboBox, QCheckBox, QGroupBox, 
+                             QFormLayout, QDialogButtonBox,  QSlider, QMenu, QSizePolicy, QRadioButton,
+                             QListWidget, QListWidgetItem
                              )
-from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread, QRect, QRectF, QSize, QTimer
-from PyQt5.QtGui import QImage, QPixmap, QIcon, QDropEvent, QDragEnterEvent, QFont, QIntValidator, QDoubleValidator, QValidator
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
+from PyQt5.QtGui import QImage, QPixmap, QIcon, QFont, QIntValidator, QDoubleValidator, QValidator
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
 import numpy as np
 import copy
-import importlib.resources
 import pickle
 import json
 
 # Internal modules
 from .functions import gamma_correct_lut, find_img_by_title
 from . import filters
-# from .main import UI_TemCompanion
-from TemCompanion.DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 
 
 #=========== Scale bar class used with pyqtgraph ==============================================

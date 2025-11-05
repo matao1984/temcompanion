@@ -3,7 +3,8 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import (QApplication,QWidget, QMainWindow, QFileDialog, QSizePolicy, QVBoxLayout, QDialog,
                              QHBoxLayout, QApplication, QMessageBox, QProgressBar, QCheckBox, QSpinBox, QLabel)
 from PyQt5.QtGui import QDropEvent, QDragEnterEvent
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 import os
 
 
@@ -358,7 +359,6 @@ class BatchConverter(QMainWindow):
 
 #         self.finished.emit()
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 # Top-level function for pickling (required for multiprocessing)

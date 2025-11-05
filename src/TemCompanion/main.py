@@ -130,8 +130,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout,
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
                              QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget
                              )
-from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer
-from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent
+from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer, QUrl
+from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent, QDesktopServices
 
 
 import sys
@@ -358,7 +358,8 @@ class UI_TemCompanion(QMainWindow):
         self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
         self.contactButton.clicked.connect(self.show_contact)
-        self.donateButton.clicked.connect(self.donate) 
+        # self.donateButton.clicked.connect(self.donate) 
+        self.donateButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://paypal.me/matao1984?country.x=US&locale.x=en_US")))
 
         
 

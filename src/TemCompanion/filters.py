@@ -72,21 +72,16 @@ def gaussian_lowpass(img, cutoff_ratio, hp_cutoff_ratio=0, space='real'):
     
         # Create Gaussian mask
         lp_gaussian_filter = np.exp(- (r**2) / (2 * (cutoff**2)))
-    elif cutoff_ratio == 1:
-        # No filtering
+    else: 
+        # No filtering outside the valid range
         lp_gaussian_filter = np.ones_like(r, dtype=np.float64)
-    else:
-        raise ValueError("cutoff_ratio must be between 0 and 1 for lowpass filtering.")
-    
     
     if hp_cutoff_ratio > 0 and hp_cutoff_ratio < 1:
         hp_cutoff = r.shape[0] * hp_cutoff_ratio
         hp_gaussian_filter = 1 - np.exp(- (r**2) / (2 * (hp_cutoff**2)))
-    elif hp_cutoff_ratio == 0:
-        # No filtering
-        hp_gaussian_filter = np.ones_like(r, dtype=np.float64)
     else:
-        raise ValueError("hp_cutoff_ratio must be between 0 and 1 for highpass filtering.")
+        # No filtering outside the valid range
+        hp_gaussian_filter = np.ones_like(r, dtype=np.float64)
     
     if space == 'real':
         # Compute the FFT to find the frequency transform

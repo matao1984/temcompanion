@@ -216,7 +216,6 @@ class BatchConverter(QMainWindow):
 # Let's go button connected to convertButton
     def refresh_output(self, text):
         self.convertbox.append(text)
-        QApplication.processEvents()
         
     def convert_emd(self): 
         if self.files == None:
@@ -246,9 +245,7 @@ class BatchConverter(QMainWindow):
             # Get thread count from spinbox
             num_threads = self.thread_spinbox.value()
 
-            # A separate thread for file conversion
-            self.thread = QThread()
-
+            # Run batch conversion in a background QThread 
             self.worker = BatchConversionWorker(self.files, self.output_dir, self.f_type, save_metadata=save_metadata, scalebar = self.scale_bar,
                                  apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
                                  apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
@@ -256,18 +253,14 @@ class BatchConverter(QMainWindow):
                                  apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
                                  apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian,
                                  num_threads = num_threads)
-
-            self.worker.moveToThread(self.thread)
-
-            self.thread.started.connect(lambda: self.progress_bar.setVisible(True))
-            self.thread.started.connect(self.worker.run)
+            
+            # Wire up progress and cleanup; start the worker thread
+            self.progress_bar.setVisible(True)
             self.worker.progress.connect(self.refresh_output)
             self.worker.finished.connect(lambda: self.progress_bar.setVisible(False))  
-            self.worker.finished.connect(self.thread.quit)
             self.worker.finished.connect(self.worker.deleteLater) 
-            self.thread.finished.connect(self.thread.deleteLater)            
             self.worker.finished.connect(lambda: self.refresh_output("Conversion finished!")) 
-            self.thread.start()
+            self.worker.start()
                          
             
             
@@ -290,77 +283,7 @@ class BatchConverter(QMainWindow):
 
                     
 
-# #================Batch Conversion Worker Thread====================================
-# class BatchConversionWorker(QThread):
-#     progress = pyqtSignal(str)
-#     finished = pyqtSignal()
-
-#     def __init__(self, files, *args, num_threads=None, **kwargs):
-#         super().__init__()
-#         self.files = files
-#         self.args = args
-#         self.kwargs = kwargs
-#         # Use provided thread count, or default to 8 (but don't exceed available CPU count)
-#         if num_threads is not None:
-#             self.max_workers = num_threads
-#         else:
-#             self.max_workers = min(8, os.cpu_count() or 1)
-
-#     def process_single_file(self, file):
-#         """Process a single file - will be called by each thread"""
-#         try:
-#             ext = getFileNameType(file)[1].lower()
-#             if ext == 'emd':
-#                 filetype = 'Velox emd Files (*.emd)'
-#             elif ext in ['dm3', 'dm4']:
-#                 filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
-#             elif ext == 'ser':
-#                 filetype = 'TIA ser Files (*.ser)'
-#             elif ext in ['tif', 'tiff']:
-#                 filetype = 'Tiff Files (*.tif *.tiff)'
-#             elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
-#                 filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
-#             elif ext == 'pkl':
-#                 filetype = 'Pickle Dictionary Files (*.pkl)'
-#             else:
-#                 return (file, False, 'Unsupported file format')
-
-#             convert_file(file, filetype, *self.args, **self.kwargs)
-#             return (file, True, 'Converted successfully')
-
-#         except Exception as e:
-#             return (file, False, str(e))
-
-#     def run(self):
-#         """Run batch conversion with multithreading"""
-#         total_files = len(self.files)
-#         completed = 0
-        
-#         msg = f"Starting batch conversion of {total_files} file(s) using {self.max_workers} threads..."
-#         self.progress.emit(msg)
-
-#         # Use ThreadPoolExecutor for parallel processing
-#         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-#             # Submit all files for processing
-#             future_to_file = {executor.submit(self.process_single_file, file): file 
-#                              for file in self.files}
-            
-#             # Process completed tasks as they finish
-#             for future in as_completed(future_to_file):
-#                 file, success, message = future.result()
-#                 completed += 1
-                
-#                 if success:
-#                     msg = f"[{completed}/{total_files}] '{file}' has been converted"
-#                 else:
-#                     msg = f"[{completed}/{total_files}] '{file}' has been skipped. Error: {message}"
-                
-#                 self.progress.emit(msg)
-
-#         self.finished.emit()
-
-
-
+#================Batch Conversion Worker Thread====================================
 # Top-level function for pickling (required for multiprocessing)
 def process_file_worker(file_data):
     """Worker function that runs in separate process"""

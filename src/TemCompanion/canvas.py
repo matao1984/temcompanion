@@ -1039,19 +1039,13 @@ class PlotCanvas(QMainWindow):
 
             # Apply the filter in a separate thread
             print(f'Applying Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}...')
-            self.thread = QThread()
             self.worker = Worker(apply_filter_on_img_dict, img_wf, 'Wiener', delta=delta_wf, lowpass_order=order_wf, lowpass_cutoff=cutoff_wf)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-            self.thread.started.connect(self.worker.run)            
-            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)           
-            self.thread.finished.connect(self.thread.deleteLater)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
             self.worker.finished.connect(lambda: print(f'Applied Wiener filter to {title} with delta = {delta_wf}, Bw-order = {order_wf}, Bw-cutoff = {cutoff_wf}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-            self.thread.start()        
-        
+            self.worker.start()
 
     def absf_filter(self):
         filter_parameters = self.filter_parameters
@@ -1088,18 +1082,13 @@ class PlotCanvas(QMainWindow):
             self.position_window('center left')
             # Apply the filter in a separate thread
             print(f'Applying ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}...')
-            self.thread = QThread()
             self.worker = Worker(apply_filter_on_img_dict, img_absf, 'ABS', delta=delta_absf, lowpass_order=order_absf, lowpass_cutoff=cutoff_absf)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-            self.thread.started.connect(self.worker.run)            
-            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)           
-            self.thread.finished.connect(self.thread.deleteLater)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
             self.worker.finished.connect(lambda: print(f'Applied ABS filter to {title} with delta = {delta_absf}, Bw-order = {order_absf}, Bw-cutoff = {cutoff_absf}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-            self.thread.start()
+            self.worker.start()
 
 
     
@@ -1140,18 +1129,13 @@ class PlotCanvas(QMainWindow):
 
             # Apply the filter in a separate thread
             print(f'Applying Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}...')
-            self.thread = QThread()
             self.worker = Worker(apply_filter_on_img_dict, img_nl, 'NL', N=N, delta=delta_nl, lowpass_order=order_nl, lowpass_cutoff=cutoff_nl)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-            self.thread.started.connect(self.worker.run)            
-            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)           
-            self.thread.finished.connect(self.thread.deleteLater)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))           
             self.worker.finished.connect(lambda: print(f'Applied Non-Linear filter to {title} with N = {N}, delta = {delta_nl}, Bw-order = {order_nl}, Bw-cutoff = {cutoff_nl}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-            self.thread.start()
+            self.worker.finished.connect(self.worker.deleteLater)  
+            self.worker.start()
 
     def bw_filter(self):
         filter_parameters = self.filter_parameters
@@ -1187,18 +1171,13 @@ class PlotCanvas(QMainWindow):
 
             # Apply the filter in a separate thread
             print(f'Applying Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}...')
-            self.thread = QThread()
             self.worker = Worker(apply_filter_on_img_dict, img_bw, 'BW', order=order_bw, cutoff_ratio=cutoff_bw)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-            self.thread.started.connect(self.worker.run)            
-            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)           
-            self.thread.finished.connect(self.thread.deleteLater)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
             self.worker.finished.connect(lambda: print(f'Applied Butterworth filter to {title} with Bw-order = {order_bw}, Bw-cutoff = {cutoff_bw}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-            self.thread.start()
+            self.worker.start()
 
 
         
@@ -1242,18 +1221,13 @@ class PlotCanvas(QMainWindow):
 
             # Apply the filter in a separate thread
             print(f'Applying {metadata} to {title}...')
-            self.thread = QThread()
             self.worker = Worker(apply_filter_on_img_dict, img_gaussian, 'Gaussian', cutoff_ratio=cutoff_gaussian, hp_cutoff_ratio=hp_cutoff_gaussian)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-            self.thread.started.connect(self.worker.run)            
-            self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF'))
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)           
-            self.thread.finished.connect(self.thread.deleteLater)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
             self.worker.finished.connect(lambda: print(f'Applied {metadata}.'))
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-            self.thread.start()
+            self.worker.start()
 
 
     def show_info(self):
@@ -2066,20 +2040,14 @@ class PlotCanvas(QMainWindow):
         
         title = self.canvas.canvas_name
         # Run GPA in a separate thread
-        self.thread = QThread()
         self.worker = Worker(GPA, data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
-        # exx, eyy, exy, oxy = GPA(data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-        self.thread.started.connect(lambda: print(f'Running GPA on {title} with {self.algorithm} GPA...'))
-        self.thread.started.connect(self.worker.run)
-        self.thread.finished.connect(lambda: self.toggle_progress_bar('OFF')) 
-        self.worker.finished.connect(self.thread.quit)
+        self.toggle_progress_bar('ON')
+        print(f'Running GPA on {title} with {self.algorithm} GPA...')
+        self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
         self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
         self.worker.finished.connect(lambda: print(f'Finished running GPA on {title} with {self.algorithm} GPA.'))
         self.worker.result.connect(self.display_gpa_result)
-        self.thread.start()
+        self.worker.start()
 
     def display_gpa_result(self, result):
         main_window = self.parent()
@@ -2410,17 +2378,12 @@ class PlotCanvas(QMainWindow):
             self.position_window('center left')
 
             # Run alignment in a separate thread
-            self.thread = QThread()
             self.worker = Worker(self.run_alignment_cc, img, apply_window, crop_img, crop_to_square)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-            self.thread.started.connect(self.worker.run)
-            self.worker.finished.connect(self.thread.quit)
+            self.toggle_progress_bar('ON')
             self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
             self.worker.finished.connect(self.worker.deleteLater)
-            self.thread.finished.connect(self.thread.deleteLater)
             self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-            self.thread.start()
+            self.worker.start()
 
            
 
@@ -2501,17 +2464,12 @@ class PlotCanvas(QMainWindow):
         self.position_window('center left')
         img = self.get_original_img_dict()
         # Run alignment in a separate thread
-        self.thread = QThread()
         self.worker = Worker(self.run_alignment_of, img)
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(lambda: self.toggle_progress_bar('ON'))
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.thread.quit)
+        self.toggle_progress_bar('ON')
         self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
         self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata), position='center right')
-        self.thread.start()
+        self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
+        self.worker.start()
 
             
     def run_alignment_of(self, img_dict):

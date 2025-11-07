@@ -1759,71 +1759,71 @@ class PlotSettingDialog(QDialog):
         
 
 
-#==============Radial Integration Dialog===================================
-class RadialIntegrationDialog(QDialog):
-    def __init__(self, parent):
-        # Parent must be the image window
-        super().__init__(parent)
-        self.setWindowTitle("Radial Integration")
-        self.center = self.parent().canvas.center
-        self.img_dict = self.parent().get_img_dict_from_canvas()
+# #==============Radial Integration Dialog===================================
+# class RadialIntegrationDialog(QDialog):
+#     def __init__(self, parent):
+#         # Parent must be the image window
+#         super().__init__(parent)
+#         self.setWindowTitle("Radial Integration")
+#         self.center = self.parent().canvas.center
+#         self.img_dict = self.parent().get_img_dict_from_canvas()
 
-        layout = QVBoxLayout()
-        label = QLabel("Select the center for radial integration:")
-        self.center_label = QLabel(f"Center: {self.center}")
-        layout.addWidget(label)
-        layout.addWidget(self.center_label)
+#         layout = QVBoxLayout()
+#         label = QLabel("Select the center for radial integration:")
+#         self.center_label = QLabel(f"Center: {self.center}")
+#         layout.addWidget(label)
+#         layout.addWidget(self.center_label)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
-        self.cancel_button.clicked.connect(self.handle_cancel)
-        self.ok_button = buttons.button(QDialogButtonBox.Ok)
-        self.ok_button.clicked.connect(self.handle_ok)
-        layout.addWidget(buttons)
+#         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+#         self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
+#         self.cancel_button.clicked.connect(self.handle_cancel)
+#         self.ok_button = buttons.button(QDialogButtonBox.Ok)
+#         self.ok_button.clicked.connect(self.handle_ok)
+#         layout.addWidget(buttons)
 
-        self.setLayout(layout)
+#         self.setLayout(layout)
 
 
-    def handle_ok(self):
-        # Handle the OK button press
-        self.calculate_radial_integration(self.center)
-        self.accept()
+#     def handle_ok(self):
+#         # Handle the OK button press
+#         self.calculate_radial_integration(self.center)
+#         self.accept()
 
-    def handle_cancel(self):
-        self.parent().clean_up(selector=True, modes=True, status_bar=True)
-        self.reject()
+#     def handle_cancel(self):
+#         self.parent().clean_up(selector=True, modes=True, status_bar=True)
+#         self.reject()
 
-    def update_center(self, center):
-        self.center = center
-        self.center_label.setText(f"Center: {self.center}")
+#     def update_center(self, center):
+#         self.center = center
+#         self.center_label.setText(f"Center: {self.center}")
 
-    def calculate_radial_integration(self, center):
-        # Perform radial integration calculation
-        img = copy.deepcopy(self.img_dict['data'])
-        original_center = img.shape[1]//2, img.shape[0]//2
-        # Shift image to center
-        if center != original_center:
-            offset = (int(center[0] - original_center[0]), int(center[1] - original_center[1]))
-            x_span = int(min(center[0], img.shape[1]-center[0]))
-            new_x_start = center[0] - x_span
-            new_x_end = new_x_start + 2 * x_span
-            y_span = int(min(center[1], img.shape[0]-center[1]))
-            new_y_start = center[1] - y_span
-            new_y_end = new_y_start + 2 * y_span
-            img = img[new_y_start:new_y_end, new_x_start:new_x_end]
-            if img.shape[0] != img.shape[1]:
-                img = filters.crop_to_square(img)
-            print(f'Original center: {original_center}')
-            print(f'New center: {center}')
-            print(f"Cropping image to {new_y_start}:{new_y_end}, {new_x_start}:{new_x_end}")
-            print(f'New image shape: {img.shape}')
+#     def calculate_radial_integration(self, center):
+#         # Perform radial integration calculation
+#         img = copy.deepcopy(self.img_dict['data'])
+#         original_center = img.shape[1]//2, img.shape[0]//2
+#         # Shift image to center
+#         if center != original_center:
+#             offset = (int(center[0] - original_center[0]), int(center[1] - original_center[1]))
+#             x_span = int(min(center[0], img.shape[1]-center[0]))
+#             new_x_start = center[0] - x_span
+#             new_x_end = new_x_start + 2 * x_span
+#             y_span = int(min(center[1], img.shape[0]-center[1]))
+#             new_y_start = center[1] - y_span
+#             new_y_end = new_y_start + 2 * y_span
+#             img = img[new_y_start:new_y_end, new_x_start:new_x_end]
+#             if img.shape[0] != img.shape[1]:
+#                 img = filters.crop_to_square(img)
+#             print(f'Original center: {original_center}')
+#             print(f'New center: {center}')
+#             print(f"Cropping image to {new_y_start}:{new_y_end}, {new_x_start}:{new_x_end}")
+#             print(f'New image shape: {img.shape}')
 
-        radial_x, radial_y = filters.radial_integration(img)
-        scale = self.img_dict['axes'][1]['scale']
-        # unit = self.img_dict['axes'][1]['units']
-        calibrated_x = radial_x * scale
-        self.x_data = calibrated_x
-        self.y_data = radial_y
+#         radial_x, radial_y = filters.radial_integration(img)
+#         scale = self.img_dict['axes'][1]['scale']
+#         # unit = self.img_dict['axes'][1]['units']
+#         calibrated_x = radial_x * scale
+#         self.x_data = calibrated_x
+#         self.y_data = radial_y
 
         # # Plot the radial profile
         # preview_name = self.parent().windowTitle() + f'_radial_profile from {self.center}'

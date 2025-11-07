@@ -1683,10 +1683,25 @@ class PlotCanvas(QMainWindow):
     def radial_integration(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
         self.mode_control['radial_integration'] = True
-        self.statusBar.showMessage("Drag the circle to define center for radial integration.")
-        # Perform radial integration on the current image
-        self.radial_integration_dialog = RadialIntegrationDialog(parent=self)
-        self.radial_integration_dialog.show()
+        # self.statusBar.showMessage("Drag the circle to define center for radial integration.")
+        # # Perform radial integration on the current image
+        # self.radial_integration_dialog = RadialIntegrationDialog(parent=self)
+        # self.radial_integration_dialog.show()
+
+        # Add buttons for OK and cancel
+        OK_icon = os.path.join(self.wkdir, 'icons/OK.png')
+        self.buttons['ok'] = QAction(QIcon(OK_icon), 'OK', parent=self)
+        self.buttons['ok'].setStatusTip('Perform Radial Integration')
+        self.buttons['ok'].setShortcut('Return')
+        self.buttons['ok'].triggered.connect(self.perform_radial_integration)
+        self.toolbar.addAction(self.buttons['ok'])
+        cancel_icon = os.path.join(self.wkdir, 'icons/cancel.png')
+        self.buttons['cancel'] = QAction(QIcon(cancel_icon), 'Cancel', parent=self)
+        self.buttons['cancel'].setStatusTip('Cancel Radial Integration')
+        self.buttons['cancel'].setShortcut('Esc')
+        self.buttons['cancel'].triggered.connect(self.cancel_radial_integration)
+        self.toolbar.addAction(self.buttons['cancel'])
+
 
         # Add a circle selector to indicate the center
         x_range = self.img_size[-1] * self.scale
@@ -1701,31 +1716,73 @@ class PlotCanvas(QMainWindow):
                                     resizable=False,
                                     maxBounds=QRectF(0, 0, x_range, y_range)
                                     )
+        selector.addTranslateHandle([0.5, 0.5])  # Center handle for moving
         self.canvas.selector.append(selector)
         self._make_active_selector(selector)
         self.canvas.viewbox.addItem(selector)
+        # Display current center
+        self.statusBar.showMessage(f"Center: {self.img_size[-1]//2}, {self.img_size[-2]//2}")
         # Connect signals for circle change
         selector.sigRegionChangeFinished.connect(self.update_radial_integration_center)
         self.canvas.setFocus()  # Ensure the canvas has focus to receive key events
 
-        # Handle plot once dialog is accepted
-        if self.radial_integration_dialog.exec_() == QDialog.Accepted:
-            self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
-            # Plot the radial profile
-            center = self.radial_integration_dialog.center
-            preview_name = self.windowTitle() + f'_radial_profile from {center}'
-            x_data = self.radial_integration_dialog.x_data
-            y_data = self.radial_integration_dialog.y_data
-            x_label = f'Radial Distance ({self.units})'
-            y_label = 'Integrated Intensity (Counts)'
-            plot = PlotCanvasSpectrum(x_data, y_data, parent=self.parent())
-            plot.create_plot(xlabel=x_label, ylabel=y_label, title=preview_name)
-            plot.canvas.canvas_name = preview_name
-            self.parent().preview_dict[preview_name] = plot
-            self.parent().preview_dict[preview_name].show()
+    def cancel_radial_integration(self):
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
 
-            print(f'Performed radial integration on {self.windowTitle()} from the center: {center}.')
+    def perform_radial_integration(self):
+        # Get current center from the selector
+        selector = self.canvas.selector[0]
+        x, y = selector.pos().x(), selector.pos().y()
+        radius = selector.size()[0] / 2
+        center_x, center_y = x + radius, y + radius
+        center = int(center_x / self.scale), int(center_y / self.scale)
+        
+        # Calculate radial integration
+        img = self.get_current_img_from_canvas()
+        original_center = img.shape[1]//2, img.shape[0]//2
+        # Shift image to center
+        if center != original_center:
+            # offset = (int(center[0] - original_center[0]), int(center[1] - original_center[1]))
+            x_span = int(min(center[0], img.shape[1]-center[0]))
+            new_x_start = center[0] - x_span
+            new_x_end = new_x_start + 2 * x_span
+            y_span = int(min(center[1], img.shape[0]-center[1]))
+            new_y_start = center[1] - y_span
+            new_y_end = new_y_start + 2 * y_span
+            img = img[new_y_start:new_y_end, new_x_start:new_x_end]
+            if img.shape[0] != img.shape[1]:
+                img = filters.crop_to_square(img)
+            # print(f'Original center: {original_center}')
+            # print(f'New center: {center}')
+            # print(f"Cropping image to {new_y_start}:{new_y_end}, {new_x_start}:{new_x_end}")
+            # print(f'New image shape: {img.shape}')
 
+        radial_x, radial_y = filters.radial_integration(img)
+        calibrated_x = radial_x * self.scale
+
+        # Handle plotting
+        preview_name = self.windowTitle() + f'_radial_profile from {center}'
+        x_label = f'Radial Distance ({self.units})'
+        y_label = 'Integrated Intensity (Counts)'
+        plot = PlotCanvasSpectrum(calibrated_x, radial_y, parent=self.parent())
+        plot.create_plot(xlabel=x_label, ylabel=y_label, title=preview_name)
+        plot.canvas.canvas_name = preview_name
+        self.parent().preview_dict[preview_name] = plot
+        self.parent().preview_dict[preview_name].show()
+
+        print(f'Performed radial integration on {self.windowTitle()} from the center: {center}.')
+
+        self.cancel_radial_integration()
+
+
+    def cancel_radial_integration(self):
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
+        
+
+
+
+
+    @pyqtSlot()
     def update_radial_integration_center(self):
         if self.canvas.selector and self.mode_control['radial_integration']:
             selector = self.canvas.selector[0]
@@ -1739,8 +1796,12 @@ class PlotCanvas(QMainWindow):
             cx_pix, cy_pix = refine_center(image_data, (px_center_x, px_center_y), window_size)
             cx_pix = int(cx_pix)
             cy_pix = int(cy_pix)
+            # Display the center in the status bar
+            self.statusBar.showMessage(f"Center: {cx_pix}, {cy_pix}")
+
             # Update radial integration dialog
-            self.radial_integration_dialog.update_center((cx_pix, cy_pix))
+            # self.radial_integration_dialog.update_center((cx_pix, cy_pix))
+
             cx, cy = cx_pix * self.scale, cy_pix * self.scale
             x, y = cx - radius, cy - radius
             # Update selector position

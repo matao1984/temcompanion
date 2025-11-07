@@ -577,7 +577,7 @@ def calculate_angle_from_3_points(A, B, C):
     '''
     # A, B, C are the coordinates of the points (x, y)
     # Vector AB
-    AB = (B[0] - A[0], B[1] - A[1])
+    AB = (A[0] - B[0], A[1] - B[1])
     # Vector BC
     BC = (C[0] - B[0], C[1] - B[1])
 
@@ -590,9 +590,11 @@ def calculate_angle_from_3_points(A, B, C):
 
     # Cosine of the angle
     cos_theta = dot_product / (magnitude_AB * magnitude_BC)
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Ensure the value is within valid range for acos
 
     # Angle in radians
     angle_rad = math.acos(cos_theta)
+
 
     # Angle in degrees
     angle_deg = math.degrees(angle_rad)

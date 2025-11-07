@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QM
                              QFileDialog, QDialog, QAction, QLabel, QStatusBar, 
                              QProgressBar, QToolBar
                              )
-from PyQt5.QtCore import Qt,  QThread, QRectF, QSize, pyqtSignal
+from PyQt5.QtCore import Qt,  QThread, QRectF, QSize, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QIcon
 
 import os
@@ -34,7 +34,7 @@ from .UI_elements import (FilterSettingDialog, MainFrameCanvas, CustomScaleBar,
                           SimpleMathDialog, DPCDialog, RadialIntegrationDialog, 
                           ManualCropDialog, ApplyFilterDialog, ListReorderDialog,
                           AlignStackDialog, MetadataViewer, PlotSettingDialog, 
-                          gpaSettings
+                          gpaSettings, AngleROI
                         )
 
 from .functions import (getDirectory, getFileNameType, save_as_tif16, save_with_pil,
@@ -347,6 +347,12 @@ class PlotCanvas(QMainWindow):
         measure_action.triggered.connect(self.measure)
         self.toolbar.addAction(measure_action)
 
+        measure_angle_icon = os.path.join(self.wkdir, 'icons/angle.png')
+        measure_angle_action = QAction(QIcon(measure_angle_icon), "Measure Angle", self)
+        measure_angle_action.setStatusTip("Measure angle from three points")
+        measure_angle_action.triggered.connect(self.measure_angle)
+        self.toolbar.addAction(measure_angle_action)
+
         measurefft_icon = os.path.join(self.wkdir, 'icons/measure_fft.png')
         measurefft_action = QAction(QIcon(measurefft_icon), 'Measure FFT', self)
         measurefft_action.setStatusTip('Measure distance and angle in Diffraction/FFT')
@@ -634,6 +640,9 @@ class PlotCanvas(QMainWindow):
         measure_action = QAction('Measure', self)
         measure_action.triggered.connect(self.measure)
         analyze_menu.addAction(measure_action)
+        measure_angle_action = QAction('Measure Angle', self)
+        measure_angle_action.triggered.connect(self.measure_angle)
+        analyze_menu.addAction(measure_angle_action)
         measure_fft_action = QAction('Measure Diffraction/FFT', self)
         measure_fft_action.triggered.connect(self.measure_fft)        
         analyze_menu.addAction(measure_fft_action)        
@@ -1556,6 +1565,44 @@ class PlotCanvas(QMainWindow):
     def stop_distance_measurement(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
 
+    def measure_angle(self):
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
+        # Activate angle measurement mode
+        self.mode_control['angle_measurement'] = True
+        self.statusBar.showMessage("Drag the angle selector to measure angle.")
+        
+        # Buttons for finish
+        OK_icon = os.path.join(self.wkdir, 'icons/OK.png')
+        self.buttons['ok'] = QAction(QIcon(OK_icon), 'OK', parent=self)
+        self.buttons['ok'].setStatusTip('Finish Angle Measurement')
+        self.buttons['ok'].setShortcut('Esc')
+        self.buttons['ok'].triggered.connect(self.stop_angle_measurement)
+        self.toolbar.addAction(self.buttons['ok'])
+
+        # Add an angle selector
+        x_range = self.img_size[-1] * self.scale
+        y_range = self.img_size[-2] * self.scale
+        p1 = 0.625 * x_range, 0.375 * y_range
+        p2 = 0.5 * x_range, 0.5 * y_range
+        p3 = 0.625 * x_range, 0.5 * y_range
+
+        selector = AngleROI([p1, p2, p3],
+                            pen=pg.mkPen('y', width=3),
+                            movable=True,
+                            rotatable=True,
+                            resizable=True
+                            )
+        self.canvas.selector.append(selector)
+        # self._make_active_selector(selector)
+        self.canvas.viewbox.addItem(selector)
+
+        # Connect signals for angle change
+        selector.sigRegionChanged.connect(lambda: self.statusBar.showMessage(f"Angle Measurement: {selector.angle:.2f}°"))
+        self.canvas.setFocus()  # Ensure the canvas has focus to receive key events
+
+    def stop_angle_measurement(self):
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
+
     def lineprofile(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
         # Activate line profile mode
@@ -2048,7 +2095,8 @@ class PlotCanvas(QMainWindow):
         self.worker.finished.connect(lambda: print(f'Finished running GPA on {title} with {self.algorithm} GPA.'))
         self.worker.result.connect(self.display_gpa_result)
         self.worker.start()
-
+    
+    @pyqtSlot(tuple)
     def display_gpa_result(self, result):
         main_window = self.parent()
         # Display the GPA result
@@ -2655,7 +2703,7 @@ class PlotCanvasFFT(PlotCanvas):
         mask_action = QAction(QIcon(mask_icon), 'Mask and iFFT', self)
         mask_action.setStatusTip('Add masks to FFT spots and perform inverse FFT.')
         mask_action.triggered.connect(self.mask)
-        self.toolbar.insertAction(toolbar.actions()[11], mask_action)
+        self.toolbar.insertAction(toolbar.actions()[12], mask_action)
 
         # Store the original image scale in real space
         self.real_scale = self.scale

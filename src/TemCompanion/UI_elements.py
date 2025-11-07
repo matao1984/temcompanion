@@ -18,7 +18,7 @@ import pickle
 import json
 
 # Internal modules
-from .functions import gamma_correct_lut, find_img_by_title
+from .functions import gamma_correct_lut, find_img_by_title, calculate_angle_from_3_points
 from . import filters
 from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 
@@ -2470,3 +2470,29 @@ class ListReorderDialog(QDialog):
             original_index = self.item_to_index[item_text]
             self.ordered_items_idx.append(original_index)
             self.accept()    
+
+
+#=================Angle measurement ROI==========================
+class AngleROI(pg.PolyLineROI):
+    def __init__(self, positions, **args):
+        super().__init__(positions, closed=False, **args)
+        self.handle1 = self.getHandles()[0]
+        self.handle2 = self.getHandles()[1]
+        self.handle3 = self.getHandles()[2]
+        # self.text_item = pg.TextItem('', color='yellow', anchor=(0, 0))
+        self.angle = 0.0
+        self.update_angle()
+        self.sigRegionChanged.connect(self.update_angle)
+
+    def update_angle(self):
+        p1 = self.handle1.pos()
+        p2 = self.handle2.pos()
+        p3 = self.handle3.pos()
+        # self.angle = self.calculate_angle(p1, p2, p3)
+        self.angle = calculate_angle_from_3_points((p1.x(), p1.y()), (p2.x(), p2.y()), (p3.x(), p3.y()))
+        # self.text_item.setText(f'{self.angle:.2f}°')
+        # mid_point = (p1 + p3) / 2
+        # self.text_item.setPos(mid_point)
+
+    def segmentClicked(self, segment, ev=None, pos=None):
+        pass # Disable segment click

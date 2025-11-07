@@ -31,7 +31,7 @@ from rsciio.image import file_writer as im_writer
 # Internal imports
 from .UI_elements import (FilterSettingDialog, MainFrameCanvas, CustomScaleBar, 
                           SetScaleDialog, CustomSettingsDialog, RotateImageDialog,
-                          SimpleMathDialog, DPCDialog, RadialIntegrationDialog, 
+                          SimpleMathDialog, DPCDialog,
                           ManualCropDialog, ApplyFilterDialog, ListReorderDialog,
                           AlignStackDialog, MetadataViewer, PlotSettingDialog, 
                           gpaSettings, AngleROI

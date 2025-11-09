@@ -388,7 +388,6 @@ Some default settings for TemCompanion are saved in the default_config.json file
   "default_batch_open": "Velox emd Files (*.emd)", -> Default file type for the Batch Convert;
 
   "default_save": "16-bit TIFF Files (*.tiff)" -> Default file type for save images.
-}
 
 
 ## 7. Citation

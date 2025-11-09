@@ -138,6 +138,7 @@ Redefine the pixel calibration. The acceptable units for real space images are: 
 Draw a line on the image to measure the distance and angle. The distance will be calculated with the pixel calibration. The angle is between the line and the horizontal direction. The line position and length can be changed by dragging the end points.
 
 - Measure angle:
+
 Measure the angle from 3 points on the image. The angle measurement ROI can be dragged and resized freely.
 
 - Measure diffraction/FFT:

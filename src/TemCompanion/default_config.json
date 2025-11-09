@@ -13,6 +13,9 @@
   "location": "lower left",
   "dimension": "si-length",
   "colorbar": false,
+  "edgesmooth": 0.3,
+  "playback_speed": 100,
+  "gif_duration": 200,
   "filter_parameters": {
     "Apply WF": false,
     "WF Delta": "10",
@@ -33,5 +36,8 @@
     "Apply GS": false,
     "GS-hp-cutoff": "0",
     "GS-cutoff": "0.3"
-  }
+  },
+  "default_open": "Velox emd Files (*.emd)",
+  "default_batch_open": "Velox emd Files (*.emd)",
+  "default_save": "16-bit TIFF Files (*.tiff)"
 }

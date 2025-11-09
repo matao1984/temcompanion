@@ -34,6 +34,21 @@ class BatchConverter(QMainWindow):
 
         self.setAcceptDrops(True)
 
+        # Remember last used filter for multi-file open dialog
+        self._filters = (
+            "Velox emd Files (*.emd);;"
+            "TIA ser Files (*.ser);;"
+            "DigitalMicrograph Files (*.dm3 *.dm4);;"
+            "Tiff Files (*.tif *.tiff);;"
+            "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;"
+            "Pickle Dictionary Files (*.pkl)"
+        )
+        # Session-only last selected filter (reset each app run)
+        try:
+            self.last_batch_filter = self.parent().settings.get('lastBatchOpenFilter', "Velox emd Files (*.emd)")
+        except Exception:
+            self.last_batch_filter = "Velox emd Files (*.emd)"
+
     def setupUi(self):
         self.setWindowTitle("Batch Conversion")
         self.setObjectName("BatchConverter")
@@ -168,9 +183,21 @@ class BatchConverter(QMainWindow):
 # Open file button connected to OpenFile
 
     def openfile(self):
-        self.files, self.filetype = QFileDialog.getOpenFileNames(self,"Select files to be converted:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl)")
+        self.files, self.filetype = QFileDialog.getOpenFileNames(
+            self,
+            "Select files to be converted:",
+            "",
+            self._filters,
+            self.last_batch_filter
+        )
         if self.files:
+            if self.filetype:
+                self.last_batch_filter = self.filetype
+                # Update parent session settings if available
+                try:
+                    self.parent().settings['lastBatchOpenFilter'] = self.last_batch_filter
+                except Exception:
+                    pass
             self.output_dir = getDirectory(self.files[0])
             self.outputdirbox.setText(self.output_dir)
             self.openfilebox.setText('')

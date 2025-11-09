@@ -125,10 +125,16 @@
 # Also update DPC reconstruction to take non square images
 # Added a default_config.json file for default parameters for image display and filter parameters. 
 # Multiprocess support in batch conversion that significantly speeds up the conversion.
+# Added value validation for most of input parameters to prevent crashes.
+# Added angle measurement tool.
+# Simplified radial integration operations.
+# Added User Guide manual and linked to the main UI.
+# UI saves the last file type for open and save dialogs.
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
-                             QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget
+                             QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget,
+                             QDialog
                              )
 from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer, QUrl
 from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent, QDesktopServices
@@ -137,6 +143,7 @@ from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent, QDesktopServices
 import sys
 import os
 import pickle
+import markdown
 
 
 #===================Import internal modules==========================================
@@ -158,9 +165,33 @@ class UI_TemCompanion(QMainWindow):
         # Environment variables
         self.ver = config.pop('version')
         self.rdate = config.pop('release_date')
+        
+        # Remember last used file filter in open dialog
+        self._filters = (
+            "Velox emd Files (*.emd);;"
+            "TIA ser Files (*.ser);;"
+            "DigitalMicrograph Files (*.dm3 *.dm4);;"
+            "Tiff Files (*.tif *.tiff);;"
+            "MRC Files (*.mrc);;"
+            "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;"
+            "Pickle Dictionary Files (*.pkl);;"
+            "Image Series (*.*)"
+        )
+        # Session-only settings (reset on restart)
+        # Initialize defaults from config
         self.wkdir = config.pop('working_directory')
         self.colormap = config.pop('colormap')
         self.filter_parameters = config.pop('filter_parameters')
+        default_open_filter = config.pop('default_open', "Velox emd Files (*.emd)")
+        default_batch_filter = config.pop('default_batch_open', "Velox emd Files (*.emd)")
+        default_save_filter = config.pop('default_save', "16-bit TIFF Files (*.tiff)")
+
+        self.settings = {
+            'lastOpenFilter': default_open_filter,
+            'lastBatchOpenFilter': default_batch_filter,
+            'lastSaveFilter': default_save_filter,
+        }
+        self.last_open_filter = self.settings['lastOpenFilter']
 
         self.attribute = config  # Remaining config items are default image settings
 
@@ -276,10 +307,10 @@ class UI_TemCompanion(QMainWindow):
         self.aboutButton.setObjectName("aboutButton")
         self.aboutButton.setText("About")
         
-        self.contactButton = QPushButton(self)
-        self.contactButton.setFixedSize(80, 60)
-        self.contactButton.setObjectName("contactButton")
-        self.contactButton.setText("Contact")
+        self.guideButton = QPushButton(self)
+        self.guideButton.setFixedSize(80, 60)
+        self.guideButton.setObjectName("guideButton")
+        self.guideButton.setText("User\nGuide")
 
         self.donateButton = QPushButton(self)
         self.donateButton.setFixedSize(80, 60)
@@ -289,7 +320,7 @@ class UI_TemCompanion(QMainWindow):
         buttonlayout.addWidget(self.openfileButton)
         buttonlayout.addWidget(self.convertButton)
         buttonlayout.addWidget(self.aboutButton)
-        buttonlayout.addWidget(self.contactButton)
+        buttonlayout.addWidget(self.guideButton)
         buttonlayout.addWidget(self.donateButton)
 
         layout.addLayout(buttonlayout)
@@ -357,7 +388,7 @@ class UI_TemCompanion(QMainWindow):
         self.openfileButton.clicked.connect(self.openfile)       
         self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
-        self.contactButton.clicked.connect(self.show_contact)
+        self.guideButton.clicked.connect(self.show_user_guide)
         # self.donateButton.clicked.connect(self.donate) 
         self.donateButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://paypal.me/matao1984?country.x=US&locale.x=en_US")))
 
@@ -446,9 +477,19 @@ class UI_TemCompanion(QMainWindow):
 # Open file button connected to OpenFile
 
     def openfile(self):
-        self.file, self.file_type = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;MRC Files (*.mrc);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl);;Image Series (*.*)")
+        # Use last selected filter as the default; update it after user picks
+        self.file, self.file_type = QFileDialog.getOpenFileName(
+            self,
+            "Select a TEM image file:",
+            "",
+            self._filters,
+            self.last_open_filter
+        )
         if self.file:
+            # Update session-only selected filter
+            if self.file_type:
+                self.last_open_filter = self.file_type
+                self.settings['lastOpenFilter'] = self.last_open_filter
             self.preview()
            
         else: 
@@ -468,7 +509,6 @@ class UI_TemCompanion(QMainWindow):
 #=====================================================================        
     def show_about(self):
         msg = QMessageBox()
-#        msg.setIcon(QMessageBox.Information)
         msg.setText("TemCompanion: a comprehensive package for TEM data processing and analysis."\
                     "<br>"\
                     "This app was designed by Dr. Tao Ma"\
@@ -481,23 +521,81 @@ class UI_TemCompanion(QMainWindow):
                     "SoftwareX, 2025, 31, 102212. "\
                     "<a href=\"https://doi.org/10.1016/j.softx.2025.102212\">doi:10.1016/j.softx.2025.102212</a>"
                     "<br>"\
-                    "Get more information and source code from <a href=\"https://github.com/matao1984/temcompanion\">here</a>.".format(self.ver, self.rdate))
+                    "Get more information and source code from <a href=\"https://github.com/matao1984/temcompanion\">here</a>."
+                    "<br>"\
+                    "Contact: <a href=\"mailto:matao1984@gmail.com\">matao1984@gmail.com</a>".format(self.ver, self.rdate))
         msg.setWindowTitle(f"{self.ver}: About")
 
         msg.exec()
         
 
 #=====================================================================        
-    def show_contact(self):
-        msg = QMessageBox()
-        msg.setText("Ask questions and report bugs to:"\
-                    "<br>"
-                    "<a href=\"mailto:matao1984@gmail.com\">matao1984@gmail.com</a>")
-        msg.setWindowTitle(self.ver + ": Contact")
-
-        msg.exec()
+    def show_user_guide(self):
+        """Display the User Guide in a dialog with markdown rendering"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{self.ver}: User Guide")
+        dialog.resize(950, 750)
         
-#====================================================================
+        layout = QVBoxLayout()
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)  # Enable clickable links
+        
+        # Find the User Guide markdown file
+        # Try to locate it relative to this file
+        guide_path = os.path.join(self.wkdir, "docs", "User Guide.md")
+
+        if os.path.exists(guide_path):
+            try:
+                with open(guide_path, 'r', encoding='utf-8') as f:
+                    md_text = f.read()
+                    
+                # Try to convert markdown to HTML for better rendering
+                try:
+                    
+                    html = markdown.markdown(
+                        md_text, 
+                        extensions=['extra', 'codehilite', 'tables', 'toc']
+                    )
+                    # Add some basic CSS styling
+                    styled_html = f"""
+                    <html>
+                    <head>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }}
+                        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
+                        h2 {{ color: #34495e; margin-top: 30px; }}
+                        h3 {{ color: #7f8c8d; }}
+                        code {{ background-color: #f4f4f4; padding: 2px 6px; border-radius: 3px; }}
+                        pre {{ background-color: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                        a {{ color: #3498db; }}
+                        ul {{ margin-left: 20px; }}
+                        li {{ margin: 5px 0; }}
+                    </style>
+                    </head>
+                    <body>
+                    {html}
+                    </body>
+                    </html>
+                    """
+                    browser.setHtml(styled_html)
+                except ImportError:
+                    # markdown module not available, display as plain text
+                    browser.setPlainText(md_text)
+            except Exception as e:
+                browser.setPlainText(f"Error loading User Guide: {str(e)}")
+        else:
+            browser.setHtml(
+                "<h2>User Guide not found</h2>"
+                "<p>The User Guide document could not be located.</p>"
+                "<p>Please visit <a href='https://github.com/matao1984/temcompanion'>TemCompanion GitHub</a> for documentation.</p>"
+                "<p>Or contact: <a href='mailto:matao1984@gmail.com'>matao1984@gmail.com</a></p>"
+            )
+        
+        layout.addWidget(browser)
+        dialog.setLayout(layout)
+        dialog.exec_()
+        
+#=====================================================================
         
     def donate(self):
         msg = QMessageBox()

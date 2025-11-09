@@ -227,8 +227,9 @@ class MainFrameCanvas(QWidget):
                     w -= step
                     self.active_selector.setSize([l, w])
 
-    def toggle_play(self, t=100):
-        self.isPlaying = not self.isPlaying       
+    def toggle_play(self):
+        self.isPlaying = not self.isPlaying
+        t = self.parent().attribute.get('playback_speed', 100)
         if self.isPlaying:
             self.timer.start(t) 
         else:

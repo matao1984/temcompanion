@@ -769,12 +769,38 @@ class PlotCanvas(QMainWindow):
 
     def save_figure(self):
         options = QFileDialog.Options()
-        self.file_path, self.selected_type = QFileDialog.getSaveFileName(self.parent(), 
-                                                   "Save Figure", 
-                                                   "", 
-                                                   "16-bit TIFF Files (*.tiff);;32-bit TIFF Files (*.tiff);;8-bit Grayscale TIFF Files (*.tiff);;Grayscale PNG Files (*.png);;Grayscale JPEG Files (*.jpg);;Color TIFF Files (*.tiff);;Color PNG Files (*.png);;Color JPEG Files (*.jpg);;Pickle Dictionary Files (*.pkl)", 
-                                                   options=options)
+        # Remember and reuse last selected save filter (session only)
+        last_save_filter = None
+        try:
+            last_save_filter = self.parent().settings.get('lastSaveFilter', "16-bit TIFF Files (*.tiff)")
+        except Exception:
+            last_save_filter = "16-bit TIFF Files (*.tiff)"
+        save_filters = (
+            "16-bit TIFF Files (*.tiff);;"
+            "32-bit TIFF Files (*.tiff);;"
+            "8-bit Grayscale TIFF Files (*.tiff);;"
+            "Grayscale PNG Files (*.png);;"
+            "Grayscale JPEG Files (*.jpg);;"
+            "Color TIFF Files (*.tiff);;"
+            "Color PNG Files (*.png);;"
+            "Color JPEG Files (*.jpg);;"
+            "Pickle Dictionary Files (*.pkl)"
+        )
+        self.file_path, self.selected_type = QFileDialog.getSaveFileName(
+            self.parent(),
+            "Save Figure",
+            "",
+            save_filters,
+            last_save_filter,
+            options=options
+        )
         if self.file_path:
+            # Update session-only selected filter for next time
+            if self.selected_type:
+                try:
+                    self.parent().settings['lastSaveFilter'] = self.selected_type
+                except Exception:
+                    pass
             # Implement custom save logic here
            
             # Extract the chosen file format  
@@ -803,7 +829,7 @@ class PlotCanvas(QMainWindow):
                     save_as_tif16(img_to_save, self.f_name, self.output_dir, dtype='float32')
                     
                 elif self.selected_type in ['8-bit Grayscale TIFF Files (*.tiff)','Grayscale PNG Files (*.png)', 'Grayscale JPEG Files (*.jpg)']:
-                    save_with_pil(img_to_save, self.f_name, self.output_dir, self.file_type, scalebar=self.scalebar_settings['scalebar']) 
+                    save_with_pil(img_to_save, self.f_name, self.output_dir, self.file_type, scalebar=self.attribute['scalebar']) 
                 else:
                     # Save with pyqtgraph export function
                     exporter = pg.exporters.ImageExporter(self.canvas.viewbox)
@@ -1706,7 +1732,7 @@ class PlotCanvas(QMainWindow):
         # Add a circle selector to indicate the center
         x_range = self.img_size[-1] * self.scale
         y_range = self.img_size[-2] * self.scale
-        window_size = min(x_range, y_range) * 0.01
+        window_size = min(x_range, y_range) * 0.02
         x0 = x_range * 0.5 - window_size
         y0 = y_range * 0.5 - window_size
         selector = pg.CircleROI([x0, y0], radius=window_size,
@@ -1917,7 +1943,7 @@ class PlotCanvas(QMainWindow):
             # Add a circle selector for center definition
             x0 = x_range * 0.5 
             y0 = y_range * 0.5 
-            window_size = min(x_range, y_range) * 0.01
+            window_size = min(x_range, y_range) * 0.02
             selector = pg.CircleROI([x0 - window_size, y0 - window_size], radius=window_size,
                                     pen=pg.mkPen('r', width=3),
                                     movable=True,
@@ -2648,6 +2674,7 @@ class PlotCanvas(QMainWindow):
     def export_stack_gif(self):
         data = self.get_original_img_dict()
         img_data = data['data']
+        duration = self.attribute.get('gif_duration', 500)
         # Normalize data
         for f in range(img_data.shape[0]):
             img_data[f] = norm_img(img_data[f]) * 255
@@ -2660,7 +2687,7 @@ class PlotCanvas(QMainWindow):
                                                    "GIF Files (*.gif)", 
                                                    options=options)
         if file_path:
-            im_writer(file_path, data_to_export, duration=500, loop=0) 
+            im_writer(file_path, data_to_export, duration=duration, loop=0) 
             
             print(f'{file_path} has been exported.')
 
@@ -2731,13 +2758,13 @@ class PlotCanvasFFT(PlotCanvas):
         self.source_img = source_img  # Store the original canvas name
 
 
-        fft_menu = self.menubar.children()[3]
+        fft_menu = self.menubar.children()[4]
         mask_action = QAction('Mask and iFFT', self)
         mask_action.triggered.connect(self.mask)
         fft_menu.addAction(mask_action)
         
         # Remove GPA
-        analyze_menu = self.menubar.children()[4]
+        analyze_menu = self.menubar.children()[3]
         actions = analyze_menu.actions()
         for action in actions:
             if action.iconText() == 'Geometric Phase Analysis':
@@ -3037,7 +3064,8 @@ class PlotCanvasFFT(PlotCanvas):
                 m_radius = 1 # Smallest mask radius is 1 pixel
             center.append(m_center)
             radius.append(m_radius)
-        mask = create_mask(fft_data.shape, center, radius)              
+        edgesmooth = self.attribute.get('edgesmooth', 0.3)
+        mask = create_mask(fft_data.shape, center, radius, edge_blur=edgesmooth)
         masked_fft = fft_data * mask
         filtered_img_padded = ifft2(ifftshift(masked_fft)).real
         filtered_img = filtered_img_padded[:self.img_size[0], :self.img_size[1]]

@@ -457,10 +457,10 @@ def load_file(file, file_type):
 @njit(parallel=True)
 def rgb2gray(im):
     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
-    im_x, im_y = im.shape
-    gray = np.zeros((im_x, im_y), dtype='int16')
-    for i in prange(im_x):
-        for j in prange(im_y):
+    im_y, im_x = im.shape[0], im.shape[1]
+    gray = np.zeros((im_y, im_x), dtype='int16')
+    for i in prange(im_y):
+        for j in prange(im_x):
             r = im[i,j][0]
             g = im[i,j][1]
             b = im[i,j][2]

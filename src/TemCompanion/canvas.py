@@ -94,7 +94,6 @@ class PlotCanvas(QMainWindow):
                             }
 
         # Some dialogs
-        self.radial_integration_dialog = None
         self.dpc_dialog = None
 
         # All the push buttons
@@ -2087,22 +2086,24 @@ class PlotCanvas(QMainWindow):
         x_range = fft_shape[-1] * preview_fft.scale
         y_range = fft_shape[-2] * preview_fft.scale
         x0, y0 = x_range * 0.625, y_range * 0.5
-       
-
-        # Add two masks on the FFT
+             
         # Some default values
-        self.r = 10
-        self.edgesmooth = 0.3
-        self.stepsize = 4
-        self.sigma = 10
-        self.vmin = -0.1
-        self.vmax = 0.1
-        self.algorithm = 'standard'
+        # self.r = 10
+        # self.edgesmooth = 0.3
+        # self.stepsize = 4
+        # self.sigma = 10
+        # self.vmin = -0.1
+        # self.vmax = 0.1
+        # self.algorithm = 'standard'
         preview_fft = self.parent().preview_dict[preview_name]
 
-        preview_fft.add_mask(pairs=False)
-        preview_fft.canvas.selector[0].setPos((x0, y0))       
-        preview_fft.add_mask(pairs=False)
+        # Add two masks on the FFT
+        radius = self.attribute['gpa']['mask_r']
+        preview_fft.add_mask(r=radius, pairs=False)
+        preview_fft.canvas.selector[0].setPos((x0, y0)) 
+        # preview_fft.canvas.selector[0].setSize((radius * preview_fft.scale * 2, radius * preview_fft.scale * 2))      
+        preview_fft.add_mask(r=radius, pairs=False)
+        # preview_fft.canvas.selector[1].setSize((radius * preview_fft.scale * 2, radius * preview_fft.scale * 2))
 
         preview_fft.statusBar.showMessage('Drag the masks on noncolinear strong spots.')
 
@@ -2126,7 +2127,7 @@ class PlotCanvas(QMainWindow):
         preview_fft.buttons['add_mask'] = QAction(QIcon(add_icon), 'Add Mask', parent=preview_fft)
         preview_fft.buttons['add_mask'].setStatusTip('Add Mask')
         preview_fft.toolbar.addAction(preview_fft.buttons['add_mask'])
-        preview_fft.buttons['add_mask'].triggered.connect(lambda: preview_fft.add_mask(pairs=False))
+        preview_fft.buttons['add_mask'].triggered.connect(lambda: preview_fft.add_mask(r=self.attribute['gpa']['mask_r'], pairs=False))
         remove_icon = os.path.join(self.wkdir, 'icons/minus.png')
         preview_fft.buttons['remove_mask'] = QAction(QIcon(remove_icon), 'Remove Mask', parent=preview_fft)
         preview_fft.buttons['remove_mask'].setStatusTip('Remove Mask')
@@ -2171,15 +2172,22 @@ class PlotCanvas(QMainWindow):
         r = max(r_list)
 
         print(f'Running GPA with g vectors: {g} and mask radius: {r} pixels.')
+
+        # Get other parameters
+        algorithm = self.attribute['gpa']['algorithm']
+        edgesmooth = self.attribute['gpa']['edgesmooth']
+        sigma = self.attribute['gpa']['sigma']
+        step_size = self.attribute['gpa']['step_size']
+        window_size = self.attribute['gpa']['window_size']
         
         title = self.canvas.canvas_name
         # Run GPA in a separate thread
-        self.worker = Worker(GPA, data, g, algorithm=self.algorithm, r=r, edge_blur=self.edgesmooth, sigma=self.sigma, window_size=r, step=self.stepsize)
+        self.worker = Worker(GPA, data, g, algorithm=algorithm, r=r, edge_blur=edgesmooth, sigma=sigma, window_size=window_size, step=step_size)
         self.toggle_progress_bar('ON')
-        print(f'Running GPA on {title} with {self.algorithm} GPA...')
+        print(f'Running GPA on {title} with {algorithm} GPA...')
         self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
         self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(lambda: print(f'Finished running GPA on {title} with {self.algorithm} GPA.'))
+        self.worker.finished.connect(lambda: print(f'Finished running GPA on {title} with {algorithm} GPA.'))
         self.worker.result.connect(self.display_gpa_result)
         self.worker.start()
     
@@ -2195,6 +2203,10 @@ class PlotCanvas(QMainWindow):
         oxy = oxy[:im_y, :im_x]
         img = self.get_img_dict_from_canvas()
         cm = self.canvas.colormap['seismic']
+
+        # Set color map limits
+        vmin = self.attribute['gpa']['vmin']
+        vmax = self.attribute['gpa']['vmax']
         
 
         # Display the strain tensors
@@ -2203,9 +2215,9 @@ class PlotCanvas(QMainWindow):
         preview_name_exx = self.canvas.canvas_name + "_exx"
         self.plot_new_image(exx_dict, preview_name_exx)
         main_window.preview_dict[preview_name_exx].setWindowTitle('Epsilon xx')
-        main_window.preview_dict[preview_name_exx].canvas.image_item.setLevels((self.vmin, self.vmax))
-        main_window.preview_dict[preview_name_exx].canvas.attribute['vmin'] = self.vmin
-        main_window.preview_dict[preview_name_exx].canvas.attribute['vmax'] = self.vmax
+        main_window.preview_dict[preview_name_exx].canvas.image_item.setLevels((vmin, vmax))
+        main_window.preview_dict[preview_name_exx].canvas.attribute['vmin'] = vmin
+        main_window.preview_dict[preview_name_exx].canvas.attribute['vmax'] = vmax
         main_window.preview_dict[preview_name_exx].canvas.image_item.setLookupTable(cm)
         main_window.preview_dict[preview_name_exx].canvas.attribute['cmap'] = 'seismic'
         main_window.preview_dict[preview_name_exx].canvas.toggle_colorbar(show=True)
@@ -2215,9 +2227,9 @@ class PlotCanvas(QMainWindow):
         preview_name_eyy = self.canvas.canvas_name + "_eyy"
         self.plot_new_image(eyy_dict, preview_name_eyy)
         main_window.preview_dict[preview_name_eyy].setWindowTitle('Epsilon yy')
-        main_window.preview_dict[preview_name_eyy].canvas.image_item.setLevels((self.vmin, self.vmax))
-        main_window.preview_dict[preview_name_eyy].canvas.attribute['vmin'] = self.vmin
-        main_window.preview_dict[preview_name_eyy].canvas.attribute['vmax'] = self.vmax
+        main_window.preview_dict[preview_name_eyy].canvas.image_item.setLevels((vmin, vmax))
+        main_window.preview_dict[preview_name_eyy].canvas.attribute['vmin'] = vmin
+        main_window.preview_dict[preview_name_eyy].canvas.attribute['vmax'] = vmax
         main_window.preview_dict[preview_name_eyy].canvas.image_item.setLookupTable(cm)
         main_window.preview_dict[preview_name_eyy].canvas.attribute['cmap'] = 'seismic'
         main_window.preview_dict[preview_name_eyy].canvas.toggle_colorbar(show=True)
@@ -2227,9 +2239,9 @@ class PlotCanvas(QMainWindow):
         preview_name_exy = self.canvas.canvas_name + "_exy"
         self.plot_new_image(exy_dict, preview_name_exy)
         main_window.preview_dict[preview_name_exy].setWindowTitle('Epsilon xy')
-        main_window.preview_dict[preview_name_exy].canvas.image_item.setLevels((self.vmin, self.vmax))
-        main_window.preview_dict[preview_name_exy].canvas.attribute['vmin'] = self.vmin
-        main_window.preview_dict[preview_name_exy].canvas.attribute['vmax'] = self.vmax
+        main_window.preview_dict[preview_name_exy].canvas.image_item.setLevels((vmin, vmax))
+        main_window.preview_dict[preview_name_exy].canvas.attribute['vmin'] = vmin
+        main_window.preview_dict[preview_name_exy].canvas.attribute['vmax'] = vmax
         main_window.preview_dict[preview_name_exy].canvas.image_item.setLookupTable(cm)
         main_window.preview_dict[preview_name_exy].canvas.attribute['cmap'] = 'seismic'
         main_window.preview_dict[preview_name_exy].canvas.toggle_colorbar(show=True)
@@ -2239,9 +2251,9 @@ class PlotCanvas(QMainWindow):
         preview_name_oxy = self.canvas.canvas_name + "_oxy"
         self.plot_new_image(oxy_dict, preview_name_oxy)
         main_window.preview_dict[preview_name_oxy].setWindowTitle('Omega')
-        main_window.preview_dict[preview_name_oxy].canvas.image_item.setLevels((self.vmin, self.vmax))
-        main_window.preview_dict[preview_name_oxy].canvas.attribute['vmin'] = self.vmin
-        main_window.preview_dict[preview_name_oxy].canvas.attribute['vmax'] = self.vmax
+        main_window.preview_dict[preview_name_oxy].canvas.image_item.setLevels((vmin, vmax))
+        main_window.preview_dict[preview_name_oxy].canvas.attribute['vmin'] = vmin
+        main_window.preview_dict[preview_name_oxy].canvas.attribute['vmax'] = vmax
         main_window.preview_dict[preview_name_oxy].canvas.image_item.setLookupTable(cm)
         main_window.preview_dict[preview_name_oxy].canvas.attribute['cmap'] = 'seismic'
         main_window.preview_dict[preview_name_oxy].canvas.toggle_colorbar(show=True)
@@ -2251,21 +2263,28 @@ class PlotCanvas(QMainWindow):
         preview_name = self.canvas.canvas_name + '_Live FFT'
         r = max([mask.size()[0] / 2 for mask in self.parent().preview_dict[preview_name].canvas.selector])
         r_pix = int(r / self.parent().preview_dict[preview_name].scale)
-        step = max(r*2//5, 2)
-        dialog = gpaSettings(int(r_pix), self.edgesmooth, step, self.sigma, self.algorithm, vmin=self.vmin, vmax=self.vmax, parent=self)
+        step = self.attribute['gpa']['step_size']
+        edgesmooth = self.attribute['gpa']['edgesmooth']
+        sigma = self.attribute['gpa']['sigma']
+        algorithm = self.attribute['gpa']['algorithm']
+        vmin = self.attribute['gpa']['vmin']
+        vmax = self.attribute['gpa']['vmax']
+
+        dialog = gpaSettings(r_pix, edgesmooth, step, sigma, algorithm, vmin=vmin, vmax=vmax, parent=self)
         if dialog.exec_() == QDialog.Accepted:
-            self.r = dialog.masksize
-            self.edgesmooth = dialog.edgesmooth
-            self.stepsize = dialog.stepsize
-            self.sigma = dialog.sigma
-            self.vmin = dialog.vmin
-            self.vmax = dialog.vmax
-            self.algorithm = dialog.gpa
+            self.attribute['gpa']['mask_r'] = dialog.masksize
+            self.attribute['gpa']['edgesmooth'] = dialog.edgesmooth
+            self.attribute['gpa']['step_size'] = dialog.stepsize
+            self.attribute['gpa']['sigma'] = dialog.sigma
+            self.attribute['gpa']['vmin'] = dialog.vmin
+            self.attribute['gpa']['vmax'] = dialog.vmax
+            self.attribute['gpa']['algorithm'] = dialog.gpa
             
             
         # Update masks 
+        radius = self.attribute['gpa']['mask_r']
         for mask in self.parent().preview_dict[preview_name].canvas.selector:
-            mask.setSize(self.r * 2 * self.parent().preview_dict[preview_name].scale)
+            mask.setSize(radius * 2 * self.parent().preview_dict[preview_name].scale)
 
 
     def refine_mask(self):
@@ -2533,7 +2552,7 @@ class PlotCanvas(QMainWindow):
         
         
         # Calculate the drift with sub pixel precision
-        upsampling = 100
+        upsampling = int(1 / self.attribute['alignment_precision'])
         print('Stack alignment using phase cross-correlation.')
         for n in range(img_n -1):            
             fixed = img[n]
@@ -2909,6 +2928,9 @@ class PlotCanvasFFT(PlotCanvas):
          # Display a message in the status bar
         self.statusBar.showMessage("Drag masks on FFT spots. Add more if needed.")
 
+        # Default radius for masks
+        mask_r = 0.01 * min(self.img_size[-1] * self.scale, self.img_size[-2] * self.scale)
+
         # Add buttons
         ok_icon = os.path.join(self.wkdir, 'icons/ok.png')
         self.buttons['ok'] = QAction(QIcon(ok_icon), 'Finish', self)
@@ -2920,7 +2942,7 @@ class PlotCanvasFFT(PlotCanvas):
         add_icon = os.path.join(self.wkdir, 'icons/plus.png')
         self.buttons['add'] = QAction(QIcon(add_icon), 'Add Mask', self)
         self.buttons['add'].setStatusTip('Add new masks.')
-        self.buttons['add'].triggered.connect(lambda: self.add_mask())
+        self.buttons['add'].triggered.connect(lambda: self.add_mask(r=mask_r, pairs=True))
         self.toolbar.addAction(self.buttons['add'])   
 
         remove_icon = os.path.join(self.wkdir, 'icons/minus.png')
@@ -2929,7 +2951,7 @@ class PlotCanvasFFT(PlotCanvas):
         self.buttons['remove'].triggered.connect(self.remove_mask)
         self.toolbar.addAction(self.buttons['remove'])
 
-        self.add_mask()
+        self.add_mask(r=mask_r, pairs=True)
 
         # Create a new plot to show live ifft
         title = self.canvas.canvas_name
@@ -2963,15 +2985,15 @@ class PlotCanvasFFT(PlotCanvas):
         self.plot_new_image(live_ifft, preview_name, parent=self.parent(), metadata=metadata, position='center right')
         self.position_window('center left')
 
-    def add_mask(self, pairs=True):
+    def add_mask(self, r, pairs=True):
         # Add circular mask with an option to add symmetric pairs
         x_range = self.canvas.data['data'].shape[-1] * self.scale
         y_range = self.canvas.data['data'].shape[-2] * self.scale
         x0 = 0.375 * x_range
         y0 = 0.5 * y_range
-        radius = 0.01 * min(x_range, y_range)
+        # radius = 0.01 * min(x_range, y_range)
 
-        mask0 = pg.CircleROI([x0, y0], radius=radius, pen=pg.mkPen('r', width=3), 
+        mask0 = pg.CircleROI([x0, y0], radius=r, pen=pg.mkPen('r', width=3), 
                                 movable=True, 
                                 rotatable=False, 
                                 resizable=True,
@@ -2988,7 +3010,7 @@ class PlotCanvasFFT(PlotCanvas):
 
         if pairs:
             x1, y1 = x_range - x0, y_range - y0
-            mask1 = pg.CircleROI([x1, y1], radius=radius, pen=pg.mkPen('r', width=2), 
+            mask1 = pg.CircleROI([x1, y1], radius=r, pen=pg.mkPen('r', width=2), 
                                     movable=True, 
                                     rotatable=False, 
                                     resizable=True,

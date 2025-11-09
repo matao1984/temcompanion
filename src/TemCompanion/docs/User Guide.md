@@ -181,14 +181,14 @@ Defines the display range for the strain maps. These can be adjusted later in th
 
 Reference:
 
-[1] M.J. Hÿtch, E. Snoeck, R. Kilaas. Ultramicroscopy, 74 (3) (1998), pp. 131-146, 10.1016/S0304-3991(98)00035-7
+[1] M.J. Hÿtch, E. Snoeck, R. Kilaas. Ultramicroscopy, 74 (3) (1998), 131-146, [10.1016/S0304-3991(98)00035-7](hppts://doi.org/10.1016/S0304-3991(98)00035-7)
 
 [2] T.A. de Jong, T. Benschop, X. Chen, E.E. Krasovskii, M.J.A. de Dood, R.M. Tromp, et al. 
-Nat Commun, 13 (1) (2022), p. 70, 10.1038/s41467-021-27646-1
+Nat Commun, 13 (1) (2022), 70, [10.1038/s41467-021-27646-1](https://doi.org/10.1038/s41467-021-27646-1)
 
-[3] K. Qian, Opt Lasers Eng, 45 (2) (2007), pp. 304-317, 10.1016/j.optlaseng.2005.10.012
+[3] K. Qian, Opt Lasers Eng, 45 (2) (2007), 304-317, [10.1016/j.optlaseng.2005.10.012](https://doi.org/10.1016/j.optlaseng.2005.10.012)
 
-[4] Tao Ma, SoftwareX, 31 (2025) 102212. 10.1016/j.softx.2025.102212
+[4] Tao Ma, SoftwareX, 31 (2025) 102212. [10.1016/j.softx.2025.102212](https://doi.org/10.1016/j.softx.2025.102212)
 
 - Reconstruct DPC
 
@@ -198,7 +198,7 @@ Reconstruct DPC function also accepts image stacks. In this case, the reconstruc
 
 Reference
 
-[1] I. Lazić, E.G.T. Bosch, S. Lazar, Ultramicroscopy, 160 (2016), pp. 265-280, 10.1016/j.ultramic.2015.10.011
+[1] I. Lazić, E.G.T. Bosch, S. Lazar, Ultramicroscopy, 160 (2016), 265-280, [10.1016/j.ultramic.2015.10.011](https://doi.org/10.1016/j.ultramic.2015.10.011)
 
 
 
@@ -237,10 +237,13 @@ _Low pass Gaussian cutoff_: A fraction in Fourier space where the low-pass filte
 
 __Note__: When both the _High pass Gaussian cutoff_ and _Low pass Gaussian cutoff_ are specified for a valid number between 0-1, a band-pass filter is performed.
 
-[1] LD Marks, Ultramicroscopy62 (1996), p. 43. 10.1016/0304-3991(95)00085-2
-[2] R Kilaas, J. Microscopy190 (1998), p. 45. 10.1046/j.1365-2818.1998.3070861.x
-[3] H Du, Ultramicroscopy, 151 (2015), p. 62. 10.1016/j.ultramic.2014.11.012
-[4] T. Ma, Microsc. Microanal. (2024) 30 ozae044.213. 10.1093/mam/ozae044.213
+[1] LD Marks, Ultramicroscopy, 62 (1996), 43. [10.1016/0304-3991(95)00085-2](https://doi.org/10.1016/0304-3991(95)00085-2)
+
+[2] R Kilaas, J. Microscopy, 190 (1998), 45. [10.1046/j.1365-2818.1998.3070861.x](https://doi.org/10.1046/j.1365-2818.1998.3070861.x)
+
+[3] H Du, Ultramicroscopy, 151 (2015), 62. [10.1016/j.ultramic.2014.11.012](https://doi.org/10.1016/j.ultramic.2014.11.012)
+
+[4] T. Ma, Microsc. Microanal. 30 (2024) ozae044.213. [10.1093/mam/ozae044.213](https://doi.org/10.1093/mam/ozae044.213)
 
 ### 4.5 Stack Operations
 
@@ -344,6 +347,8 @@ Some default settings for TemCompanion are saved in the default_config.json file
 
   "gif_duration": 200, -> Default frame duration for gif animation;
 
+  "alignment_precision": 0.01, -> Subpixel precision for stack alignment with cross-correlation
+
   "filter_parameters": -> Default filter parameters;
 
   "Apply WF": false, -> Whether to apply WF for batch conversion
@@ -390,6 +395,24 @@ Some default settings for TemCompanion are saved in the default_config.json file
 
   "default_save": "16-bit TIFF Files (*.tiff)" -> Default file type for save images.
 
+  "gpa": -> Default settings for GPA
+
+  "mask_r": 20, -> Default mask radius for standard GPA
+
+  "edgesmooth": 0.3, -> Default edge smooth factor for standard GPA
+
+  "algorithm": "standard", -> Default algorithm
+
+  "window_size": 20, -> Window size for WFR phase retrieval for adaptive GPA
+
+  "step_size": 4, -> Step size for WFR phase retrieval for adaptive GPA
+
+  "sigma": 10, -> Default sigma for the Gaussian window function for adaptive GPA
+
+  "vmin": -0.1, -> Default display lower limit for strain maps
+
+  "vmax": 0.1 -> Default display upper limit for strain maps
+
 
 ## 7. Citation
 
@@ -416,13 +439,14 @@ author = {Tao Ma}
 - Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass.
 - Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
 - Also update DPC reconstruction to take non square images
-- Added a default_config.json file for default parameters for image display and filter parameters. 
+- Added a default_config.json file for default parameters. 
 - Multiprocess support in batch conversion that significantly speeds up the conversion.
 - Added value validation for most of input parameters to prevent crashes.
 - Added angle measurement tool.
 - Simplified radial integration operations.
 - Added User Guide manual and linked to the main UI.
 - UI remembers the last file type for open and save dialogs.
+- Fixed error in rgb2gray function
 
 
 ### v1.3.1

@@ -16,6 +16,7 @@
   "edgesmooth": 0.3,
   "playback_speed": 100,
   "gif_duration": 200,
+  "alignment_precision": 0.01,
   "filter_parameters": {
     "Apply WF": false,
     "WF Delta": "10",
@@ -39,5 +40,15 @@
   },
   "default_open": "Velox emd Files (*.emd)",
   "default_batch_open": "Velox emd Files (*.emd)",
-  "default_save": "16-bit TIFF Files (*.tiff)"
+  "default_save": "16-bit TIFF Files (*.tiff)",
+  "gpa": {
+    "mask_r": 20,
+    "edgesmooth": 0.3,
+    "algorithm": "standard",
+    "window_size": 20,
+    "step_size": 4,
+    "sigma": 10,
+    "vmin": -0.1,
+    "vmax": 0.1
+  }
 }

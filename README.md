@@ -105,13 +105,15 @@ author = {Tao Ma}
 - Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
 - Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
 - Also update DPC reconstruction to take non square images
-- Added a default_config.json file for default parameters for image display and filter parameters. 
+- Added a default_config.json file for default parameters. 
 - Multiprocess support in batch conversion that significantly speeds up the conversion.
 - Added value validation for most of input parameters to prevent crashes.
 - Added angle measurement tool.
 - Simplified radial integration operations.
 - Added User Guide manual and linked to the main UI.
 - UI remembers the last file type for open and save dialogs.
+- Fixed error in rgb2gray function
+
 
 
 ### v1.3.1

@@ -2098,7 +2098,7 @@ class PlotCanvas(QMainWindow):
         preview_fft = self.parent().preview_dict[preview_name]
 
         # Add two masks on the FFT
-        radius = self.attribute['gpa']['mask_r']
+        radius = self.attribute['gpa']['mask_r'] * preview_fft.scale
         preview_fft.add_mask(r=radius, pairs=False)
         preview_fft.canvas.selector[0].setPos((x0, y0)) 
         # preview_fft.canvas.selector[0].setSize((radius * preview_fft.scale * 2, radius * preview_fft.scale * 2))      
@@ -2127,7 +2127,7 @@ class PlotCanvas(QMainWindow):
         preview_fft.buttons['add_mask'] = QAction(QIcon(add_icon), 'Add Mask', parent=preview_fft)
         preview_fft.buttons['add_mask'].setStatusTip('Add Mask')
         preview_fft.toolbar.addAction(preview_fft.buttons['add_mask'])
-        preview_fft.buttons['add_mask'].triggered.connect(lambda: preview_fft.add_mask(r=self.attribute['gpa']['mask_r'], pairs=False))
+        preview_fft.buttons['add_mask'].triggered.connect(lambda: preview_fft.add_mask(r=self.attribute['gpa']['mask_r']*preview_fft.scale, pairs=False))
         remove_icon = os.path.join(self.wkdir, 'icons/minus.png')
         preview_fft.buttons['remove_mask'] = QAction(QIcon(remove_icon), 'Remove Mask', parent=preview_fft)
         preview_fft.buttons['remove_mask'].setStatusTip('Remove Mask')

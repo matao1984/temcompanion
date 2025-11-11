@@ -279,7 +279,7 @@ A reliable stack alignment method using the phase cross-correlation algorithm wi
 
 - Align stack with optical flow iKL
 
-The optical flow with an iterative Lucas-Kanade (iLK) solver is a commonly used non-rigid registration algorithm. TemCompanion uses the [``skimage.registration.optical_flow_ilk``](https://scikit-image.org/docs/0.23.x/api/skimage.registration.html#skimage.registration.optical_flow_ilk).
+The optical flow with an iterative Lucas-Kanade (iLK) solver is a commonly used non-rigid registration algorithm. TemCompanion uses the [``skimage.registration.optical_flow_ilk``](https://scikit-image.org/docs/0.23.x/api/skimage.registration.html#skimage.registration.optical_flow_ilk). To get better results with optical flow iKL, the stack must be aligned with rigid registration to some extents.
 
 - Integrate stack:
 
@@ -447,6 +447,9 @@ author = {Tao Ma}
 - Added User Guide manual and linked to the main UI.
 - UI remembers the last file type for open and save dialogs.
 - Fixed error in rgb2gray function
+- Fixed CoM encountering all-zero window in some cases.
+- Improved alignment algorithms.
+
 
 
 ### v1.3.1

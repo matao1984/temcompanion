@@ -2554,6 +2554,9 @@ class PlotCanvas(QMainWindow):
         # Calculate the drift with sub pixel precision
         upsampling = int(1 / self.attribute['alignment_precision'])
         print('Stack alignment using phase cross-correlation.')
+        aligned = np.zeros_like(img)
+        aligned[0] = img[0]
+        initial_drift = np.array([0,0])
         for n in range(img_n -1):            
             fixed = img[n]
             moving = img[n+1]
@@ -2561,26 +2564,19 @@ class PlotCanvas(QMainWindow):
             if apply_window:
                 w = window('hann', fixed.shape)
                 fixed = fixed * w
-                moving = moving * w
-
-            
+                moving = moving * w           
             drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling, normalization=None)
-            drift_stack.append(drift)
-        # Shift the images to align the stack
-        drift = np.array([0,0])
-        drift_all = []
-        for n in range(img_n-1):
-            drift = drift + drift_stack[n]
-            img_to_shift = img[n+1]
-            
-            img[n+1,:,:] = shift(img_to_shift,drift)
-            print(f'Shifted slice {n+1} by {drift}')
-            drift_all.append(drift)
+            # Correct the drift
+            total_drift = drift + initial_drift
+            initial_drift = total_drift
+            print(f'Shifting frame {n+2} by {total_drift}.')
+            aligned[n+1] = shift(img[n+1], total_drift)
+            drift_stack.append(total_drift)
             
         if crop_img:
             # Crop the stack to the biggest common region
-            drift_x = [i[0] for i in drift_all]
-            drift_y = [i[1] for i in drift_all]
+            drift_x = [i[0] for i in drift_stack]
+            drift_y = [i[1] for i in drift_stack]
             drift_x_min, drift_x_max = min(drift_x), max(drift_x)
             drift_y_min, drift_y_max = min(drift_y), max(drift_y)
             x_min = max(int(drift_x_max) + 1, 0)
@@ -2588,7 +2584,7 @@ class PlotCanvas(QMainWindow):
             y_min = max(int(drift_y_max) + 1,0)
             y_max = min(img_y, int(img_y + drift_y_min) - 1)
             
-            img_crop = img[:,x_min:x_max,y_min:y_max]
+            img_crop = aligned[:,x_min:x_max,y_min:y_max]
             print(f'Cropped images to {y_min}:{y_max}, {x_min}:{x_max}.')
             
             if crop_to_square:
@@ -2604,10 +2600,11 @@ class PlotCanvas(QMainWindow):
                 print(f'Further cropped to square from {new_start}:{new_end}.')
                 
             aligned_img['data'] = img_crop
-            aligned_img['data'] = aligned_img['data']
-            # Update axes size
-            aligned_img['axes'][0]['size'] = aligned_img['data'].shape[1]
-            aligned_img['axes'][1]['size'] = aligned_img['data'].shape[2]
+        else:
+            aligned_img['data'] = aligned
+        # Update axes size
+        aligned_img['axes'][-1]['size'] = aligned_img['data'].shape[-1]
+        aligned_img['axes'][-2]['size'] = aligned_img['data'].shape[-2]
         print('Stack alignment finished!')
         return aligned_img
 
@@ -2629,34 +2626,32 @@ class PlotCanvas(QMainWindow):
     def run_alignment_of(self, img_dict):
         aligned_img = copy.deepcopy(img_dict)
         img = aligned_img['data']
-        # Normalize
-        for f in range(img.shape[0]):
-            img[f] = norm_img(img[f])
+        # Do not normalize, made it worse
+        # for f in range(img.shape[0]):
+        #     img[f] = norm_img(img[f])
             
         
         img_n, nr, nc = img.shape
-        drift_stack = []
-        for n in range(img_n -1):            
+        row_coords, col_coords = np.meshgrid(np.arange(nr), np.arange(nc), indexing='ij')
+        aligned = np.zeros_like(img)
+        aligned[0] = img[0]
+        drift = np.array([np.zeros((nr,nc)),np.zeros((nr,nc))])
+        for n in range(img_n -1): 
+          
             fixed = img[n]
             moving = img[n+1]
             
-            print(f'Calculate the drift of slice {n+1} using Optical Flow iLK...')
+            print(f'Calculate the drift of slice {n+2} using Optical Flow iLK...')
             
             u, v = optical_flow_ilk(fixed, moving)
-            drift_stack.append((u, v))
-        
-        # Apply the correction
-        print('Applying drift correction...')
-        row_coords, col_coords = np.meshgrid(np.arange(nr), np.arange(nc), indexing='ij')
-        drift = np.array([np.zeros((nr,nc)),np.zeros((nr,nc))])
-        for n in range(img_n-1):
-            drift = drift + np.array(drift_stack[n])
+
+            print(f'Applying drift to slice {n+2}...')
+            drift[0] += u
+            drift[1] += v
             vector_field = np.array([row_coords + drift[0], col_coords + drift[1]])
-            img_to_shift = img[n+1]
-            
-            img[n+1,:,:] = warp(img_to_shift, vector_field, mode='constant') 
-        
-            aligned_img['data'] = img
+            aligned[n+1] = warp(moving, vector_field, mode='constant')
+        aligned_img['data'] = aligned
+ 
         print('Stack alignment finished!')
         return aligned_img
 

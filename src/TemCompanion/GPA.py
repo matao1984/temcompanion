@@ -146,15 +146,11 @@ def refine_center(img, g, r):
         return g
 
     # Calculate the center of mass within the window
-    try:
-        cy, cx = center_of_mass(binary_image)
-        cx += x_min
-        cy += y_min
-        return cx, cy
-    except ValueError as e:
-        print(f"Error calculating center of mass: {e}")
-        # If center of mass calculation fails, return original coordinates
-        return g
+    cy, cx = center_of_mass(binary_image)
+    cx += x_min
+    cy += y_min
+    return cx, cy
+
 
 def calc_derivative(arr, axis):
     """

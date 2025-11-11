@@ -130,6 +130,7 @@
 # Simplified radial integration operations.
 # Added User Guide manual and linked to the main UI.
 # UI saves the last file type for open and save dialogs.
+# Fixed CoM encountering all-zero window in some cases.
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 

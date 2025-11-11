@@ -141,11 +141,20 @@ def refine_center(img, g, r):
     threshold = np.mean(window) + 1.5 * np.std(window)
     binary_image = window > threshold
 
+    # If no foreground pixels, avoid calling center_of_mass (prevents 0/0 and RuntimeWarning)
+    if not np.any(binary_image):
+        return g
+
     # Calculate the center of mass within the window
-    cy, cx = center_of_mass(binary_image)
-    cx += x_min
-    cy += y_min
-    return cx, cy
+    try:
+        cy, cx = center_of_mass(binary_image)
+        cx += x_min
+        cy += y_min
+        return cx, cy
+    except ValueError as e:
+        print(f"Error calculating center of mass: {e}")
+        # If center of mass calculation fails, return original coordinates
+        return g
 
 def calc_derivative(arr, axis):
     """

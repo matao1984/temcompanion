@@ -29,9 +29,9 @@ from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_writer as im_writer
 
 # Internal imports
-from .UI_elements import (FilterSettingDialog, MainFrameCanvas, CustomScaleBar, 
+from .UI_elements import (AlignStackOFDialog, FilterSettingDialog, MainFrameCanvas, CustomScaleBar, 
                           SetScaleDialog, CustomSettingsDialog, RotateImageDialog,
-                          SimpleMathDialog, DPCDialog,
+                          SimpleMathDialog, DPCDialog, AlignStackOFDialog,
                           ManualCropDialog, ApplyFilterDialog, ListReorderDialog,
                           AlignStackDialog, MetadataViewer, PlotSettingDialog, 
                           gpaSettings, AngleROI
@@ -2524,6 +2524,8 @@ class PlotCanvas(QMainWindow):
             apply_window = dialog.apply_window
             crop_img = dialog.crop_img
             crop_to_square = dialog.crop_to_square
+            normalize = dialog.normalize
+            phase_correlation = dialog.phase_correlation
             img = self.get_original_img_dict()
 
             preview_name = self.canvas.canvas_name + '_aligned by cc'
@@ -2532,7 +2534,7 @@ class PlotCanvas(QMainWindow):
             self.position_window('center left')
 
             # Run alignment in a separate thread
-            self.worker = Worker(self.run_alignment_cc, img, apply_window, crop_img, crop_to_square)
+            self.worker = Worker(self.run_alignment_cc, img, apply_window, crop_img, crop_to_square, normalize, phase_correlation)
             self.toggle_progress_bar('ON')
             self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
             self.worker.finished.connect(self.worker.deleteLater)
@@ -2541,9 +2543,14 @@ class PlotCanvas(QMainWindow):
 
            
 
-    def run_alignment_cc(self, img_dict, apply_window=True, crop_img=True, crop_to_square=False):
+    def run_alignment_cc(self, img_dict, apply_window=True, crop_img=True, crop_to_square=False, normalize=False, phase_correlation=False):
         aligned_img = copy.deepcopy(img_dict)
         img = img_dict['data']
+
+        if phase_correlation:
+            normalization = 'phase'
+        else:
+            normalization = None
 
         # Perform phase cross-correlation alignment on an image stack
         # img: 3D numpy array (n, x, y)
@@ -2560,12 +2567,16 @@ class PlotCanvas(QMainWindow):
         for n in range(img_n -1):            
             fixed = img[n]
             moving = img[n+1]
+            # Normalize if selected
+            if normalize:
+                fixed = norm_img(fixed)
+                moving = norm_img(moving)
             # Apply a Hann window to suppress periodic features
             if apply_window:
                 w = window('hann', fixed.shape)
                 fixed = fixed * w
-                moving = moving * w           
-            drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor = upsampling, normalization=None)
+                moving = moving * w
+            drift, _, _ = phase_cross_correlation(fixed, moving, upsample_factor=upsampling, normalization=normalization)
             # Correct the drift
             total_drift = drift + initial_drift
             initial_drift = total_drift
@@ -2609,21 +2620,27 @@ class PlotCanvas(QMainWindow):
         return aligned_img
 
     def align_stack_of(self):
-        print('Stack alignment using Optical Flow iLK.')
-        preview_name = self.canvas.canvas_name + '_aligned by OF'
-        metadata = 'Aligned by Optical Flow iLK.'
-        self.position_window('center left')
-        img = self.get_original_img_dict()
-        # Run alignment in a separate thread
-        self.worker = Worker(self.run_alignment_of, img)
-        self.toggle_progress_bar('ON')
-        self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
-        self.worker.start()
+        dialog = AlignStackOFDialog(parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            window_size = dialog.window_size_value
+            prefilter = dialog.prefilter
+            gaussian = dialog.gaussian
+
+            print('Stack alignment using Optical Flow iLK.')
+            preview_name = self.canvas.canvas_name + '_aligned by OF'
+            metadata = 'Aligned by Optical Flow iLK.'
+            self.position_window('center left')
+            img = self.get_original_img_dict()
+            # Run alignment in a separate thread
+            self.worker = Worker(self.run_alignment_of, img, window_size, prefilter, gaussian)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.worker.result.connect(lambda result: self.plot_new_image(result, preview_name, parent=self.parent(), metadata=metadata, position='center right'))
+            self.worker.start()
 
             
-    def run_alignment_of(self, img_dict):
+    def run_alignment_of(self, img_dict, window_size=20, prefilter=True, gaussian=False):
         aligned_img = copy.deepcopy(img_dict)
         img = aligned_img['data']
         # Do not normalize, made it worse
@@ -2641,11 +2658,11 @@ class PlotCanvas(QMainWindow):
             fixed = img[n]
             moving = img[n+1]
             
-            print(f'Calculate the drift of slice {n+2} using Optical Flow iLK...')
+            print(f'Calculate the drift of frame {n+2} using Optical Flow iLK...')
             
-            u, v = optical_flow_ilk(fixed, moving)
+            u, v = optical_flow_ilk(fixed, moving, radius=window_size, prefilter=prefilter, gaussian=gaussian)
 
-            print(f'Applying drift to slice {n+2}...')
+            print(f'Applying drift to frame {n+2}...')
             drift[0] += u
             drift[1] += v
             vector_field = np.array([row_coords + drift[0], col_coords + drift[1]])

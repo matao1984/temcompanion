@@ -67,7 +67,7 @@ Written in pure python, TemCompanion can also be installed through python 3 envi
 The ``pip`` should prepare all the dependencies and install the tool automatically.
 
 ## 2. Usage
-The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through either the menu bar or right click on the image canvas. Each preview window can be individually processed, saved, and converted to the common image formats. 
+The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through the menu bar, with some frequently used functions available on the toolbar. Each preview window can be individually processed, saved, and converted to the common image formats. 
 
 Also available is a batch converter, which can be called by clicking the "Batch Convert" button. A separate window will pop up which works as the old ``EMD Converter`` does. The batch converter also supports drag-and-drop actions and the loaded data and be a mix of different supported formats. 
 
@@ -84,7 +84,7 @@ Currently, TemCompanion is programmed to support:
 - Common image formats (*.tiff, *.jpg, *.png, etc) ,
     - TemCompanion will try to convert the image into RGB and ignore calibration.
 - Image series
-    - TemCompanion will search the given folder for the supported files with the same extention as the selected file. A dialog will then pop up that allows to reorder and delete files to be loaded. Then all files will be loaded as a 3D image stack.
+    - TemCompanion will search the given folder for the supported files with the same extention as the selected file. All the image files with the same extention and match the size of the selected image will be loaded into a 3D image stack.
 
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
@@ -107,7 +107,20 @@ Note that the saving function only saves the displayed image. If working on an i
 
 ## 4. Descriptions of functions
 
-### 4.1 Basic processing functions
+### 4.1 Basic functions
+
+- Save as:
+
+Calls a window to save the **Current** display into supported formats. To save the entire stack, use the save functions in the stack menu.
+
+- Copy image to clipboard:
+
+Take a snapshot of the **Current** display to the clipboard. The snapshot can be pasted system wide from the clipboard to PowerPoint, Word, etc. The resolution of the snapshot is determined by the **Current display resolution**.
+
+- Image settings:
+
+Adjust the display of image or stacks. Available options are: histogram streching, gamma correction, change color maps, add a colorbar, add a scalebar, change scalebar color and locations.
+
 - Crop:
 
 Crop the image by dragging a box. Alternatively, "Manual input" button allows to define the exact cropping range.
@@ -127,6 +140,8 @@ Resample the image by a given factor. e.g., A factor of 2 will upsample a 1024x1
 - Simple math:
 
 Perform simple math on two opened images. Supported operations are: addition, subtraction, multiplication, division, and inversion. If inversion is selected, only the signal 1 will be processed and the signal 2 will be ignored.
+
+
 
 ### 4.2 Analyze functions
 - Set scale:
@@ -205,7 +220,7 @@ Reference
 ### 4.3 Fast Fourier transforms
 - FFT:
 
-Perform FFT on the current image and display in a separate window. If the image is non square, the FFT is computed from the biggest square cropped from the image.
+Perform FFT on the current image and display in a separate window. If the image is non square, it is first padded to square with 0, from which the FFT is computed.
 
 - Windowed FFT"
 
@@ -213,7 +228,7 @@ Apply and Hann window before computing the FFT to remove the edge effect.
 
 - Live FFT:
 
-Compute FFT from a selected square box on the image. The box can be dragged and resized and the FFT will update automatically.
+Compute FFT from a selected square box on the image. The box ROI can be dragged and resized and the FFT will update automatically. The ROI is limited to square shape.
 
 - Mask and iFFT (only available on FFT):
 
@@ -277,9 +292,21 @@ Reorder the frames of the image stack by dragging the frames in a separate dialo
 
 A reliable stack alignment method using the phase cross-correlation algorithm with sub-pixel precision. This is commonly adopted for aligning (S)TEM images. For periodic images, e.g., HR(S)TEM images with lattice, a Hann window should be applied to the images prior to compute the phase cross-correlation to suppress the periodic features. Users can also decide whether to crop the aligned frames to the common area with an option of cropping them to the biggest square.
 
+The images can be normalized before running the alignment. This can be set by checking the "Normalize intensities before alignment" option. 
+
+The "Use phase correlation" option determines the normalization factor for the correlation calculation. If enabled, the correlation will be normalized by the magnitude of $FFT(ref) {\cdot}FFT(moving)^*$. Otherwise, no normalization is performed. Using phase correlation can help to reduce the impact of non-uniform contrast changes.
+
 - Align stack with optical flow iKL
 
 The optical flow with an iterative Lucas-Kanade (iLK) solver is a commonly used non-rigid registration algorithm. TemCompanion uses the [``skimage.registration.optical_flow_ilk``](https://scikit-image.org/docs/0.23.x/api/skimage.registration.html#skimage.registration.optical_flow_ilk). To get better results with optical flow iKL, the stack must be aligned with rigid registration to some extents.
+
+Available parameters:
+
+_Window size_: Radius of the window considered around each pixel. Large window captures big shifts, but may lose small details; small window on big shifts, on the other hand, leads to unrealistic displacement fields.
+
+_Prefilter before alignment_: Whether to prefilter the estimated optical flow before each image warp. When True, a median filter with window size 3 along each axis is applied. This helps to remove potential outliers.
+
+_Integrate with Gaussian kernel_: If checked, a Gaussian kernel is used for the local integration. Otherwise, a uniform kernel is used. This helps to smooth the displacement field.
 
 - Integrate stack:
 

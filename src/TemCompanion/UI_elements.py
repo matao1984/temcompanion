@@ -1402,10 +1402,16 @@ class AlignStackDialog(QDialog):
         self.crop_to_square_check.setEnabled(True)
         self.crop_img_check.stateChanged.connect(self.crop_to_square_change)
         self.crop_to_square_check.setChecked(False)
+        self.normalization_check = QCheckBox('Normalize intensities before alignment')
+        self.normalization_check.setChecked(False)
+        self.phase_correlation_check = QCheckBox('Use phase correlation')
+        self.phase_correlation_check.setChecked(False)
         layout.addWidget(self.apply_window_check)
         layout.addWidget(self.crop_img_check)
         layout.addWidget(self.crop_to_square_check)
-        
+        layout.addWidget(self.normalization_check)
+        layout.addWidget(self.phase_correlation_check)
+
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
@@ -1427,11 +1433,64 @@ class AlignStackDialog(QDialog):
         self.crop_to_square = False
         self.apply_window = self.apply_window_check.isChecked()
         self.crop_img = self.crop_img_check.isChecked()
+        self.normalize = self.normalization_check.isChecked()
+        self.phase_correlation = self.phase_correlation_check.isChecked()
         if self.crop_img:
             self.crop_to_square = self.crop_to_square_check.isChecked()
             
         self.accept()
         
+
+#==============Alignment with optical flow dialog==================
+class AlignStackOFDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setWindowTitle('Optical flow parameters')
+        layout = QVBoxLayout()
+
+        self.window_size_label = QLabel('Window size: 15')
+        layout.addWidget(self.window_size_label)
+
+        self.window_size = QSlider(self)
+        self.window_size.setOrientation(Qt.Horizontal)
+        self.window_size.setMinimum(3)
+        self.window_size.setMaximum(100)
+        self.window_size.setValue(15)
+        self.window_size.setToolTip('Radius of the window considered around each pixel.')
+        self.window_size.valueChanged.connect(self.update_window_size_label)
+
+        self.prefilter_check = QCheckBox('Prefilter before alignment')
+        self.prefilter_check.setToolTip('Apply a median filter with window size 3. This helps to remove potential outliers.')
+        self.prefilter_check.setChecked(False)
+
+        self.gaussian_check = QCheckBox('Integrate with Gaussian kernel')
+        self.gaussian_check.setChecked(False)
+        self.gaussian_check.setToolTip('Use Gaussian kernel to integrate the optical flow field. This helps to smooth the displacement field.')
+
+        layout.addWidget(self.window_size_label)
+        layout.addWidget(self.window_size)
+        layout.addWidget(self.prefilter_check)
+        layout.addWidget(self.gaussian_check)
+
+        # Dialog Buttons (OK and Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+            
+    def update_window_size_label(self):
+        self.window_size_label.setText(f'Window size: {self.window_size.value()}')
+ 
+        
+    def handle_ok(self):
+        self.window_size_value = self.window_size.value()
+        self.prefilter = self.prefilter_check.isChecked()
+        self.gaussian = self.gaussian_check.isChecked()
+        self.accept()
+                    
 
                 
 

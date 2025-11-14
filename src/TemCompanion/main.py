@@ -713,7 +713,7 @@ class TeeStream:
 # this function is called or the Python program is terminated.
 # pyi_splash.close()
 
-def main(config):    
+def start_gui(config):    
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
     wkdir = config['working_directory']

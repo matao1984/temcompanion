@@ -6,14 +6,14 @@ import sys
 import os
 import pickle
 import json
-from TemCompanion.main import main as app_entry
+from TemCompanion.main import start_gui
 from multiprocessing import freeze_support
 
 
 # Default configuration setup
 def setup_config():
     version = '1.3.2dev'
-    release_date = '2025-11-11'
+    release_date = '2025-11-13'
     if getattr(sys, 'frozen', False):
         wkdir = os.path.join(sys._MEIPASS, 'TemCompanion')
     elif __file__:
@@ -36,7 +36,7 @@ def setup_config():
 def main():
     freeze_support()
     config = setup_config()
-    app_entry(config)
+    start_gui(config)
 
 # ============== Splash screen for Windows executable =====================
 # import pyi_splash

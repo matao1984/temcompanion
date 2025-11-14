@@ -289,11 +289,26 @@ class UI_TemCompanion(QMainWindow):
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
         buttonlayout = QHBoxLayout()
+
+        common_style = """
+QPushButton {
+background-color: #E0E0E0;
+color: #000;
+font-weight: normal;
+padding: 2px;
+border: 1px solid #AAA;
+border-radius: 5px;
+}
+QPushButton:hover {
+background-color: #D0D0D0;
+}
+"""
         
         self.openfileButton = QPushButton(self)
         self.openfileButton.setFixedSize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
         self.openfileButton.setText('Open \nImages')
+        self.openfileButton.setStyleSheet(common_style)
         
         
         
@@ -301,6 +316,7 @@ class UI_TemCompanion(QMainWindow):
         self.convertButton.setFixedSize(80, 60)
         self.convertButton.setObjectName("BatchConvert")
         self.convertButton.setText("Batch \nConvert")
+        self.convertButton.setStyleSheet(common_style)
         
         
         
@@ -309,16 +325,39 @@ class UI_TemCompanion(QMainWindow):
         self.aboutButton.setFixedSize(80, 60)
         self.aboutButton.setObjectName("aboutButton")
         self.aboutButton.setText("About")
+        self.aboutButton.setStyleSheet(common_style)
         
         self.guideButton = QPushButton(self)
         self.guideButton.setFixedSize(80, 60)
         self.guideButton.setObjectName("guideButton")
         self.guideButton.setText("User\nGuide")
+        self.guideButton.setStyleSheet(common_style)
 
         self.donateButton = QPushButton(self)
         self.donateButton.setFixedSize(80, 60)
+        self.donateButton.setStyleSheet("""
+QPushButton {
+background-color: #FFD700;
+color: #000;
+font-weight: bold;
+padding: 0px;
+border: 2px solid #FFA500;
+border-radius: 5px;
+line-height: 1.0;
+}
+QPushButton:hover {
+background-color: #FFA500;
+border: 2px solid #FF8C00;
+}
+""")
         self.donateButton.setObjectName("donateButton")
-        self.donateButton.setText("Buy me\n a LUNCH!")
+        self.donateButton.setText("Buy me\n a COFFEE!")
+        self.donateButton.setToolTip(
+    "☕ Support TemCompanion's development!\n"
+    "Even a small donation helps keep this project alive.\n"
+    "Click to buy me a lunch! 💛"
+)
+
 
         buttonlayout.addWidget(self.openfileButton)
         buttonlayout.addWidget(self.convertButton)
@@ -443,8 +482,20 @@ class UI_TemCompanion(QMainWindow):
         
     def print_info(self):
         html_text = '''
-        <div style="font-family: Arial, sans-serif;">
+        <div style="font-family: Arial">
             <h3 style="color: #2196F3; text-align: center;">TemCompanion</h3>
+
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center;">
+                <p style="color: white; margin: 0; font-size: 13px;">
+                    <b>💛 Enjoying TemCompanion?</b><br>
+                    <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US" 
+                    style="color: #FFD700; text-decoration: none; font-weight: bold;">
+                    ☕ Buy me a coffee
+                    </a> 
+                    to support ongoing development!
+                </p>
+            </div>
             <p style="text-align: center; font-size: 12px;">
                 <b>A comprehensive package for TEM image processing and analysis</b>
             </p>
@@ -464,7 +515,7 @@ class UI_TemCompanion(QMainWindow):
                 <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a>
             </p>
             <p style="font-size: 12px;">
-                See the <b>About</b> for more details. <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US">Buy me a lunch</a> if you like it!
+                See the <b>About</b> for more details. <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US">Buy me a coffee</a> if you like it!
             </p>
             <p style="text-align: left; font-size: 12px">
                 Version: <b>{ver}</b> | Released: <b>{rdate}</b>
@@ -518,6 +569,14 @@ class UI_TemCompanion(QMainWindow):
                     "<br>"\
                     "Version: {}  Released: {}"\
                     "<br>"\
+                    "<div style='padding: 10px; border-radius: 5px;'>"
+                    "<b>🌟 TemCompanion is FREE and open-source!</b><br>"
+                    "If this app saved you hours of work, consider "
+                    "<a href='https://paypal.me/matao1984?country.x=US&locale.x=en_US'>buying me a coffee</a> "
+                    "to support future updates and new features!"
+                    "</div>"
+                    "<br>"
+
                     "If TemCompanion helped your TEM image analysis in a publication, please cite:"\
                     "<br>"
                     "Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, "\
@@ -602,10 +661,10 @@ class UI_TemCompanion(QMainWindow):
         
     def donate(self):
         msg = QMessageBox()
-        msg.setText("If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a lunch!</a>"\
+        msg.setText("If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a coffee!</a>"\
                     "<br>"\
                     "Your support is my motivation!")
-        msg.setWindowTitle(self.ver + ": Buy me a LUNCH!")
+        msg.setWindowTitle(self.ver + ": Buy me a COFFEE!")
 
         msg.exec()
 

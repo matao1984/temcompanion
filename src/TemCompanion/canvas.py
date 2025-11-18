@@ -1425,6 +1425,7 @@ class PlotCanvas(QMainWindow):
             if windowed:
                 w = window('hann', live_cropped_img.shape)
                 live_cropped_img = live_cropped_img * w
+
             self.live_img['data'] = live_cropped_img
             self.live_img['axes'][0]['size'] = self.live_img['data'].shape[0]
             self.live_img['axes'][1]['size'] = self.live_img['data'].shape[1]
@@ -1888,13 +1889,16 @@ class PlotCanvas(QMainWindow):
         if self.canvas.selector and self.mode_control['measure_fft']:
             selector = self.canvas.selector[0]
             x, y = selector.pos().x(), selector.pos().y()
-            center_x, center_y = self.canvas.center[0] * self.scale, self.canvas.center[1] * self.scale
+            
             # Run CoM to get more accurate center
             image_data = self.canvas.current_img
+            center_x = image_data.shape[1] // 2 * self.scale
+            center_y = image_data.shape[0] // 2 * self.scale
+
             radius = selector.size()[0] / 2
             window_size = int(radius / self.scale)  # in pixels
-            x0 = int((x + radius) / self.scale)
-            y0 = int((y + radius) / self.scale)
+            x0 = round((x + radius) / self.scale)
+            y0 = round((y + radius) / self.scale)
             cx_pix, cy_pix = refine_center(image_data, (x0, y0), window_size)
             cx = cx_pix * self.scale
             cy = cy_pix * self.scale
@@ -1903,6 +1907,7 @@ class PlotCanvas(QMainWindow):
                 reciprocal_distance = 1e-6  # Prevent division by zero
             x, y = cx - radius, cy - radius
             distance = 1 / reciprocal_distance
+            
             angle = calculate_angle_to_horizontal((center_x, center_y), (cx, cy))
             self.statusBar.showMessage(f"FFT Measurement: {distance:.3f} {self.real_units}, {angle:.2f}°")
 

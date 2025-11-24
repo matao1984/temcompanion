@@ -111,7 +111,7 @@ class PlotCanvas(QMainWindow):
         # All the push buttons
         self.buttons = {'ok': None,
                         'cancel': None,
-                        'crop_hand': None,
+                        'hand': None,
                         'define_center': None,
                         'define_center2': None,
                         'add': None,
@@ -311,35 +311,6 @@ class PlotCanvas(QMainWindow):
         dx = self.get_scalebar_length()
         self.scalebar.update_scale(dx)
         
-
-    # def process_metadata(self):
-    #      # Process history
-    #     img = self.canvas.data
-    #     if 'TemCompanion' in img['metadata']:
-    #         self.process = copy.deepcopy(img['metadata']['TemCompanion'])
-    #         # Update some info
-    #         self.process['Image Size (pixels)'] = f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}"
-    #         img_size_x = fn.siFormat(self.canvas.img_size[-1] * self.scale, suffix='m', power=self._unitsPower, precision=4)
-    #         img_size_y = fn.siFormat(self.canvas.img_size[-2] * self.scale, suffix='m', power=self._unitsPower, precision=4)
-    #         self.process['Calibrated Image Size'] = f"{img_size_x} x {img_size_y}"
-    #         pixel_cal = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4)
-    #         self.process['Pixel Calibration'] = f"{pixel_cal}"
-    #     else:
-    #         # Make a new process history
-    #         img_size_x = fn.siFormat(self.canvas.img_size[-1] * self.scale, suffix='m', power=self._unitsPower, precision=4)
-    #         img_size_y = fn.siFormat(self.canvas.img_size[-2] * self.scale, suffix='m', power=self._unitsPower, precision=4)
-    #         pixel_cal = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4)
-
-    #         self.process = {'Version': f'TemCompanion v{self.ver}', 
-    #                         'Data Type': f'{self.canvas.data_type}',
-    #                         'File Name': self.parent().file,
-    #                         'Image Size (pixels)': f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}",
-    #                         'Calibrated Image Size': f"{img_size_x} x {img_size_y}",
-    #                         'Pixel Calibration': f"{pixel_cal}",
-    #                         'process': []}
-    #         img['metadata']['TemCompanion'] = self.process
-        
-    #     self.canvas.data = img
 
     def create_toolbar(self):
         self.toolbar = QToolBar("Main Toolbar")
@@ -911,21 +882,70 @@ class PlotCanvas(QMainWindow):
         self.statusBar.showMessage("The current image has been copied to the clipboard!")
 
     def rotate(self):
-        # Open a dialog to take the rotation angle
-        dialog = RotateImageDialog()
-        # Display a message in the status bar
-        if dialog.exec_() == QDialog.Accepted:
-            ang = dialog.rotate_ang
-            try:
-                ang = float(ang)
-            except ValueError:
-                QMessageBox.critical(self, 'Input Error', 'Please enter a valid angle.')
-                return
-        
+        # Do rotation in two ways:
+        # 1. Align a feature to horizontal by a line ROI
+        # 2. Rotate by an angle input dialog
+        # Set 1 to default, 2 as a separate button
+        self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
+        self.statusBar.showMessage("Align a feature to horizontal")
+
+        # Buttons for finish
+        OK_icon = os.path.join(self.wkdir, 'icons/OK.png')
+        self.buttons['ok'] = QAction(QIcon(OK_icon), 'OK', parent=self)
+        self.buttons['ok'].setStatusTip('Rotate image')
+        self.buttons['ok'].setShortcut('Return')
+        self.buttons['ok'].triggered.connect(self.confirm_rotate)
+        self.toolbar.addAction(self.buttons['ok'])
+        hand_icon = os.path.join(self.wkdir, 'icons/hand.png')
+        self.buttons['hand'] = QAction(QIcon(hand_icon), 'Manual Input', parent=self)
+        self.buttons['hand'].setStatusTip('Manual Input of rotation angle')
+        self.buttons['hand'].triggered.connect(self.manual_rotate)
+        self.toolbar.addAction(self.buttons['hand'])
+        cancel_icon = os.path.join(self.wkdir, 'icons/cancel.png')
+        self.buttons['cancel'] = QAction(QIcon(cancel_icon), 'Cancel', parent=self)
+        self.buttons['cancel'].setStatusTip('Cancel rotation')
+        self.buttons['cancel'].setShortcut('Esc')
+        self.buttons['cancel'].triggered.connect(lambda: self.clean_up(selector=True, buttons=True, status_bar=True))
+        self.toolbar.addAction(self.buttons['cancel'])
+
+        # Set line ROI as the selector
+        x_range = self.img_size[-1] * self.scale
+        y_range = self.img_size[-2] * self.scale
+        start_point = 0.375 * x_range, 0.5 * y_range
+        end_point = 0.625 * x_range, 0.5 * y_range
+
+        selector = pg.LineSegmentROI([start_point, end_point],
+                                        pen=pg.mkPen('y', width=3),
+                                        movable=True,
+                                        rotatable=True,
+                                        resizable=True
+                                        )
+        selector.sigRegionChanged.connect(self.display_rotation_angle)
+        self.canvas.selector.append(selector)
+        self.canvas.viewbox.addItem(selector)
+
+    def display_rotation_angle(self):
+        if self.canvas.selector:
+            selector = self.canvas.selector[0]
+            start_point, end_point = selector.getHandles()[0].pos(), selector.getHandles()[1].pos()
+            x0, y0 = start_point.x(), start_point.y()
+            x1, y1 = end_point.x(), end_point.y()
+            angle = -calculate_angle_to_horizontal((x0, y0), (x1, y1))
+            self.statusBar.showMessage(f"Rotate image by {angle:.1f}° counterclockwise")
+
+    def confirm_rotate(self):
+        # Get the angle from the line ROI
+        if self.canvas.selector:
+            selector = self.canvas.selector[0]
+            start_point, end_point = selector.getHandles()[0].pos(), selector.getHandles()[1].pos()
+            x0, y0 = start_point.x(), start_point.y()
+            x1, y1 = end_point.x(), end_point.y()
+            angle = -calculate_angle_to_horizontal((x0, y0), (x1, y1))
+
             # Process the rotation
             img = self.get_img_dict_from_canvas()
             img_to_rotate = img['data']
-            rotated_array = rotate(img_to_rotate,ang)
+            rotated_array = rotate(img_to_rotate,angle)
             img['data'] = rotated_array
             
             # Update axes size
@@ -934,10 +954,46 @@ class PlotCanvas(QMainWindow):
             
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
-            preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
-            metadata = f'Rotated {title} by {ang} degrees counterclockwise.'
+            preview_name = self.canvas.canvas_name + '_R{:.1f}'.format(angle)
+            metadata = f'Rotated {title} by {angle:.1f} degrees counterclockwise.'
             self.plot_new_image(img, preview_name, parent=self.parent(), metadata=metadata, position='center right')
-            print(f'Rotated {title} by {ang} degrees counterclockwise.')
+            print(f'Rotated {title} by {angle:.1f} degrees counterclockwise.')
+            
+            # Positioning
+            self.position_window('center left')
+
+            # Clean up
+            self.clean_up(selector=True, buttons=True, status_bar=True)
+
+    def manual_rotate(self):
+        # Open a dialog to take the rotation angle
+        dialog = RotateImageDialog()
+        # Display a message in the status bar
+        if dialog.exec_() == QDialog.Accepted:
+            self.clean_up(selector=True, buttons=True, status_bar=True)
+            angle = dialog.rotate_ang
+            try:
+                angle = float(angle)
+            except ValueError:
+                QMessageBox.critical(self, 'Input Error', 'Please enter a valid angle.')
+                return
+        
+            # Process the rotation
+            img = self.get_img_dict_from_canvas()
+            img_to_rotate = img['data']
+            rotated_array = rotate(img_to_rotate,angle)
+            img['data'] = rotated_array
+            
+            # Update axes size
+            img['axes'][0]['size'] = img['data'].shape[0]
+            img['axes'][1]['size'] = img['data'].shape[1]
+            
+            # Create a new PlotCanvs to display        
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + '_R{:.1f}'.format(angle)
+            metadata = f'Rotated {title} by {angle:.1f} degrees counterclockwise.'
+            self.plot_new_image(img, preview_name, parent=self.parent(), metadata=metadata, position='center right')
+            print(f'Rotated {title} by {angle:.1f} degrees counterclockwise.')
             
             # Positioning
             self.position_window('center left')            
@@ -1539,10 +1595,10 @@ class PlotCanvas(QMainWindow):
         self.toolbar.addAction(self.buttons['cancel'])
 
         hand_icon = os.path.join(self.wkdir, 'icons/hand.png')
-        self.buttons['crop_hand'] = QAction(QIcon(hand_icon), 'Manual Input', parent=self)
-        self.buttons['crop_hand'].setStatusTip('Manual Input of Crop Coordinates')
-        self.buttons['crop_hand'].triggered.connect(self.manual_crop)
-        self.toolbar.addAction(self.buttons['crop_hand'])
+        self.buttons['hand'] = QAction(QIcon(hand_icon), 'Manual Input', parent=self)
+        self.buttons['hand'].setStatusTip('Manual Input of Crop Coordinates')
+        self.buttons['hand'].triggered.connect(self.manual_crop)
+        self.toolbar.addAction(self.buttons['hand'])
 
         self.canvas.setFocus()  # Ensure the canvas has focus to receive key events
 

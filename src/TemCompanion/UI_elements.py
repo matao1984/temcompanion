@@ -20,7 +20,6 @@ import json
 
 # Internal modules
 from .functions import gamma_correct_lut, find_img_by_title, calculate_angle_from_3_points
-from . import filters
 from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 
 

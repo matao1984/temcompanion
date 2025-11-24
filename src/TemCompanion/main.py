@@ -119,7 +119,7 @@
 # Modified filteres to take non-square images
 # Live iFFT also takes non-square images
 
-# 2025-11-04 v1.3.2dev
+# 2025-11-24 v1.3.2dev
 # Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
 # Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
 # Also update DPC reconstruction to take non square images
@@ -133,6 +133,8 @@
 # Fixed error in rgb2gray function.
 # Fixed CoM encountering all-zero window in some cases.
 # Improved alignment algorithms.
+# Fixed incorrect FFT measurement in live FFT mode.
+# Updated pyqtgraph 0.14 to handle units power for reciprocal space.
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 

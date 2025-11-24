@@ -395,6 +395,7 @@ def load_file(file, file_type):
         # else:
         #     return
         
+        file_list.sort() #Sort the file list alphabetically
         stack_img = []
         for img_file in file_list:
             try:

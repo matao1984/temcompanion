@@ -12,6 +12,7 @@ from PyQt5.QtGui import QImage, QPixmap, QIcon, QFont, QIntValidator, QDoubleVal
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
+import pyqtgraph.functions as fn
 import numpy as np
 import copy
 import pickle
@@ -25,9 +26,42 @@ from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contr
 
 #=========== Scale bar class used with pyqtgraph ==============================================
 class CustomScaleBar(pg.ScaleBar):
-    def __init__(self, dx, units, parent):
-        super().__init__(dx, suffix=units)
+    def __init__(self, parent, dx=1e-9, units='nm', power=1):
+        # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
+        if units == 'nm' and power == 1:
+            self.units = 'm'
+        elif units == '1/nm' and power == -1:
+            self.units = f'm{self.to_superscript(power)}'
+        else: # other units like px
+            self.units = units
+        self.power = power
+        # Create a scalebar object with 1 nm or 1/nm default length
+        super().__init__(dx, suffix=self.units)
         self.setParentItem(parent)
+
+    def to_superscript(self, text):
+        superscript_map = {
+            '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+            '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+            'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ',
+            'f': 'ᶠ', 'g': 'ᵍ', 'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ',
+            'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ',
+            'p': 'ᵖ', 'q': 'ᑫ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ',
+            'u': 'ᵘ', 'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ',
+            'z': 'ᶻ', '+': '⁺', '-': '⁻'
+        }
+        return ''.join(superscript_map.get(char, char) for char in str(text))
+    
+    def make_inverse_units(self):
+        if self.units != 'px':
+            self.power = -self.power
+            # Units can only be 'm' or 'm^(-1)' or px
+            if self.units == 'm':
+                self.units = f'm{self.to_superscript(self.power)}'
+            elif self.units == 'm⁻¹':
+                self.units = 'm'
+
+        
 
     def set_properties(self, font_size, color, location):
         font = QFont()
@@ -46,6 +80,23 @@ class CustomScaleBar(pg.ScaleBar):
         elif location == 'upper left':
             loc = (0, 0), (0.2, 0.08)
         self.anchor(loc[0], loc[1])
+    
+    def update_scale(self, dx):
+        # dx is always in nm or 1/nm or px
+        if self.units != 'px':
+            si_dx = dx * 1e-9 if self.power == 1 else dx / 1e-9
+            text = fn.siFormat(si_dx, suffix=self.units, power=self.power)
+        else:
+            text = f'{dx} {self.units}'
+        self.text.setText(text)
+        self.size = dx
+        self.updateBar()
+        
+    def toggle_visibility(self, show):
+        if show:
+            self.show()
+        else:
+            self.hide()
 
 #=========== Main frame widget to take the image item and maintain the aspect ratio ===========
 class MainFrameCanvas(QWidget):
@@ -137,17 +188,6 @@ class MainFrameCanvas(QWidget):
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self._resize_event(self.size())    
         
-        # Some default settings
-        # sb_color = pg.mkColor('yellow')
-        # self.attribute = {'cmap': 'gray',
-        #                   'vmin': None,
-        #                   'vmax': None,
-        #                   'gamma': 1.0,
-        #                   'scalebar': True,
-        #                   'color': sb_color,
-        #                   'location': 'lower left',
-        #                   'dimension': 'si-length',
-        #                   'colorbar': False}
         self.attribute = self.parent().attribute
 
         
@@ -242,7 +282,7 @@ class MainFrameCanvas(QWidget):
             self.slider.setValue(0)
 
     def create_img(self, cmap='gray', pvmin=0.1, pvmax=99.9, gamma=1.0):
-        scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
+        scale = self.parent().scale 
         self.center = self.img_size[-1]//2, self.img_size[-2]//2
         self.offset_x = self.data['axes'][-1]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-1].keys() else 0
         self.offset_y = self.data['axes'][-2]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-2].keys() else 0
@@ -1365,12 +1405,23 @@ class SetScaleDialog(QDialog):
         
         self.setWindowTitle("Set pixel scale")        
         layout = QVBoxLayout()
+        scale_layout = QHBoxLayout()
+        scale_label = QLabel('Pixel size:')
         self.scale_input = QLineEdit(self)
         self.scale_input.setText(str(scale))
-        self.unit_input = QLineEdit(self)
-        self.unit_input.setText(str(units))
-        layout.addWidget(self.scale_input)
-        layout.addWidget(self.unit_input)
+        self.scale_input.setValidator(QDoubleValidator(0.0001, 1e9, 9, self))
+        scale_layout.addWidget(scale_label)
+        scale_layout.addWidget(self.scale_input)
+        layout.addLayout(scale_layout)
+        unit_layout = QHBoxLayout()
+        unit_label = QLabel('Unit:')
+        self.unit_input = QComboBox(self)
+        self.unit_input.addItems(['pm', 'nm', 'um', 'mm', 'm', '1/pm', '1/nm', '1/um', '1/mm', '1/m'])
+        self.unit_input.insertSeparator(5)
+        self.unit_input.setCurrentText(str(units))
+        unit_layout.addWidget(unit_label)
+        unit_layout.addWidget(self.unit_input)
+        layout.addLayout(unit_layout)
         
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1382,7 +1433,7 @@ class SetScaleDialog(QDialog):
         
     def handle_ok(self):
         self.scale = self.scale_input.text()
-        self.units = self.unit_input.text()
+        self.units = self.unit_input.currentText()
         self.accept()
         
 

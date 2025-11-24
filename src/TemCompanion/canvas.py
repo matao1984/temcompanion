@@ -17,6 +17,7 @@ from collections import OrderedDict
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
+import pyqtgraph.functions as fn
 
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.filters import window
@@ -63,23 +64,34 @@ class PlotCanvas(QMainWindow):
  
         self.scalebar = None
         self.colorbar = None
-        
-        self.scale = img['axes'][1]['scale'] if 'axes' in img and len(img['axes']) > 1 else 1
 
-        try:
-            self.units = img['axes'][1]['units'] if 'axes' in img and len(img['axes']) > 1 else 'px'
-            self.units = ''.join(self.units.split(' '))
-        except Exception as e:
-            print(f"Error reading units: {e} Set to pixel scale")
-            self.units = 'px'
-            self.scale = 1
+        # Extract scale and units from image dictionary
+        scale = img.get('axes', [{}])[-1].get('scale', 1)
+        units = img.get('axes', [{}])[-1].get('units', 'px')
+        self._scale, self._units, self._unitsPower, dimension = self.parse_scale_units(scale, units)
+        # Update the image dictionary with standardized units
+        img['axes'][-1]['scale'] = self._scale
+        img['axes'][-2]['scale'] = self._scale
+        if dimension == 'si-length':
+            units = 'nm'
+        elif dimension == 'si-length-reciprocal':
+            units = '1/nm'
+        else:          
+            units = 'px'
+        img['axes'][-1]['units'] = units
+        img['axes'][-2]['units'] = units
+
+        self.attribute['dimension'] = dimension
                       
         # Create Image with canvas
         self.canvas = MainFrameCanvas(img, parent=self)
         self.setCentralWidget(self.canvas)
 
+        # Create scalebar
+        self.create_scalebar()
+
         # Update scale bar with zoom
-        self.canvas.viewbox.sigRangeChanged.connect(self.create_scalebar)
+        self.canvas.viewbox.sigRangeChanged.connect(self.update_scalebar)
 
         # Measurement mode control all in a dictionary
         self.mode_control = {'measurement': False,
@@ -114,22 +126,13 @@ class PlotCanvas(QMainWindow):
         self.temp_center = []     
         
         # Process history
-        if 'TemCompanion' in img['metadata']:
-            self.process = copy.deepcopy(img['metadata']['TemCompanion'])
-            # Update some info
-            self.process['Image Size (pixels)'] = f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}"
-            self.process['Calibrated Image Size'] = f"{self.canvas.img_size[-1] * self.scale:.4g} x {self.canvas.img_size[-2] * self.scale:.4g} {self.units}"
-            self.process['Pixel Calibration'] = f"{self.scale:.4g} {self.units}"
-        else:
-            # Make a new process history
-            self.process = {'Version': f'TemCompanion v{self.ver}', 
+        temcompanion_info = {'Version': f'TemCompanion v{self.ver}', 
                             'Data Type': f'{self.canvas.data_type}',
                             'File Name': self.parent().file,
-                            'Image Size (pixels)': f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}",
-                            'Calibrated Image Size': f"{self.canvas.img_size[-1] * self.scale:.4g} x {self.canvas.img_size[-2] * self.scale:.4g} {self.units}", 
-                            'Pixel Calibration': f"{self.scale:.4g} {self.units}",
-                            'process': []}
-            img['metadata']['TemCompanion'] = self.process
+                            'process': []
+                            }
+        self.process = img['metadata'].get('TemCompanion', temcompanion_info)
+        img['metadata']['TemCompanion'] = self.process
         
         # Create status bar
         self.statusBar = QStatusBar()
@@ -143,18 +146,16 @@ class PlotCanvas(QMainWindow):
         self.statusBar.showMessage("Ready")
 
         # Pixel label on the status bar
-        self.pixel_label = QLabel(f"--- {self.units} | ---, --- {self.units} | ---,")
-        self.value_label = QLabel("---")
+        self.pixel_label = QLabel(f"--- | ---, --- | ---, | ---")
 
         self.statusBar.addPermanentWidget(self.pixel_label)
-        self.statusBar.addPermanentWidget(self.value_label)
 
         # # Connect mouse event
         self.canvas.plot.scene().sigMouseMoved.connect(self.on_mouse_move)
         self.canvas.plot.scene().sigMouseHover.connect(self.on_mouse_hover)
 
         # Parse and convert the units
-        self.set_scalebar_units()
+        # self.set_scalebar_units()
 
         # Make image
         self.canvas.create_img(cmap=self.attribute['cmap'],
@@ -171,6 +172,22 @@ class PlotCanvas(QMainWindow):
 
         self.resize(600, 650)
 
+    @property
+    def scale(self):
+        return self._scale
+    @scale.setter
+    def scale(self, value):
+        self._scale = value
+
+    @property
+    def units(self):
+        if self._unitsPower == -1:
+            return f'1/{self._units}'
+        return self._units
+    @units.setter
+    def units(self, value):
+        self._units = value
+
     def closeEvent(self, event):
         self.parent().preview_dict.pop(self.canvas.canvas_name, None)
 
@@ -178,6 +195,55 @@ class PlotCanvas(QMainWindow):
         # Set the active selector to receive key events
         if self.canvas.active_selector is not selector:
             self.canvas.active_selector = selector
+
+    def parse_scale_units(self, scale, units):
+        # Use 'nm' as default units for all images
+        # '1/nm' as default for reciprocal space images
+        try:
+            units = ''.join(units.lower().split(' '))
+        except Exception as e:
+            print(f"Error reading units: {e} Set to pixel scale")
+            return 1, 'px', 1, 'px-length'
+
+        # Handle some special unit cases
+        if units == 'um':
+            units = 'µm'
+        elif units == '1/um':
+            units = '1/µm'
+
+        # Handle Angstrom cases:
+        if units in ['A', 'Å', 'ang', 'Ang', 'Angstrom', 'Ångstrom']:
+            units = 'nm'
+            scale *= 0.1
+        elif units in ['1/A', '1/Å', '1/ang', '1/Ang', '1/Angstrom', '1/Ångstrom']:
+            units = '1/nm'
+            scale /= 0.1
+
+        # Standardize the units into SI format
+        real_units_list = ['pm', 'nm', 'µm', 'mm', 'm', 'km']
+        reciprocal_units_list = ['1/pm', '1/nm', '1/µm', '1/mm', '1/m', '1/km'] 
+
+        if units in real_units_list:
+            si_scale = fn.siEval(f'{scale} {units}') # This converts to meters
+            unitsPower = 1
+            # Then convert to 'nm' as default units 
+            si_scale *= 1e9
+            dimension = 'si-length'
+            
+
+        elif units in reciprocal_units_list:
+            real_units = units[2:]  # Remove '1/' prefix
+            si_scale = fn.siEval(f'{scale} {real_units}', unitPower=-1) # This converts to 1/meters
+            unitsPower = -1
+            # Then convert to '1/nm' as default units
+            si_scale /= 1e9
+            dimension = 'si-length-reciprocal'
+        
+        scale = si_scale
+        units = 'nm'
+        return scale, units, unitsPower, dimension
+
+        
 
     def update_img(self, img, img_size=None, pvmin=0.1, pvmax=99.9):
         # Update the image with a new image dictionary
@@ -198,105 +264,82 @@ class PlotCanvas(QMainWindow):
         self.canvas.update_img(img['data'], pvmin=pvmin, pvmax=pvmax)
 
     def create_scalebar(self):
-        # Remove previous scalebar
-        if self.scalebar is not None:
-            try:
-                self.canvas.viewbox.removeItem(self.scalebar)
-            except:
-                pass # Always has a mysterious error
-            self.scalebar = None
+        # This only creates the scalebar object. The actual length is set in update_scalebar
+        self.scalebar = CustomScaleBar(parent=self.canvas.viewbox, units=self.units, power=self._unitsPower)
+        font = 20
+        color = self.canvas.attribute['color']
+        location = self.canvas.attribute['location']
+        self.scalebar.set_properties(font, color, location)
 
-        if self.canvas.attribute['scalebar']:
-            # Get current view range instead of using image size
-            view_range = self.canvas.viewbox.viewRange()
-            x_range = view_range[0][1] - view_range[0][0]
-        
-            # Set scale bar to 15% of current x-range
-            scale_dx_float = x_range * 0.15
-            units = self.units
-            
-            # Set the length to 1, 2, 5, 10, 20, 50, 100, 200, 500.
-            scale_dx_list = [1, 2, 5, 10, 20, 50, 100, 200, 500]
-            scale_dx = min(scale_dx_list, key=lambda x: abs(x - scale_dx_float))
+        # Toggle show/hide
+        self.scalebar.toggle_visibility(self.attribute['scalebar'])
 
-            self.scalebar = CustomScaleBar(scale_dx, units, parent=self.canvas.viewbox)
-            font = 20
-            color = self.canvas.attribute['color']
-            location = self.canvas.attribute['location']
-            self.scalebar.set_properties(font, color, location)
-        
-    def set_scalebar_units(self):
-        # Handle 'um' and '1/um' cases:
-        if self.units == 'um':
-            self.units = 'µm'
-        elif self.units == '1/um':
-            self.units = '1/µm'
+    def get_scalebar_length(self):
+        # Return the appropriate scalebar length in 'nm' or '1/nm' based on current view range
+        # Return the appropriate units according to fn.siFormat
+        # Get current view range instead of using image size
+        view_range = self.canvas.viewbox.viewRange()
+        x_range = view_range[0][1] - view_range[0][0]
 
-        # Handle Angstrom cases:
-        if self.units in ['A', 'Å', 'ang', 'Ang', 'Angstrom', 'Ångstrom']:
-            self.units = 'nm'
-            self.scale *= 0.1
-        elif self.units in ['1/A', '1/Å', '1/ang', '1/Ang', '1/Angstrom', '1/Ångstrom']:
-            self.units = '1/nm'
-            self.scale /= 0.1
-
-        # Reformat the units for scale bar so that the scalebar shows a value between 1 and 1000
-        units = self.units
-        scale = self.scale
-        fov = self.img_size[1] * scale  # in original units
-        scalebar = fov * 0.15 # 15% of the field of view
-
-        # Handle the realspace cases
-        real_units_list = ['pm', 'nm', 'µm', 'mm', 'm', 'km']
-        reciprocal_units_list = ['1/pm', '1/nm', '1/µm', '1/mm', '1/m', '1/km'] 
-        if units in real_units_list:
-            dimension = 'si-length'
-            while scalebar < 1 or scalebar >= 1000:
-                unit_index = real_units_list.index(units)
-                if scalebar < 1 and unit_index > 0:
-                    scale *= 1000
-                    units = real_units_list[unit_index - 1]
-                    scalebar = scale * self.img_size[1] * 0.15
-
-                elif scalebar >= 1000 and unit_index < 5:
-                    scale /= 1000
-                    units = real_units_list[unit_index + 1]
-                    scalebar = scale * self.img_size[1] * 0.15
-
-        # Handle the reciprocal space cases
-        elif units in reciprocal_units_list:
-            dimension = 'si-length-reciprocal'
-            while scalebar < 1 or scalebar >= 1000:
-                unit_index = reciprocal_units_list.index(units)
-                if scalebar < 1 and unit_index < 5:
-                    scale *= 1000
-                    units = reciprocal_units_list[unit_index + 1]
-                    scalebar = scale * self.img_size[1] * 0.15
-                elif scalebar >= 1000 and unit_index > 0:
-                    scale /= 1000
-                    units = reciprocal_units_list[unit_index - 1]
-                    scalebar = scale * self.img_size[1] * 0.15
-
+        if self.attribute['dimension'] == 'px-length':
+            scale_float_preferred = x_range * 0.15
         else:
-            # Unknown units, set to pixel scale
-            dimension = 'pixel-length'
-            units = 'px'
-            scale = 1
-        
-        self.units = units
-        # Set real space units for reciprocal space images
-        if dimension == 'si-length-reciprocal' and self.units in reciprocal_units_list:
-            self.real_units = real_units_list[reciprocal_units_list.index(self.units)]
-        else:
-            self.real_units = self.units
-        self.scale = scale
-        self.canvas.attribute['dimension'] = dimension
+            # Set scale bar to 15% of current x-range in meters
+            if self._unitsPower == 1:
+                scale_dx_float = x_range * 0.15 * 1e-9
+            elif self._unitsPower == -1:
+                scale_dx_float = x_range * 0.15 / 1e-9
 
-        # Update the image dictionary
-        self.canvas.data['axes'][0]['scale'] = scale
-        self.canvas.data['axes'][1]['scale'] = scale
-        self.canvas.data['axes'][0]['units'] = units
-        self.canvas.data['axes'][1]['units'] = units
+            # Convert to preferred SI units
+            scale_float_preferred, units_preferred = fn.siFormat(scale_dx_float, suffix='m', power=self._unitsPower, precision=3).split(' ')
+        
+        # Set the length to 1, 2, 5, 10, 20, 50, 100, 200, 500.
+        scale_dx_list = [1, 2, 5, 10, 20, 50, 100, 200, 500]
+        scale_dx = min(scale_dx_list, key=lambda x: abs(x - float(scale_float_preferred)))
+        # Convert back to meters
+        if self.attribute['dimension'] != 'px-length':
+            scale_dx = fn.siEval(f'{scale_dx} {units_preferred}', unitPower=self._unitsPower)
+            # Convert to nm or 1/nm
+            if self._unitsPower == 1:
+                scale_dx *= 1e9
+            elif self._unitsPower == -1:
+                scale_dx /= 1e9
+        return scale_dx
+
+    def update_scalebar(self):
+        # Update scalebar and text with zoom
+        dx = self.get_scalebar_length()
+        self.scalebar.update_scale(dx)
+        
+
+    # def process_metadata(self):
+    #      # Process history
+    #     img = self.canvas.data
+    #     if 'TemCompanion' in img['metadata']:
+    #         self.process = copy.deepcopy(img['metadata']['TemCompanion'])
+    #         # Update some info
+    #         self.process['Image Size (pixels)'] = f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}"
+    #         img_size_x = fn.siFormat(self.canvas.img_size[-1] * self.scale, suffix='m', power=self._unitsPower, precision=4)
+    #         img_size_y = fn.siFormat(self.canvas.img_size[-2] * self.scale, suffix='m', power=self._unitsPower, precision=4)
+    #         self.process['Calibrated Image Size'] = f"{img_size_x} x {img_size_y}"
+    #         pixel_cal = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4)
+    #         self.process['Pixel Calibration'] = f"{pixel_cal}"
+    #     else:
+    #         # Make a new process history
+    #         img_size_x = fn.siFormat(self.canvas.img_size[-1] * self.scale, suffix='m', power=self._unitsPower, precision=4)
+    #         img_size_y = fn.siFormat(self.canvas.img_size[-2] * self.scale, suffix='m', power=self._unitsPower, precision=4)
+    #         pixel_cal = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4)
+
+    #         self.process = {'Version': f'TemCompanion v{self.ver}', 
+    #                         'Data Type': f'{self.canvas.data_type}',
+    #                         'File Name': self.parent().file,
+    #                         'Image Size (pixels)': f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}",
+    #                         'Calibrated Image Size': f"{img_size_x} x {img_size_y}",
+    #                         'Pixel Calibration': f"{pixel_cal}",
+    #                         'process': []}
+    #         img['metadata']['TemCompanion'] = self.process
+        
+    #     self.canvas.data = img
 
     def create_toolbar(self):
         self.toolbar = QToolBar("Main Toolbar")
@@ -415,31 +458,43 @@ class PlotCanvas(QMainWindow):
 
 
     def setscale(self):
+        # Convert current scale to preferred SI units
+        scale_preferred, units_preferred = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4).split(' ')
+        if self._unitsPower == -1:
+            units_preferred = '1/' + units_preferred
         # Open a dialog to take the scale
-        dialog = SetScaleDialog(self.scale, self.units)
+        dialog = SetScaleDialog(scale_preferred, units_preferred)
         if dialog.exec_() == QDialog.Accepted:
             scale = dialog.scale
             units = dialog.units
+            print(f'Scale updated to {scale} {units}')
             try:
                 scale = float(scale)
-                units = str(units)
             except ValueError:
-                QMessageBox.critical(self, 'Input Error', 'Please enter a valid scale or unit.')
+                QMessageBox.critical(self, 'Input Error', 'Please enter a valid scale.')
                 return
-        
+            
+            # Updatae the image dictionary
+            self.canvas.data['axes'][-1]['scale'] = scale
+            self.canvas.data['axes'][-1]['units'] = units
+            self.canvas.data['axes'][-2]['scale'] = scale
+            self.canvas.data['axes'][-2]['units'] = units
+
+            # Convert to SI units
+            scale, units, unitsPower = self.parse_scale_units(scale, units)
+
             # Update the new scale to the image dict
             self.scale = scale
             self.units = units
+            self._unitsPower = unitsPower
 
-            self.set_scalebar_units()
+            # self.set_scalebar_units()
             self.canvas.image_item.setScale(self.scale)
             self.canvas.viewbox.setRange(xRange=(0, self.img_size[-1]*self.scale), yRange=(0, self.img_size[-2]*self.scale), padding=0)
             
-            # Recreate the scalebar with the new scale
-            self.create_scalebar()
-            
-            print(f'Scale updated to {scale} {units}')
-            
+            # Update the scalebar with the new scale
+            #self.scalebar.update_scale(self.get_scalebar_length(), power=self._unitsPower)
+            self.update_scalebar()            
             # Keep the history
             self.update_metadata(f'Scale updated to {scale} {units}')
 
@@ -459,18 +514,18 @@ class PlotCanvas(QMainWindow):
                 value = self.canvas.current_img[int(img_y), int(img_x)]
                 
                 # Update all labels with offsets
-                self.pixel_label.setText(f"{x + self.canvas.offset_x:.2f} {self.units} | {img_x:.1f} px, {y + self.canvas.offset_y:.2f} {self.units} | {img_y:.1f} px")
-                self.value_label.setText(f"{value:.2f}")
+                x_label = f'{x + self.canvas.offset_x:.3f} {self.units}'
+                y_label = f'{y + self.canvas.offset_y:.3f} {self.units}'
+                val_label = f'{value:.3f}'
+                self.pixel_label.setText(f"{x_label} | {img_x:.1f} px, {y_label} | {img_y:.1f} px, {val_label}")
                 
             else:
-                self.pixel_label.setText(f"--- {self.units} | ---, --- {self.units} | ---,")
-                self.value_label.setText("---")
+                self.pixel_label.setText(f"--- | ---, --- | ---, | ---")
                 # self.statusBar.showMessage("Ready")
 
     def on_mouse_hover(self, event):
         if not event:
-            self.pixel_label.setText(f"--- {self.units} | ---, --- {self.units} | ---,")
-            self.value_label.setText("---")
+            self.pixel_label.setText(f"--- | ---, --- | ---, | ---")
 
     def position_window(self, pos='center'):
         # Set the window pop up position
@@ -1276,7 +1331,13 @@ class PlotCanvas(QMainWindow):
             pass
         
         img_info = OrderedDict()
-        img_info['TemCompanion'] = metadata.pop('TemCompanion')
+        img_info['TemCompanion'] = metadata.get('TemCompanion', None)
+
+        # Add some extra info
+        img_info['TemCompanion']['Image Size (pixels)'] = f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}"
+        img_info['TemCompanion']['Calibrated Image Size'] = f"{self.canvas.img_size[-1] * self.scale:.4g} x {self.canvas.img_size[-2] * self.scale:.4g} {self.units}"
+        img_info['TemCompanion']['Pixel Calibration'] = f"{self.scale:.4g} {self.units}"
+
         
         # Add axes info to metadata
         axes = img_dict['axes']
@@ -2792,8 +2853,9 @@ class PlotCanvasFFT(PlotCanvas):
         super().__init__(img, parent)
         self.canvas.data_type = 'FFT'
         self.source_img = source_img  # Store the original canvas name
+        self._unitsPower = -self._unitsPower  # Inverse the unit
 
-
+        # Add Mask and iFFT menu
         fft_menu = self.menubar.children()[4]
         mask_action = QAction('Mask and iFFT', self)
         mask_action.triggered.connect(self.mask)
@@ -2807,11 +2869,7 @@ class PlotCanvasFFT(PlotCanvas):
                 gpa_action = action
                 analyze_menu.removeAction(gpa_action)
                 break
-        
-        
-        
-        
-        
+      
         # Remove the filter menu
         filter_menu = self.menubar.children()[5]
         self.menubar.removeAction(filter_menu.menuAction())
@@ -2833,7 +2891,6 @@ class PlotCanvasFFT(PlotCanvas):
         self.real_scale = self.scale
         
         self.calculate_fft()
-        self.set_scalebar_units()
         
         # Update the colormap in attribute
         self.canvas.attribute['cmap'] = self.canvas.attribute['fft_cmap']
@@ -2843,9 +2900,6 @@ class PlotCanvasFFT(PlotCanvas):
 
         # Update data type in the image dictionary
         self.canvas.data['metadata']['TemCompanion']['Data Type'] = 'FFT'
-        self.canvas.data['metadata']['TemCompanion']['Image Size (pixels)'] = f"{self.canvas.img_size[-1]} x {self.canvas.img_size[-2]}"
-        self.canvas.data['metadata']['TemCompanion']['Calibrated Image Size'] = f"{self.canvas.img_size[-1] * self.scale:.4g} x {self.canvas.img_size[-2] * self.scale:.4g} {self.units}"
-        self.canvas.data['metadata']['TemCompanion']['Pixel Calibration'] = f"{self.scale:.4g} {self.units}"
         self.process = copy.deepcopy(img['metadata']['TemCompanion'])
 
     def closeEvent(self, event):  
@@ -2876,35 +2930,32 @@ class PlotCanvasFFT(PlotCanvas):
 
     def set_fft_scale_units(self):
         img_dict = self.canvas.data 
-        self.real_scale = img_dict['axes'][1]['scale']
-        # Update image size
+        self.real_scale = img_dict['axes'][-1]['scale']
+        self.real_units = img_dict['axes'][-1]['units']
         fft_size = img_dict['data'].shape
-        fft_scale = 1 / self.real_scale / fft_size[0]
-        self.real_units = img_dict['axes'][0]['units']
-        
-            
-        if self.real_units in ['um', 'µm', 'nm', 'm', 'mm', 'cm', 'pm']:
-            fft_units = f'1/{self.real_units}'
-        elif self.real_units in ['1/m', '1/cm', '1/mm', '1/um', '1/µm', '1/nm', '1/pm']:
-            fft_units = self.real_units.split('/')[-1]
-        else: # Cannot parse the unit correctly, reset to pixel scale
-            fft_units = 'px'
+        # Update image size
+        if self.real_units != 'px':            
+            fft_scale = 1 / self.real_scale / fft_size[0]
+        else:
             fft_scale = 1
-            
         
         
         # Update the data associated with this canvas object
-        self.units = fft_units 
         self.scale = fft_scale
         self.canvas.scale = fft_scale
+
+        # Update the unit power in scalebar
+        self.scalebar.make_inverse_units()
+        self.update_scalebar()
+
         
         # Update image dictionary
         img_dict['axes'][0]['size'] = fft_size[0]
         img_dict['axes'][1]['size'] = fft_size[1]
         img_dict['axes'][0]['scale'] = fft_scale
         img_dict['axes'][1]['scale'] = fft_scale
-        img_dict['axes'][0]['units'] = fft_units
-        img_dict['axes'][1]['units'] = fft_units
+        img_dict['axes'][0]['units'] = self.units
+        img_dict['axes'][1]['units'] = self.units
 
         fft_center = (self.img_size[0]//2, self.img_size[1]//2)
         self.canvas.data['axes'][0]['offset'] = -fft_center[0] * self.scale

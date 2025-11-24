@@ -2031,7 +2031,7 @@ class PlotCanvas(QMainWindow):
             # Update selector position
             selector.sigRegionChangeFinished.disconnect(self.calculate_fft_distance)
             selector.setPos([x, y])
-            selector.sigRegionChangeFinished.connect(self.calculate_fft_distance)
+            selector.sigRegionChangeFinished.confnect(self.calculate_fft_distance)
 
     def stop_fft_measurement(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
@@ -2430,10 +2430,51 @@ class PlotCanvas(QMainWindow):
 
 # =============== Stack functions ============================================
     def rotate_stack(self):
+        # Do the same way as rotate image, but apply to the entire stack
+        self.rotate()
+        self.buttons['ok'].triggered.disconnect(self.confirm_rotate)
+        self.buttons['ok'].triggered.connect(self.confirm_rotate_stack)
+        self.buttons['hand'].triggered.disconnect(self.manual_rotate)
+        self.buttons['hand'].triggered.connect(self.manual_rotate_stack)
+    
+    def confirm_rotate_stack(self):
+        if self.canvas.selector:
+            selector = self.canvas.selector[0]
+            start_point, end_point = selector.getHandles()[0].pos(), selector.getHandles()[1].pos()
+            x0, y0 = start_point.x(), start_point.y()
+            x1, y1 = end_point.x(), end_point.y()
+            angle = -calculate_angle_to_horizontal((x0, y0), (x1, y1))
+
+
+            # Process the rotation
+            img = copy.deepcopy(self.canvas.data)
+            img_to_rotate = img['data']
+            rotated_array = rotate(img_to_rotate,angle,(2,1))
+            img['data'] = rotated_array
+            
+            # Update axes
+            img['axes'][1]['size'] = img['data'].shape[1]
+            img['axes'][2]['size'] = img['data'].shape[2]
+            
+            # Create a new PlotCanvs to display        
+            title = self.windowTitle()
+            preview_name = self.canvas.canvas_name + '_R{:.1f}'.format(angle)
+
+            self.plot_new_image(img, preview_name, parent=self.parent(), metadata=f'Rotated the entire stack of {title} by {angle:.1f} degrees counterclockwise.', position='center right')
+            
+            print(f'Rotated the entire stack of {title} by {angle:.1f} degrees counterclockwise.')
+            self.position_window('center left')
+
+            self.clean_up(selector=True, buttons=True, status_bar=True)
+
+
+
+    def manual_rotate_stack(self):
         # Open a dialog to take the rotation angle
         dialog = RotateImageDialog(parent=self)
         # Display a message in the status bar
         if dialog.exec_() == QDialog.Accepted:
+            self.clean_up(selector=True, buttons=True, status_bar=True)
             ang = dialog.rotate_ang
             try:
                 ang = float(ang)
@@ -2453,11 +2494,11 @@ class PlotCanvas(QMainWindow):
             
             # Create a new PlotCanvs to display        
             title = self.windowTitle()
-            preview_name = self.canvas.canvas_name + '_R{}'.format(ang)
+            preview_name = self.canvas.canvas_name + '_R{:.1f}'.format(ang)
 
-            self.plot_new_image(img, preview_name, parent=self.parent(), metadata=f'Rotated the entire stack of {title} by {ang} degrees counterclockwise.', position='center right')
+            self.plot_new_image(img, preview_name, parent=self.parent(), metadata=f'Rotated the entire stack of {title} by {ang:.1f} degrees counterclockwise.', position='center right')
             
-            print(f'Rotated the entire stack of {title} by {ang} degrees counterclockwise.')
+            print(f'Rotated the entire stack of {title} by {ang:.1f} degrees counterclockwise.')
             self.position_window('center left')
 
 

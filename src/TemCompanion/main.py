@@ -136,6 +136,7 @@
 # Fixed incorrect FFT measurement in live FFT mode.
 # Updated pyqtgraph 0.14 to handle units power for reciprocal space.
 # Added reorder dialog for importing image series with custom order and deletion.
+# Added rotate image and stack by aligning a line ROI to horizontal.
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 

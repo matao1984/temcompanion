@@ -127,7 +127,7 @@ Crop the image by dragging a box. Alternatively, "Manual input" button allows to
 
 - Rotate:
 
-Rotate the image by the given angle in degree. A positive angle will rotate the image counterclockwise; a negative angle will rotate clockwise. The rotated image will be padded with 0 and no cropping is performed.
+Rotate the image by aligning the line ROI to horizontal. "Manual rotate" button opens a dialog to take an angle in degree. A positive angle will rotate the image counterclockwise; a negative angle will rotate clockwise. The rotated image will be padded with 0 and no cropping is performed.
 
 - Flip:
 
@@ -476,6 +476,10 @@ author = {Tao Ma}
 - Fixed error in rgb2gray function
 - Fixed CoM encountering all-zero window in some cases.
 - Improved alignment algorithms.
+- Fixed incorrect FFT measurement in live FFT mode.
+- Updated pyqtgraph 0.14 to handle units power for reciprocal space.
+- Added reorder dialog for importing image series with custom order and deletion.
+- Added rotate image and stack by aligning a line ROI to horizontal.
 
 
 

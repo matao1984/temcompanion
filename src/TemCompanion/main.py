@@ -135,6 +135,7 @@
 # Improved alignment algorithms.
 # Fixed incorrect FFT measurement in live FFT mode.
 # Updated pyqtgraph 0.14 to handle units power for reciprocal space.
+# Added reorder dialog for importing image series with custom order and deletion.
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 

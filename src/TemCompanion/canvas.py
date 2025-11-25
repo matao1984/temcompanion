@@ -310,6 +310,11 @@ class PlotCanvas(QMainWindow):
         # Update scalebar and text with zoom
         dx = self.get_scalebar_length()
         self.scalebar.update_scale(dx)
+        # Update scalebar position and color
+        color = self.canvas.attribute['color']
+        location = self.canvas.attribute['location']
+        self.scalebar.set_properties(font_size=20, color=color, location=location)
+        self.scalebar.toggle_visibility(self.attribute['scalebar'])
         
 
     def create_toolbar(self):

@@ -762,7 +762,7 @@ class CustomSettingsDialog(QDialog):
         self.parent().canvas.attribute['color'] = self.sbcolor_combobox.color()
         self.parent().canvas.attribute['location'] = self.sblocation_combox.currentText()
         
-        self.parent().create_scalebar()
+        self.parent().update_scalebar()
         
     
     def reset_settings(self):

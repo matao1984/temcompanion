@@ -1,5 +1,5 @@
 # TemCompanion
-TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). Three filter functions, including Wiener, averaging background subtraction (ABS), and non-linear filters, are made available for filtering high-resolution TEM images. 
+TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). Various filter functions, including Wiener, averaging background subtraction (ABS), non-linear filter, Butterworth low-pass, and Gaussian filter, are made available for filtering high-resolution TEM images. 
 
 TemCompanion was written by Dr. Tao Ma. For questions, suggestions, bug reports, feature requests, etc, please send a message to matao1984@gmail.com.
 
@@ -52,13 +52,14 @@ Currently available functions include:
 * View and set the pixel scale.
 * Measure distance and angle interactively by drawing a line on images.
 * Extract line profiles interactively.
+* Extract radial integration from a selectable center.
 * Simple math on two images or stacks: addition, subtraction, multiplication, division, and inversion.
 * Compute a fast Fourier transform directly or with a Hann window applied.
 * Compute live FFT from a selected area that can be adjusted interactively.
 * Apply masks on FFT and compute masked inverse FFT.
 * Measure d-spacing from FFT or diffraction patterns. The spot position is fitted with a center of mass function. The angle from horizontal direction is also measured.
 * Apply Wiener, ABS, non-linear, Butterworth, and Gaussian filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
-* View the axes information and metadata of the TEM data file.
+* View the image information and metadata of the TEM data file.
 * The processing history by TemCompanion is saved in the metadata tree under "process" entry.
 * Import image series from a folder.
 * Crop, rotate, flip, resampling, and export stack images.
@@ -100,6 +101,20 @@ author = {Tao Ma}
 ```
 
 ## 6. Change history
+### v1.3.2dev
+- Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
+- Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
+- Also update DPC reconstruction to take non square images
+- Added a default_config.json file for default parameters. 
+- Multiprocess support in batch conversion that significantly speeds up the conversion.
+- Added value validation for most of input parameters to prevent crashes.
+- Added angle measurement tool.
+- Simplified radial integration operations.
+- Added User Guide manual and linked to the main UI.
+- UI remembers the last file type for open and save dialogs.
+- Fixed error in rgb2gray function
+
+
 
 ### v1.3.1
 - Reorganized the project structure

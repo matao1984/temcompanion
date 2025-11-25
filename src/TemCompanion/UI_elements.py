@@ -1,37 +1,66 @@
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtWidgets
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QListView, QVBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
                              QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
-                             QComboBox, QInputDialog, QCheckBox, QGroupBox, 
-                             QFormLayout, QDialogButtonBox,  QTreeWidget, QTreeWidgetItem,
-                             QSlider, QStatusBar, QMenu, QTextEdit, QSizePolicy, QRadioButton,
-                             QListWidget, QListWidgetItem, QButtonGroup, QProgressBar, QToolBar,
-                             QTextBrowser, QDockWidget
+                             QComboBox, QCheckBox, QGroupBox, 
+                             QFormLayout, QDialogButtonBox,  QSlider, QMenu, QSizePolicy, QRadioButton,
+                             QListWidget, QListWidgetItem
                              )
-from PyQt5.QtCore import Qt, QStringListModel, QObject, pyqtSignal, QThread, QRect, QRectF, QSize, QTimer
-from PyQt5.QtGui import QImage, QPixmap, QIcon, QDropEvent, QDragEnterEvent, QFont
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
+from PyQt5.QtGui import QImage, QPixmap, QIcon, QFont, QIntValidator, QDoubleValidator, QValidator
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
+import pyqtgraph.functions as fn
 import numpy as np
 import copy
-import importlib.resources
 import pickle
 import json
 
 # Internal modules
-from .functions import gamma_correct_lut, find_img_by_title
-from . import filters
-# from .main import UI_TemCompanion
-from TemCompanion.DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+from .functions import gamma_correct_lut, find_img_by_title, calculate_angle_from_3_points
+from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
 
 
 #=========== Scale bar class used with pyqtgraph ==============================================
 class CustomScaleBar(pg.ScaleBar):
-    def __init__(self, dx, units, parent):
-        super().__init__(dx, suffix=units)
+    def __init__(self, parent, dx=1e-9, units='nm', power=1):
+        # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
+        if units == 'nm' and power == 1:
+            self.units = 'm'
+        elif units == '1/nm' and power == -1:
+            self.units = f'm{self.to_superscript(power)}'
+        else: # other units like px
+            self.units = units
+        self.power = power
+        # Create a scalebar object with 1 nm or 1/nm default length
+        super().__init__(dx, suffix=self.units)
         self.setParentItem(parent)
+
+    def to_superscript(self, text):
+        superscript_map = {
+            '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+            '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+            'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ',
+            'f': 'ᶠ', 'g': 'ᵍ', 'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ',
+            'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ',
+            'p': 'ᵖ', 'q': 'ᑫ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ',
+            'u': 'ᵘ', 'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ',
+            'z': 'ᶻ', '+': '⁺', '-': '⁻'
+        }
+        return ''.join(superscript_map.get(char, char) for char in str(text))
+    
+    def make_inverse_units(self):
+        if self.units != 'px':
+            self.power = -self.power
+            # Units can only be 'm' or 'm^(-1)' or px
+            if self.units == 'm':
+                self.units = f'm{self.to_superscript(self.power)}'
+            elif self.units == 'm⁻¹':
+                self.units = 'm'
+
+        
 
     def set_properties(self, font_size, color, location):
         font = QFont()
@@ -50,6 +79,23 @@ class CustomScaleBar(pg.ScaleBar):
         elif location == 'upper left':
             loc = (0, 0), (0.2, 0.08)
         self.anchor(loc[0], loc[1])
+    
+    def update_scale(self, dx):
+        # dx is always in nm or 1/nm or px
+        if self.units != 'px':
+            si_dx = dx * 1e-9 if self.power == 1 else dx / 1e-9
+            text = fn.siFormat(si_dx, suffix=self.units, power=self.power)
+        else:
+            text = f'{dx} {self.units}'
+        self.text.setText(text)
+        self.size = dx
+        self.updateBar()
+        
+    def toggle_visibility(self, show):
+        if show:
+            self.show()
+        else:
+            self.hide()
 
 #=========== Main frame widget to take the image item and maintain the aspect ratio ===========
 class MainFrameCanvas(QWidget):
@@ -141,17 +187,6 @@ class MainFrameCanvas(QWidget):
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self._resize_event(self.size())    
         
-        # Some default settings
-        # sb_color = pg.mkColor('yellow')
-        # self.attribute = {'cmap': 'gray',
-        #                   'vmin': None,
-        #                   'vmax': None,
-        #                   'gamma': 1.0,
-        #                   'scalebar': True,
-        #                   'color': sb_color,
-        #                   'location': 'lower left',
-        #                   'dimension': 'si-length',
-        #                   'colorbar': False}
         self.attribute = self.parent().attribute
 
         
@@ -231,8 +266,9 @@ class MainFrameCanvas(QWidget):
                     w -= step
                     self.active_selector.setSize([l, w])
 
-    def toggle_play(self, t=100):
-        self.isPlaying = not self.isPlaying       
+    def toggle_play(self):
+        self.isPlaying = not self.isPlaying
+        t = self.parent().attribute.get('playback_speed', 100)
         if self.isPlaying:
             self.timer.start(t) 
         else:
@@ -245,7 +281,7 @@ class MainFrameCanvas(QWidget):
             self.slider.setValue(0)
 
     def create_img(self, cmap='gray', pvmin=0.1, pvmax=99.9, gamma=1.0):
-        scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
+        scale = self.parent().scale 
         self.center = self.img_size[-1]//2, self.img_size[-2]//2
         self.offset_x = self.data['axes'][-1]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-1].keys() else 0
         self.offset_y = self.data['axes'][-2]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-2].keys() else 0
@@ -805,6 +841,13 @@ class FilterSettingDialog(QDialog):
         default_values = parameters
         self.parameters = {}
 
+        # Create validators
+        delta_validator = QIntValidator(1, 99, self)
+        order_validator = QIntValidator(1, 12, self)
+        cutoff_validator = QDoubleValidator(0.00, 1.00, 3, self)
+        cutoff_validator.setNotation(QDoubleValidator.StandardNotation)
+        cycles_validator = QIntValidator(1, 100, self)
+
         # Wiener Filter Section      
         self.wiener_group = QGroupBox('Wiener Filter Settings', self)
         form_layout = QFormLayout()
@@ -812,16 +855,19 @@ class FilterSettingDialog(QDialog):
         self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
         self.delta_wf_input = QLineEdit()
         self.delta_wf_input.setText(default_values['WF Delta'])
+        self.delta_wf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_wf, self.delta_wf_input)
         self.order_wf = QLabel('WF Bw-order')
         self.order_wf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_wf_input = QLineEdit()
         self.order_wf_input.setText(default_values['WF Bw-order'])
+        self.order_wf_input.setValidator(order_validator)
         form_layout.addRow(self.order_wf, self.order_wf_input)
         self.cutoff_wf = QLabel('WF Bw-cutoff')
-        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_wf_input = QLineEdit()
         self.cutoff_wf_input.setText(default_values['WF Bw-cutoff'])
+        self.cutoff_wf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_wf, self.cutoff_wf_input)
         self.wiener_group.setLayout(form_layout)
         self.wiener_group.setEnabled(True)
@@ -834,16 +880,19 @@ class FilterSettingDialog(QDialog):
         self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
         self.delta_absf_input = QLineEdit()
         self.delta_absf_input.setText(default_values['ABSF Delta'])
+        self.delta_absf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_absf, self.delta_absf_input)
         self.order_absf = QLabel('ABSF Bw-order')
         self.order_absf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_absf_input = QLineEdit()
         self.order_absf_input.setText(default_values['ABSF Bw-order'])
+        self.order_absf_input.setValidator(order_validator)
         form_layout.addRow(self.order_absf, self.order_absf_input)
         self.cutoff_absf = QLabel('ABSF Bw-cutoff')
-        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_absf_input = QLineEdit()
         self.cutoff_absf_input.setText(default_values['ABSF Bw-cutoff'])
+        self.cutoff_absf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_absf, self.cutoff_absf_input)
         self.absf_group.setLayout(form_layout)
         #self.absf_group.setLayout(self.create_form_layout(["ABSF Delta", "ABSF Bw-order", "ABSF Bw-cutoff"], default_values, self.parameters))
@@ -858,21 +907,25 @@ class FilterSettingDialog(QDialog):
         self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
         self.N_input = QLineEdit()
         self.N_input.setText(default_values['NL Cycles'])
+        self.N_input.setValidator(cycles_validator)
         form_layout.addRow(self.N, self.N_input)
         self.delta_nl = QLabel('NL Delta')
         self.delta_nl.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
         self.delta_nl_input = QLineEdit()
         self.delta_nl_input.setText(default_values['NL Delta'])
+        self.delta_nl_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_nl, self.delta_nl_input)
         self.order_nl = QLabel('NL Bw-order')
         self.order_nl.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_nl_input = QLineEdit()
         self.order_nl_input.setText(default_values['NL Bw-order'])
+        self.order_nl_input.setValidator(order_validator)
         form_layout.addRow(self.order_nl, self.order_nl_input)
-        self.cutoff_nl = QLabel('NL Bw-cutoff')
-        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_nl = QLabel('NL Lowpass-cutoff')
+        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_nl_input = QLineEdit()
         self.cutoff_nl_input.setText(default_values['NL Bw-cutoff'])
+        self.cutoff_nl_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_nl, self.cutoff_nl_input)
         self.nl_group.setLayout(form_layout)
         #self.nl_group.setLayout(self.create_form_layout(["NL Cycles", "NL Delta", "NL Bw-order", "NL Bw-cutoff"], default_values, self.parameters))
@@ -887,11 +940,13 @@ class FilterSettingDialog(QDialog):
         self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_bw_input = QLineEdit()
         self.order_bw_input.setText(default_values['Bw-order'])
+        self.order_bw_input.setValidator(order_validator)
         form_layout.addRow(self.order_bw, self.order_bw_input)
         self.cutoff_bw = QLabel('Bw-cutoff')
-        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_bw_input = QLineEdit()
         self.cutoff_bw_input.setText(default_values['Bw-cutoff'])
+        self.cutoff_bw_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_bw, self.cutoff_bw_input)
         self.bw_group.setLayout(form_layout)
         self.bw_group.setEnabled(True)
@@ -900,10 +955,17 @@ class FilterSettingDialog(QDialog):
         # Gaussian filter Section
         self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
         form_layout = QFormLayout()
-        self.cutoff_gaussian = QLabel('Gaussian cutoff')
-        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.hp_cutoff_gaussian = QLabel('High-pass Gaussian cutoff')
+        self.hp_cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the highpass starts. Must be between 0-1. Set to 0 for no highpass.')
+        self.hp_cutoff_gaussian_input = QLineEdit()
+        self.hp_cutoff_gaussian_input.setText(default_values['GS-hp-cutoff'])
+        self.hp_cutoff_gaussian_input.setValidator(cutoff_validator)
+        form_layout.addRow(self.hp_cutoff_gaussian, self.hp_cutoff_gaussian_input)
+        self.cutoff_gaussian = QLabel('Low-pass Gaussian cutoff')
+        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1. Set to 1 for no lowpass.')
         self.cutoff_gaussian_input = QLineEdit()
         self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
+        self.cutoff_gaussian_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
         self.gaussian_group.setLayout(form_layout)
         self.gaussian_group.setEnabled(True)
@@ -918,6 +980,35 @@ class FilterSettingDialog(QDialog):
         self.setLayout(layout)
     
     def handle_ok(self):
+        # Validate all inputs before accepting
+        inputs_to_validate = [
+            (self.delta_wf_input, 'WF Delta', '1-99'),
+            (self.order_wf_input, 'WF Bw-order', '1-12'),
+            (self.cutoff_wf_input, 'WF Bw-cutoff', '0.0-1.0'),
+            (self.delta_absf_input, 'ABSF Delta', '1-99'),
+            (self.order_absf_input, 'ABSF Bw-order', '1-12'),
+            (self.cutoff_absf_input, 'ABSF Bw-cutoff', '0.0-1.0'),
+            (self.N_input, 'NL Cycles', '1-100'),
+            (self.delta_nl_input, 'NL Delta', '1-99'),
+            (self.order_nl_input, 'NL Bw-order', '1-12'),
+            (self.cutoff_nl_input, 'NL Bw-cutoff', '0.0-1.0'),
+            (self.order_bw_input, 'Bw-order', '1-12'),
+            (self.cutoff_bw_input, 'Bw-cutoff', '0.0-1.0'),
+            (self.hp_cutoff_gaussian_input, 'GS-hp-cutoff', '0.0-1.0'),
+            (self.cutoff_gaussian_input, 'GS-cutoff', '0.0-1.0')
+        ]
+        
+        for input_field, field_name, valid_range in inputs_to_validate:
+            if input_field.validator():
+                state = input_field.validator().validate(input_field.text(), 0)[0]
+                if state != QValidator.Acceptable:
+                    QMessageBox.warning(self, "Invalid Input", 
+                                      f"Please enter a valid value for {field_name}.\n"
+                                      f"Current value: '{input_field.text()}'\n"
+                                      f"Valid range: {valid_range}")
+                    input_field.setFocus()
+                    return
+        
         parameters = {'WF Delta': self.delta_wf_input.text(),
                       'WF Bw-order': self.order_wf_input.text(),
                       'WF Bw-cutoff': self.cutoff_wf_input.text(),
@@ -930,6 +1021,7 @@ class FilterSettingDialog(QDialog):
                       'NL Bw-cutoff': self.cutoff_nl_input.text(),
                       'Bw-order': self.order_bw_input.text(),
                       'Bw-cutoff': self.cutoff_bw_input.text(),
+                      'GS-hp-cutoff': self.hp_cutoff_gaussian_input.text(),
                       'GS-cutoff': self.cutoff_gaussian_input.text()
                         }
         
@@ -949,6 +1041,12 @@ class FilterSettingBatchConvert(QDialog):
         default_values = parameters
         self.parameters = {}
 
+        # Create validators
+        delta_validator = QIntValidator(1, 99, self)
+        order_validator = QIntValidator(1, 12, self)
+        cutoff_validator = QDoubleValidator(0.00, 1.00, 3, self)
+        cycles_validator = QIntValidator(1, 100, self)
+
         # Wiener Filter Section
         self.wiener_check = QCheckBox("Apply Wiener Filter")
         self.wiener_check.setChecked(apply_wf)
@@ -959,16 +1057,19 @@ class FilterSettingBatchConvert(QDialog):
         self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
         self.delta_wf_input = QLineEdit()
         self.delta_wf_input.setText(default_values['WF Delta'])
+        self.delta_wf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_wf, self.delta_wf_input)
         self.order_wf = QLabel('WF Bw-order')
         self.order_wf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_wf_input = QLineEdit()
         self.order_wf_input.setText(default_values['WF Bw-order'])
+        self.order_wf_input.setValidator(order_validator)
         form_layout.addRow(self.order_wf, self.order_wf_input)
         self.cutoff_wf = QLabel('WF Bw-cutoff')
-        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_wf_input = QLineEdit()
         self.cutoff_wf_input.setText(default_values['WF Bw-cutoff'])
+        self.cutoff_wf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_wf, self.cutoff_wf_input)
         self.wiener_group.setLayout(form_layout)
         self.wiener_group.setEnabled(apply_wf)
@@ -985,16 +1086,19 @@ class FilterSettingBatchConvert(QDialog):
         self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
         self.delta_absf_input = QLineEdit()
         self.delta_absf_input.setText(default_values['ABSF Delta'])
+        self.delta_absf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_absf, self.delta_absf_input)
         self.order_absf = QLabel('ABSF Bw-order')
         self.order_absf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_absf_input = QLineEdit()
         self.order_absf_input.setText(default_values['ABSF Bw-order'])
+        self.order_absf_input.setValidator(order_validator)
         form_layout.addRow(self.order_absf, self.order_absf_input)
         self.cutoff_absf = QLabel('ABSF Bw-cutoff')
-        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_absf_input = QLineEdit()
         self.cutoff_absf_input.setText(default_values['ABSF Bw-cutoff'])
+        self.cutoff_absf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_absf, self.cutoff_absf_input)
         self.absf_group.setLayout(form_layout)
         self.absf_group.setEnabled(apply_absf)
@@ -1011,21 +1115,25 @@ class FilterSettingBatchConvert(QDialog):
         self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
         self.N_input = QLineEdit()
         self.N_input.setText(default_values['NL Cycles'])
+        self.N_input.setValidator(cycles_validator)
         form_layout.addRow(self.N, self.N_input)
         self.delta_nl = QLabel('NL Delta')
         self.delta_nl.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
         self.delta_nl_input = QLineEdit()
         self.delta_nl_input.setText(default_values['NL Delta'])
+        self.delta_nl_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_nl, self.delta_nl_input)
         self.order_nl = QLabel('NL Bw-order')
         self.order_nl.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_nl_input = QLineEdit()
         self.order_nl_input.setText(default_values['NL Bw-order'])
+        self.order_nl_input.setValidator(order_validator)
         form_layout.addRow(self.order_nl, self.order_nl_input)
-        self.cutoff_nl = QLabel('NL Bw-cutoff')
-        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_nl = QLabel('NL Lowpass-cutoff')
+        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_nl_input = QLineEdit()
         self.cutoff_nl_input.setText(default_values['NL Bw-cutoff'])
+        self.cutoff_nl_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_nl, self.cutoff_nl_input)
         self.nl_group.setLayout(form_layout)
         self.nl_group.setEnabled(apply_nl)
@@ -1042,11 +1150,13 @@ class FilterSettingBatchConvert(QDialog):
         self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
         self.order_bw_input = QLineEdit()
         self.order_bw_input.setText(default_values['Bw-order'])
+        self.order_bw_input.setValidator(order_validator)
         form_layout.addRow(self.order_bw, self.order_bw_input)
         self.cutoff_bw = QLabel('Bw-cutoff')
-        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
         self.cutoff_bw_input = QLineEdit()
         self.cutoff_bw_input.setText(default_values['Bw-cutoff'])
+        self.cutoff_bw_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_bw, self.cutoff_bw_input)
         self.bw_group.setLayout(form_layout)
         self.bw_group.setEnabled(apply_bw)
@@ -1059,10 +1169,17 @@ class FilterSettingBatchConvert(QDialog):
         self.gaussian_check.setChecked(apply_gaussian)
         self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
         form_layout = QFormLayout()
-        self.cutoff_gaussian = QLabel('Gaussian cutoff')
-        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts.')
+        self.hp_cutoff_gaussian = QLabel('High-pass Gaussian cutoff')
+        self.hp_cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the highpass starts. Must be between 0-1. Set to 0 for no highpass.')
+        self.hp_cutoff_gaussian_input = QLineEdit()
+        self.hp_cutoff_gaussian_input.setText(default_values['GS-hp-cutoff'])
+        self.hp_cutoff_gaussian_input.setValidator(cutoff_validator)
+        form_layout.addRow(self.hp_cutoff_gaussian, self.hp_cutoff_gaussian_input)
+        self.cutoff_gaussian = QLabel('Low-pass Gaussian cutoff')
+        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1. Set to 1 for no lowpass.')
         self.cutoff_gaussian_input = QLineEdit()
         self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
+        self.cutoff_gaussian_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
         self.gaussian_group.setLayout(form_layout)
         self.gaussian_group.setEnabled(apply_gaussian)
@@ -1079,6 +1196,35 @@ class FilterSettingBatchConvert(QDialog):
         self.setLayout(layout)
     
     def handle_ok(self):
+        # Validate all inputs before accepting
+        inputs_to_validate = [
+            (self.delta_wf_input, 'WF Delta', '1-99'),
+            (self.order_wf_input, 'WF Bw-order', '1-12'),
+            (self.cutoff_wf_input, 'WF Bw-cutoff', '0.0-1.0'),
+            (self.delta_absf_input, 'ABSF Delta', '1-99'),
+            (self.order_absf_input, 'ABSF Bw-order', '1-12'),
+            (self.cutoff_absf_input, 'ABSF Bw-cutoff', '0.0-1.0'),
+            (self.N_input, 'NL Cycles', '1-100'),
+            (self.delta_nl_input, 'NL Delta', '1-99'),
+            (self.order_nl_input, 'NL Bw-order', '1-12'),
+            (self.cutoff_nl_input, 'NL Bw-cutoff', '0.0-1.0'),
+            (self.order_bw_input, 'Bw-order', '1-12'),
+            (self.cutoff_bw_input, 'Bw-cutoff', '0.0-1.0'),
+            (self.hp_cutoff_gaussian_input, 'GS-hp-cutoff', '0.0-1.0'),
+            (self.cutoff_gaussian_input, 'GS-cutoff', '0.0-1.0')
+        ]
+        
+        for input_field, field_name, valid_range in inputs_to_validate:
+            if input_field.validator():
+                state = input_field.validator().validate(input_field.text(), 0)[0]
+                if state != QValidator.Acceptable:
+                    QMessageBox.warning(self, "Invalid Input", 
+                                      f"Please enter a valid value for {field_name}.\n"
+                                      f"Current value: '{input_field.text()}'\n"
+                                      f"Valid range: {valid_range}")
+                    input_field.setFocus()
+                    return
+        
         parameters = {}
 
         self.apply_wf = self.wiener_check.isChecked()
@@ -1098,7 +1244,8 @@ class FilterSettingBatchConvert(QDialog):
                       'NL Bw-cutoff': self.cutoff_nl_input.text(),
                       'Bw-order': self.order_bw_input.text(),
                       'Bw-cutoff': self.cutoff_bw_input.text(),
-                      'GS-cutoff': self.cutoff_gaussian_input.text()
+                      'GS-cutoff': self.cutoff_gaussian_input.text(),
+                      'GS-hp-cutoff': self.hp_cutoff_gaussian_input.text()
             }
         
         self.parameters = parameters        
@@ -1140,8 +1287,14 @@ class RotateImageDialog(QDialog):
         self.setWindowTitle("Rotate image")        
         layout = QVBoxLayout()
         self.rotate_ang = None
+        
+        # Create validator for angle (0-360 degrees)
+        angle_validator = QDoubleValidator(0.0, 360.0, 2, self)
+        angle_validator.setNotation(QDoubleValidator.StandardNotation)
+        
         self.angle_input = QLineEdit(self)
         self.angle_input.setPlaceholderText('Enter angle in degrees')
+        self.angle_input.setValidator(angle_validator)
         layout.addWidget(self.angle_input)
         
         # Dialog Buttons (OK and Cancel)
@@ -1153,6 +1306,17 @@ class RotateImageDialog(QDialog):
         self.setLayout(layout)
         
     def handle_ok(self):
+        # Validate angle input
+        if self.angle_input.validator():
+            state = self.angle_input.validator().validate(self.angle_input.text(), 0)[0]
+            if state != QValidator.Acceptable:
+                QMessageBox.warning(self, "Invalid Input", 
+                                  f"Please enter a valid rotation angle.\n"
+                                  f"Current value: '{self.angle_input.text()}'\n"
+                                  f"Valid range: 0.0-360.0 degrees")
+                self.angle_input.setFocus()
+                return
+        
         self.rotate_ang = self.angle_input.text()
         self.accept()
         
@@ -1240,12 +1404,23 @@ class SetScaleDialog(QDialog):
         
         self.setWindowTitle("Set pixel scale")        
         layout = QVBoxLayout()
+        scale_layout = QHBoxLayout()
+        scale_label = QLabel('Pixel size:')
         self.scale_input = QLineEdit(self)
         self.scale_input.setText(str(scale))
-        self.unit_input = QLineEdit(self)
-        self.unit_input.setText(str(units))
-        layout.addWidget(self.scale_input)
-        layout.addWidget(self.unit_input)
+        self.scale_input.setValidator(QDoubleValidator(0.0001, 1e9, 9, self))
+        scale_layout.addWidget(scale_label)
+        scale_layout.addWidget(self.scale_input)
+        layout.addLayout(scale_layout)
+        unit_layout = QHBoxLayout()
+        unit_label = QLabel('Unit:')
+        self.unit_input = QComboBox(self)
+        self.unit_input.addItems(['pm', 'nm', 'um', 'mm', 'm', '1/pm', '1/nm', '1/um', '1/mm', '1/m'])
+        self.unit_input.insertSeparator(5)
+        self.unit_input.setCurrentText(str(units))
+        unit_layout.addWidget(unit_label)
+        unit_layout.addWidget(self.unit_input)
+        layout.addLayout(unit_layout)
         
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1257,7 +1432,7 @@ class SetScaleDialog(QDialog):
         
     def handle_ok(self):
         self.scale = self.scale_input.text()
-        self.units = self.unit_input.text()
+        self.units = self.unit_input.currentText()
         self.accept()
         
 
@@ -1277,10 +1452,16 @@ class AlignStackDialog(QDialog):
         self.crop_to_square_check.setEnabled(True)
         self.crop_img_check.stateChanged.connect(self.crop_to_square_change)
         self.crop_to_square_check.setChecked(False)
+        self.normalization_check = QCheckBox('Normalize intensities before alignment')
+        self.normalization_check.setChecked(False)
+        self.phase_correlation_check = QCheckBox('Use phase correlation')
+        self.phase_correlation_check.setChecked(False)
         layout.addWidget(self.apply_window_check)
         layout.addWidget(self.crop_img_check)
         layout.addWidget(self.crop_to_square_check)
-        
+        layout.addWidget(self.normalization_check)
+        layout.addWidget(self.phase_correlation_check)
+
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
@@ -1302,11 +1483,64 @@ class AlignStackDialog(QDialog):
         self.crop_to_square = False
         self.apply_window = self.apply_window_check.isChecked()
         self.crop_img = self.crop_img_check.isChecked()
+        self.normalize = self.normalization_check.isChecked()
+        self.phase_correlation = self.phase_correlation_check.isChecked()
         if self.crop_img:
             self.crop_to_square = self.crop_to_square_check.isChecked()
             
         self.accept()
         
+
+#==============Alignment with optical flow dialog==================
+class AlignStackOFDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setWindowTitle('Optical flow parameters')
+        layout = QVBoxLayout()
+
+        self.window_size_label = QLabel('Window size: 15')
+        layout.addWidget(self.window_size_label)
+
+        self.window_size = QSlider(self)
+        self.window_size.setOrientation(Qt.Horizontal)
+        self.window_size.setMinimum(3)
+        self.window_size.setMaximum(100)
+        self.window_size.setValue(15)
+        self.window_size.setToolTip('Radius of the window considered around each pixel.')
+        self.window_size.valueChanged.connect(self.update_window_size_label)
+
+        self.prefilter_check = QCheckBox('Prefilter before alignment')
+        self.prefilter_check.setToolTip('Apply a median filter with window size 3. This helps to remove potential outliers.')
+        self.prefilter_check.setChecked(False)
+
+        self.gaussian_check = QCheckBox('Integrate with Gaussian kernel')
+        self.gaussian_check.setChecked(False)
+        self.gaussian_check.setToolTip('Use Gaussian kernel to integrate the optical flow field. This helps to smooth the displacement field.')
+
+        layout.addWidget(self.window_size_label)
+        layout.addWidget(self.window_size)
+        layout.addWidget(self.prefilter_check)
+        layout.addWidget(self.gaussian_check)
+
+        # Dialog Buttons (OK and Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+            
+    def update_window_size_label(self):
+        self.window_size_label.setText(f'Window size: {self.window_size.value()}')
+ 
+        
+    def handle_ok(self):
+        self.window_size_value = self.window_size.value()
+        self.prefilter = self.prefilter_check.isChecked()
+        self.gaussian = self.gaussian_check.isChecked()
+        self.accept()
+                    
 
                 
 
@@ -1635,71 +1869,71 @@ class PlotSettingDialog(QDialog):
         
 
 
-#==============Radial Integration Dialog===================================
-class RadialIntegrationDialog(QDialog):
-    def __init__(self, parent):
-        # Parent must be the image window
-        super().__init__(parent)
-        self.setWindowTitle("Radial Integration")
-        self.center = self.parent().canvas.center
-        self.img_dict = self.parent().get_img_dict_from_canvas()
+# #==============Radial Integration Dialog===================================
+# class RadialIntegrationDialog(QDialog):
+#     def __init__(self, parent):
+#         # Parent must be the image window
+#         super().__init__(parent)
+#         self.setWindowTitle("Radial Integration")
+#         self.center = self.parent().canvas.center
+#         self.img_dict = self.parent().get_img_dict_from_canvas()
 
-        layout = QVBoxLayout()
-        label = QLabel("Select the center for radial integration:")
-        self.center_label = QLabel(f"Center: {self.center}")
-        layout.addWidget(label)
-        layout.addWidget(self.center_label)
+#         layout = QVBoxLayout()
+#         label = QLabel("Select the center for radial integration:")
+#         self.center_label = QLabel(f"Center: {self.center}")
+#         layout.addWidget(label)
+#         layout.addWidget(self.center_label)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
-        self.cancel_button.clicked.connect(self.handle_cancel)
-        self.ok_button = buttons.button(QDialogButtonBox.Ok)
-        self.ok_button.clicked.connect(self.handle_ok)
-        layout.addWidget(buttons)
+#         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+#         self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
+#         self.cancel_button.clicked.connect(self.handle_cancel)
+#         self.ok_button = buttons.button(QDialogButtonBox.Ok)
+#         self.ok_button.clicked.connect(self.handle_ok)
+#         layout.addWidget(buttons)
 
-        self.setLayout(layout)
+#         self.setLayout(layout)
 
 
-    def handle_ok(self):
-        # Handle the OK button press
-        self.calculate_radial_integration(self.center)
-        self.accept()
+#     def handle_ok(self):
+#         # Handle the OK button press
+#         self.calculate_radial_integration(self.center)
+#         self.accept()
 
-    def handle_cancel(self):
-        self.parent().clean_up(selector=True, modes=True, status_bar=True)
-        self.reject()
+#     def handle_cancel(self):
+#         self.parent().clean_up(selector=True, modes=True, status_bar=True)
+#         self.reject()
 
-    def update_center(self, center):
-        self.center = center
-        self.center_label.setText(f"Center: {self.center}")
+#     def update_center(self, center):
+#         self.center = center
+#         self.center_label.setText(f"Center: {self.center}")
 
-    def calculate_radial_integration(self, center):
-        # Perform radial integration calculation
-        img = copy.deepcopy(self.img_dict['data'])
-        original_center = img.shape[1]//2, img.shape[0]//2
-        # Shift image to center
-        if center != original_center:
-            offset = (int(center[0] - original_center[0]), int(center[1] - original_center[1]))
-            x_span = int(min(center[0], img.shape[1]-center[0]))
-            new_x_start = center[0] - x_span
-            new_x_end = new_x_start + 2 * x_span
-            y_span = int(min(center[1], img.shape[0]-center[1]))
-            new_y_start = center[1] - y_span
-            new_y_end = new_y_start + 2 * y_span
-            img = img[new_y_start:new_y_end, new_x_start:new_x_end]
-            if img.shape[0] != img.shape[1]:
-                img = filters.crop_to_square(img)
-            print(f'Original center: {original_center}')
-            print(f'New center: {center}')
-            print(f"Cropping image to {new_y_start}:{new_y_end}, {new_x_start}:{new_x_end}")
-            print(f'New image shape: {img.shape}')
+#     def calculate_radial_integration(self, center):
+#         # Perform radial integration calculation
+#         img = copy.deepcopy(self.img_dict['data'])
+#         original_center = img.shape[1]//2, img.shape[0]//2
+#         # Shift image to center
+#         if center != original_center:
+#             offset = (int(center[0] - original_center[0]), int(center[1] - original_center[1]))
+#             x_span = int(min(center[0], img.shape[1]-center[0]))
+#             new_x_start = center[0] - x_span
+#             new_x_end = new_x_start + 2 * x_span
+#             y_span = int(min(center[1], img.shape[0]-center[1]))
+#             new_y_start = center[1] - y_span
+#             new_y_end = new_y_start + 2 * y_span
+#             img = img[new_y_start:new_y_end, new_x_start:new_x_end]
+#             if img.shape[0] != img.shape[1]:
+#                 img = filters.crop_to_square(img)
+#             print(f'Original center: {original_center}')
+#             print(f'New center: {center}')
+#             print(f"Cropping image to {new_y_start}:{new_y_end}, {new_x_start}:{new_x_end}")
+#             print(f'New image shape: {img.shape}')
 
-        radial_x, radial_y = filters.radial_integration(img)
-        scale = self.img_dict['axes'][1]['scale']
-        # unit = self.img_dict['axes'][1]['units']
-        calibrated_x = radial_x * scale
-        self.x_data = calibrated_x
-        self.y_data = radial_y
+#         radial_x, radial_y = filters.radial_integration(img)
+#         scale = self.img_dict['axes'][1]['scale']
+#         # unit = self.img_dict['axes'][1]['units']
+#         calibrated_x = radial_x * scale
+#         self.x_data = calibrated_x
+#         self.y_data = radial_y
 
         # # Plot the radial profile
         # preview_name = self.parent().windowTitle() + f'_radial_profile from {self.center}'
@@ -1728,6 +1962,13 @@ class gpaSettings(QDialog):
         self.vmax = vmax
         self.gpa = algorithm
         
+        # Create validators
+        masksize_validator = QIntValidator(1, 100, self)
+        edgesmooth_validator = QDoubleValidator(0.0, 1.0, 3, self)
+        edgesmooth_validator.setNotation(QDoubleValidator.StandardNotation)
+        windowsize_validator = QIntValidator(1, 100, self)
+        # step and sigma validators will be created with dynamic ranges based on windowsize
+        
         layout = QVBoxLayout()
         self.standard_radio = QRadioButton("Standard GPA")
         self.standard_radio.toggled.connect(self.enable_settings)
@@ -1741,6 +1982,7 @@ class gpaSettings(QDialog):
         masksize_label = QLabel("Mask radius (px):")
         self.masksize_input = QLineEdit()
         self.masksize_input.setText(str(self.masksize))
+        self.masksize_input.setValidator(masksize_validator)
         self.masksize_input.setToolTip("The extent around the k vectors used to calculate strains. Smaller mask gives smoothier stain maps but loses spatial resolution and vice versa.")
         self.masksize_input.setFixedSize(50, 20)
         self.masksize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
@@ -1752,6 +1994,7 @@ class gpaSettings(QDialog):
         edgesmooth_label = QLabel("Edge smooth (0-1):")
         self.edgesmooth_input = QLineEdit()
         self.edgesmooth_input.setText(str(self.edgesmooth))
+        self.edgesmooth_input.setValidator(edgesmooth_validator)
         self.edgesmooth_input.setToolTip("The ratio of the outside edge that is smoothed with a cosine function. This is to reduce the edge effect.")
         self.edgesmooth_input.setFixedSize(50, 20)
         self.edgesmooth_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
@@ -1766,6 +2009,7 @@ class gpaSettings(QDialog):
         self.windowsize_input.setFixedSize(50, 20)
         self.windowsize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.windowsize_input.setText(str(self.masksize))
+        self.windowsize_input.setValidator(windowsize_validator)
         self.windowsize_input.setToolTip('Window size used for the WFR. The algorithm searches the max value of windowed Fourier transform, "ridge", around the selected k vectors.')
         windowsize_layout.addWidget(windowsize_lable)
         windowsize_layout.addWidget(self.windowsize_input)
@@ -1774,11 +2018,12 @@ class gpaSettings(QDialog):
         step_layout = QHBoxLayout()
         step_lable = QLabel("Step size (px):")
         self.step_input = QLineEdit()
-        step = max(self.masksize*2//5, 2)
-        self.step_input.setText(str(step))
+        # step = max(self.masksize*2//5, 2)
+        self.step_input.setText(str(self.stepsize))
         self.step_input.setFixedSize(50, 20)
         self.step_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.step_input.setToolTip('Step for the ridge search in WFR algorithm. Smaller step size will significantly increase the processing time.')
+        # Validator will be checked dynamically in handle_ok based on windowsize
         step_layout.addWidget(step_lable)
         step_layout.addWidget(self.step_input)
         layout.addLayout(step_layout)
@@ -1790,6 +2035,7 @@ class gpaSettings(QDialog):
         self.sigma_input.setFixedSize(50, 20)
         self.sigma_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.sigma_input.setToolTip('The sigma for the Gaussian window used for the Windowed Fourier Transform.')
+        # Validator will be checked dynamically in handle_ok based on windowsize
         sigma_layout.addWidget(sigma_lable)
         sigma_layout.addWidget(self.sigma_input)
         layout.addLayout(sigma_layout)
@@ -1861,6 +2107,29 @@ class gpaSettings(QDialog):
         
         if self.standard_radio.isChecked():
             self.gpa = 'standard'
+            
+            # Validate masksize
+            if self.masksize_input.validator():
+                state = self.masksize_input.validator().validate(self.masksize_input.text(), 0)[0]
+                if state != QValidator.Acceptable:
+                    QMessageBox.warning(self, "Invalid Input", 
+                                      f"Please enter a valid mask size.\n"
+                                      f"Current value: '{self.masksize_input.text()}'\n"
+                                      f"Valid range: 1-100")
+                    self.masksize_input.setFocus()
+                    return
+            
+            # Validate edgesmooth
+            if self.edgesmooth_input.validator():
+                state = self.edgesmooth_input.validator().validate(self.edgesmooth_input.text(), 0)[0]
+                if state != QValidator.Acceptable:
+                    QMessageBox.warning(self, "Invalid Input", 
+                                      f"Please enter a valid edge smooth value.\n"
+                                      f"Current value: '{self.edgesmooth_input.text()}'\n"
+                                      f"Valid range: 0.0-1.0")
+                    self.edgesmooth_input.setFocus()
+                    return
+            
             try:
                 self.masksize = abs(int(self.masksize_input.text()))
             except:
@@ -1877,22 +2146,57 @@ class gpaSettings(QDialog):
         
         if self.adaptive_radio.isChecked():
             self.gpa = 'adaptive'
+            
+            # Validate windowsize
+            if self.windowsize_input.validator():
+                state = self.windowsize_input.validator().validate(self.windowsize_input.text(), 0)[0]
+                if state != QValidator.Acceptable:
+                    QMessageBox.warning(self, "Invalid Input", 
+                                      f"Please enter a valid window size.\n"
+                                      f"Current value: '{self.windowsize_input.text()}'\n"
+                                      f"Valid range: 1-100")
+                    self.windowsize_input.setFocus()
+                    return
+            
             try:
-                self.masksize = abs(int(self.windowsize_input.text()))
+                windowsize = abs(int(self.windowsize_input.text()))
             except:
                 QMessageBox.warning(self, 'GPA Settings', 'Window size must be integer!')
                 return
+            
+            # Validate step size (2 to windowsize)
             try:
-                self.stepsize = int(self.step_input.text())
+                stepsize = int(self.step_input.text())
             except:
                 QMessageBox.warning(self, 'GPA Settings', 'Step size must be integer!')
                 return
-            try:
-                self.sigma = abs(float(self.sigma_input.text()))
-            except:
-                QMessageBox.warning(self, 'GPA Settings', 'Sigma must be a possitive number!')
-                return 
             
+            if stepsize < 2 or stepsize > windowsize:
+                QMessageBox.warning(self, "Invalid Input", 
+                                  f"Please enter a valid step size.\n"
+                                  f"Current value: '{stepsize}'\n"
+                                  f"Valid range: 2-{windowsize} (based on window size)")
+                self.step_input.setFocus()
+                return
+            
+            # Validate sigma (1 to windowsize)
+            try:
+                sigma_val = abs(float(self.sigma_input.text()))
+            except:
+                QMessageBox.warning(self, 'GPA Settings', 'Sigma must be a number!')
+                return
+            
+            if sigma_val < 1 or sigma_val > windowsize:
+                QMessageBox.warning(self, "Invalid Input", 
+                                  f"Please enter a valid sigma value.\n"
+                                  f"Current value: '{sigma_val}'\n"
+                                  f"Valid range: 1-{windowsize} (based on window size)")
+                self.sigma_input.setFocus()
+                return
+            
+            self.masksize = windowsize
+            self.stepsize = stepsize
+            self.sigma = sigma_val
         
         self.accept()
         
@@ -2006,6 +2310,10 @@ class DPCDialog(QDialog):
         self.rot = QLineEdit()
         self.rot.setText('0')
         self.rot.setToolTip('The angle offset between the quadrant detectors and the scan direction.')
+        # Validator for rotation angle 0-360
+        rot_validator = QDoubleValidator(0.0, 360.0, 2, self)
+        rot_validator.setNotation(QDoubleValidator.StandardNotation)
+        self.rot.setValidator(rot_validator)
         self.guess_rot_curl = QPushButton('Guess with\n min curl', self)
         self.guess_rot_curl.setToolTip('The DPC signals must be a conservative vector field, so the DPCx and DPCy given by\n the right rotation angle should ideally have zero curls, i.e., dDPCy/dx - dDPCx/dy = 0.')
         self.guess_rot_curl.clicked.connect(self.guess_rotation_min_curl)
@@ -2023,6 +2331,10 @@ class DPCDialog(QDialog):
         self.hp_cutoff = QLineEdit()
         self.hp_cutoff.setText('0.02')
         self.hp_cutoff.setToolTip('The cutoff for the high pass filter for iDPC, in fraction of reciprocal space. \nGenerally it must be a small number, e.g., 0.02, to filter out the non-uniform \nbackground while maintaining the crystalline information.')
+        # Validator for high pass cutoff 0.00-1.00
+        hp_validator = QDoubleValidator(0.0, 1.0, 3, self)
+        hp_validator.setNotation(QDoubleValidator.StandardNotation)
+        self.hp_cutoff.setValidator(hp_validator)
         layout8.addWidget(hp_label)
         layout8.addWidget(self.hp_cutoff)
         layout.addLayout(layout8)
@@ -2133,9 +2445,20 @@ class DPCDialog(QDialog):
         A, DPCx, DPCy = self.prepare_images()
         if DPCx is None:
             return
-        
+        # Validate rotation angle
+        rot_val = float(self.rot.text())
+        if rot_val < 0 or rot_val > 360:
+            QMessageBox.warning(self, "Invalid Input", f"Rotation angle out of range.\nCurrent value: '{rot_val}'\nValid range: 0-360")
+            self.rot.setFocus()
+            return
+        # Validate high pass cutoff
+        hp_val = float(self.hp_cutoff.text())
+        if hp_val < 0.0 or hp_val > 1.0:
+            QMessageBox.warning(self, "Invalid Input", f"High pass cutoff out of range.\nCurrent value: '{hp_val}'\nValid range: 0.00-1.00")
+            self.hp_cutoff.setFocus()
+            return
         iDPC_img = copy.deepcopy(A)
-        iDPC_img['data'] = reconstruct_iDPC(DPCx, DPCy, rotation=float(self.rot.text()), cutoff=float(self.hp_cutoff.text()))
+        iDPC_img['data'] = reconstruct_iDPC(DPCx, DPCy, rotation=rot_val, cutoff=hp_val)
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_iDPC'
         if self.from4_img.isChecked():
             metadata = f'Reconstructed iDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
@@ -2149,9 +2472,20 @@ class DPCDialog(QDialog):
         A, DPCx, DPCy = self.prepare_images()
         if DPCx is None:
             return
-            
+        # Validate rotation angle
+        rot_val = float(self.rot.text())
+        if rot_val < 0 or rot_val > 360:
+            QMessageBox.warning(self, "Invalid Input", f"Rotation angle out of range.\nCurrent value: '{rot_val}'\nValid range: 0-360")
+            self.rot.setFocus()
+            return
+        # Validate high pass cutoff
+        hp_val = float(self.hp_cutoff.text())
+        if hp_val < 0.0 or hp_val > 1.0:
+            QMessageBox.warning(self, "Invalid Input", f"High pass cutoff out of range.\nCurrent value: '{hp_val}'\nValid range: 0.00-1.00")
+            self.hp_cutoff.setFocus()
+            return
         dDPC_img = copy.deepcopy(A)
-        dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=float(self.rot.text()))
+        dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=rot_val, cutoff=hp_val)
         preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_dDPC'
         if self.from4_img.isChecked():
             metadata = f'Reconstructed dDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
@@ -2246,3 +2580,29 @@ class ListReorderDialog(QDialog):
             original_index = self.item_to_index[item_text]
             self.ordered_items_idx.append(original_index)
             self.accept()    
+
+
+#=================Angle measurement ROI==========================
+class AngleROI(pg.PolyLineROI):
+    def __init__(self, positions, **args):
+        super().__init__(positions, closed=False, **args)
+        self.handle1 = self.getHandles()[0]
+        self.handle2 = self.getHandles()[1]
+        self.handle3 = self.getHandles()[2]
+        # self.text_item = pg.TextItem('', color='yellow', anchor=(0, 0))
+        self.angle = 0.0
+        self.update_angle()
+        self.sigRegionChanged.connect(self.update_angle)
+
+    def update_angle(self):
+        p1 = self.handle1.pos()
+        p2 = self.handle2.pos()
+        p3 = self.handle3.pos()
+        # self.angle = self.calculate_angle(p1, p2, p3)
+        self.angle = calculate_angle_from_3_points((p1.x(), p1.y()), (p2.x(), p2.y()), (p3.x(), p3.y()))
+        # self.text_item.setText(f'{self.angle:.2f}°')
+        # mid_point = (p1 + p3) / 2
+        # self.text_item.setPos(mid_point)
+
+    def segmentClicked(self, segment, ev=None, pos=None):
+        pass # Disable segment click

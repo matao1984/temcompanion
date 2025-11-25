@@ -141,11 +141,16 @@ def refine_center(img, g, r):
     threshold = np.mean(window) + 1.5 * np.std(window)
     binary_image = window > threshold
 
+    # If no foreground pixels, avoid calling center_of_mass (prevents 0/0 and RuntimeWarning)
+    if not np.any(binary_image):
+        return g
+
     # Calculate the center of mass within the window
     cy, cx = center_of_mass(binary_image)
     cx += x_min
     cy += y_min
     return cx, cy
+
 
 def calc_derivative(arr, axis):
     """
@@ -160,50 +165,7 @@ def calc_derivative(arr, axis):
 
 
 
-# Least square fit to solve the strain tensors with at least two g vectors
-# def extract_strain_lstsqr(g, dPdx, dPdy):
-#     """
-#     g: (n,2) array of g-vectors
-#     dPdx, dPdy: (n,m,m) phase derivatives
-#     Solve Exx, Exy, Eyx, Eyy via least squares without np.linalg.lstsq (Numba-safe).
-#     """
-#     n = g.shape[0]
-#     m = dPdx.shape[1]
-    
-#     # Initialize solutions
-#     Exx = np.zeros((m,m))
-#     Exy = np.zeros((m,m))
-#     Eyx = np.zeros((m,m))
-#     Eyy = np.zeros((m,m))
-    
-#     # Solve elemental wise
-#     for i in range(m):
-#         for j in range(m):
-#             # Construct linear equations
-#             A = np.zeros((2 * n, 4))  # 4 unknowns: Exx_ij, Exy_ij, Eyx_ij, Oxy_ij
-#             b = np.zeros(2 * n)
-            
-#             for k in range(n):
-#                 gx, gy = g[k]
 
-#                 # First equation: gx * Exx_ij + gy * Exy_ij = -1/(2pi) * dP_dx[k, i, j]
-#                 A[2 * k, 0] = gx  # coefficient for Exx_ij
-#                 A[2 * k, 1] = gy   # coefficient for Exy_ij
-#                 b[2 * k] = -1 / (2 * np.pi) * dPdx[k, i, j]
-
-#                 # Second equation: gx * Eyx_ij + gy * Oxy_ij = -1/(2pi) * dP_dy[k, i, j]
-#                 A[2 * k + 1, 2] = gx  # coefficient for Eyx_ij
-#                 A[2 * k + 1, 3] = gy  # coefficient for Eyy_ij
-#                 b[2 * k + 1] = -1 / (2 * np.pi) * dPdy[k, i, j]
-        
-#             # Solve least squares for this (i,j) element
-#             x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-#             Exx[i, j], Exy[i, j], Eyx[i, j], Eyy[i, j] = x
-    
-#     exy = (Exy + Eyx) / 2
-#     Oxy = (Eyx - Exy) /2
-            
-#     return Exx, Eyy, exy, Oxy
 @njit(parallel=True, fastmath=True)
 def extract_strain_lstsqr(g, dPdx, dPdy):
     """

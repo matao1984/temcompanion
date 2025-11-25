@@ -5,7 +5,7 @@ from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_reader as im_reader
 from rsciio.mrc import file_reader as mrc_reader
-from rsciio.image import file_writer as im_writer
+# from rsciio.image import file_writer as im_writer
 import math
 import os
 import numpy as np
@@ -14,12 +14,11 @@ from PIL import Image, ImageDraw, ImageFont
 import copy
 import json
 import pickle
-from PyQt5.QtWidgets import QDialog
+
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox, QMenu, QAction
 
 # Internal modules
 from . import filters
-# from .UI_elements import ListReorderDialog
-# from .main import UI_TemCompanion
 
 def find_system_font():
     if os.name == 'nt': # Windows
@@ -386,18 +385,22 @@ def load_file(file, file_type):
                 # Ensure it is a file
                 if os.path.isfile(file_path):
                     file_list.append(file_path)
+        
+        if file_list:
+            file_list.sort() # Sort the file list alphabetically
                     
         # A dialog to reorder the loaded images
-        # stack_list = [getFileNameType(img_file)[0] for img_file in file_list]
-        # dialog = ListReorderDialog(stack_list)
-        # if dialog.exec_() == QDialog.Accepted:
-        #     reorder = dialog.ordered_items_idx
-        #     reordered_file = [file_list[idx] for idx in reorder]
-        # else:
-        #     return
+        stack_list = [getFileNameType(img_file)[0] for img_file in file_list]
+        dialog = ImportStackDialog(stack_list)
+        if dialog.exec_() == QDialog.Accepted:
+            reorder = dialog.ordered_items_idx
+            reordered_file = [file_list[idx] for idx in reorder]
+        else:
+            return
+        
         
         stack_img = []
-        for img_file in file_list:
+        for img_file in reordered_file:
             try:
                 img = load_file(img_file, file_type)
                 stack_img.append(img[0])
@@ -455,13 +458,99 @@ def load_file(file, file_type):
         
     return f_valid
 
+class ImportStackDialog(QDialog):
+    def __init__(self, items):
+        super().__init__()
+
+        self.ordered_items_idx = []
+        self.item_to_index = {item: idx for idx, item in enumerate(items)}
+        
+        self.setWindowTitle('Reorder image stack')
+        self.setGeometry(100, 100, 300, 400)
+
+        # Layout
+        layout = QVBoxLayout()
+
+        # QListWidget setup
+        self.listWidget = QListWidget(self)
+        self.listWidget.setDragDropMode(QListWidget.InternalMove)
+
+        # Add items to the QListWidget
+        reordered = sorted(items)
+        for item in reordered:
+            listItem = QListWidgetItem(item)
+            self.listWidget.addItem(listItem)
+
+        # Add QListWidget to the layout
+        layout.addWidget(self.listWidget)
+
+        # OK button to confirm and close
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        
+
+        # Set the layout for the dialog
+        self.setLayout(layout)
+    
+    def contextMenuEvent(self, event):
+        # Check if there is an item at the current mouse position
+        item = self.listWidget.itemAt(self.listWidget.mapFromGlobal(event.globalPos()))
+        if item:
+            # Create context menu
+            menu = QMenu(self)
+            delete_action = QAction('Delete', self)
+            delete_action.triggered.connect(lambda: self.deleteItem(item))
+            menu.addAction(delete_action)
+            
+            move_to_top_action = QAction('Move to Top', self)
+            move_to_top_action.triggered.connect(lambda: self.moveToTop(item))
+            menu.addAction(move_to_top_action)
+
+            move_to_bottom_action = QAction('Move to Bottom', self)
+            move_to_bottom_action.triggered.connect(lambda: self.moveToBottom(item))
+            menu.addAction(move_to_bottom_action)
+
+            # Show context menu
+            menu.exec_(event.globalPos())
+
+    def deleteItem(self, item):
+        # Remove the item from the list widget
+        self.listWidget.takeItem(self.listWidget.row(item))
+        
+    def moveToTop(self, item):
+        # Get the row of the current item and remove it
+        row = self.listWidget.row(item)
+        self.listWidget.takeItem(row)
+        # Insert it at the top
+        self.listWidget.insertItem(0, item)
+    
+    def moveToBottom(self, item):
+        # Get the row of the current item and remove it
+        row = self.listWidget.row(item)
+        self.listWidget.takeItem(row)
+        # Insert it at the bottom
+        self.listWidget.addItem(item) 
+
+
+
+    def handle_ok(self):
+        for index in range(self.listWidget.count()):
+            item_text = self.listWidget.item(index).text()
+            original_index = self.item_to_index[item_text]
+            self.ordered_items_idx.append(original_index)
+            self.accept()    
+
+
 @njit(parallel=True)
 def rgb2gray(im):
     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
-    im_x, im_y = im.shape
-    gray = np.zeros((im_x, im_y), dtype='int16')
-    for i in prange(im_x):
-        for j in prange(im_y):
+    im_y, im_x = im.shape[0], im.shape[1]
+    gray = np.zeros((im_y, im_x), dtype='int16')
+    for i in prange(im_y):
+        for j in prange(im_x):
             r = im[i,j][0]
             g = im[i,j][1]
             b = im[i,j][2]
@@ -578,7 +667,7 @@ def calculate_angle_from_3_points(A, B, C):
     '''
     # A, B, C are the coordinates of the points (x, y)
     # Vector AB
-    AB = (B[0] - A[0], B[1] - A[1])
+    AB = (A[0] - B[0], A[1] - B[1])
     # Vector BC
     BC = (C[0] - B[0], C[1] - B[1])
 
@@ -591,9 +680,11 @@ def calculate_angle_from_3_points(A, B, C):
 
     # Cosine of the angle
     cos_theta = dot_product / (magnitude_AB * magnitude_BC)
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Ensure the value is within valid range for acos
 
     # Angle in radians
     angle_rad = math.acos(cos_theta)
+
 
     # Angle in degrees
     angle_deg = math.degrees(angle_rad)

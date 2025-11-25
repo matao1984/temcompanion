@@ -112,24 +112,45 @@
 # Added using arrow keys to move the crop region, live FFT region, and masks on FFT
 # iFFT filtered image is automatically updated if a mask is present
 
-# 2025-10-20 v1.3.0
+# 2025-11-02 v1.3.1
 # Reorganized the project structure
 # Redesigned the main UI with pyqtgraph
 # Optimized operation workflow with pyqtgraph functions
 # Modified filteres to take non-square images
 # Live iFFT also takes non-square images
 
+# 2025-11-24 v1.3.2dev
+# Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
+# Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
+# Also update DPC reconstruction to take non square images
+# Added a default_config.json file for default parameters for image display and filter parameters. 
+# Multiprocess support in batch conversion that significantly speeds up the conversion.
+# Added value validation for most of input parameters to prevent crashes.
+# Added angle measurement tool.
+# Simplified radial integration operations.
+# Added User Guide manual and linked to the main UI.
+# UI saves the last file type for open and save dialogs.
+# Fixed error in rgb2gray function.
+# Fixed CoM encountering all-zero window in some cases.
+# Improved alignment algorithms.
+# Fixed incorrect FFT measurement in live FFT mode.
+# Updated pyqtgraph 0.14 to handle units power for reciprocal space.
+# Added reorder dialog for importing image series with custom order and deletion.
+# Added rotate image and stack by aligning a line ROI to horizontal.
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
-                             QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget
+                             QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget,
+                             QDialog
                              )
-from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer
-from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent
+from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer, QUrl
+from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent, QDesktopServices
 
 
 import sys
 import os
 import pickle
+import markdown
 
 
 #===================Import internal modules==========================================
@@ -142,15 +163,7 @@ from .canvas import PlotCanvas
 #=====================Main Window UI ===============================================
 
 
-class UI_TemCompanion(QMainWindow):
-    # Define filter parameters as class variables        
-    filter_parameters = {"WF Delta": "10", "WF Bw-order": "4", "WF Bw-cutoff": "0.3",
-                        "ABSF Delta": "10", "ABSF Bw-order": "4", "ABSF Bw-cutoff": "0.3",
-                        "NL Cycles": "10", "NL Delta": "10", "NL Bw-order": "4", "NL Bw-cutoff": "0.3",
-                        "Bw-order": "4", "Bw-cutoff": "0.3",
-                        "GS-cutoff": "0.3"
-                        }
-    
+class UI_TemCompanion(QMainWindow):    
     #Preview dict as class variable
     preview_dict = {}
 
@@ -159,8 +172,33 @@ class UI_TemCompanion(QMainWindow):
         # Environment variables
         self.ver = config.pop('version')
         self.rdate = config.pop('release_date')
+        
+        # Remember last used file filter in open dialog
+        self._filters = (
+            "Velox emd Files (*.emd);;"
+            "TIA ser Files (*.ser);;"
+            "DigitalMicrograph Files (*.dm3 *.dm4);;"
+            "Tiff Files (*.tif *.tiff);;"
+            "MRC Files (*.mrc);;"
+            "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;"
+            "Pickle Dictionary Files (*.pkl);;"
+            "Image Series (*.*)"
+        )
+        # Session-only settings (reset on restart)
+        # Initialize defaults from config
         self.wkdir = config.pop('working_directory')
         self.colormap = config.pop('colormap')
+        self.filter_parameters = config.pop('filter_parameters')
+        default_open_filter = config.pop('default_open', "Velox emd Files (*.emd)")
+        default_batch_filter = config.pop('default_batch_open', "Velox emd Files (*.emd)")
+        default_save_filter = config.pop('default_save', "16-bit TIFF Files (*.tiff)")
+
+        self.settings = {
+            'lastOpenFilter': default_open_filter,
+            'lastBatchOpenFilter': default_batch_filter,
+            'lastSaveFilter': default_save_filter,
+        }
+        self.last_open_filter = self.settings['lastOpenFilter']
 
         self.attribute = config  # Remaining config items are default image settings
 
@@ -255,11 +293,26 @@ class UI_TemCompanion(QMainWindow):
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
         buttonlayout = QHBoxLayout()
+
+        common_style = """
+QPushButton {
+background-color: #E0E0E0;
+color: #000;
+font-weight: normal;
+padding: 2px;
+border: 1px solid #AAA;
+border-radius: 5px;
+}
+QPushButton:hover {
+background-color: #D0D0D0;
+}
+"""
         
         self.openfileButton = QPushButton(self)
         self.openfileButton.setFixedSize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
         self.openfileButton.setText('Open \nImages')
+        self.openfileButton.setStyleSheet(common_style)
         
         
         
@@ -267,6 +320,7 @@ class UI_TemCompanion(QMainWindow):
         self.convertButton.setFixedSize(80, 60)
         self.convertButton.setObjectName("BatchConvert")
         self.convertButton.setText("Batch \nConvert")
+        self.convertButton.setStyleSheet(common_style)
         
         
         
@@ -275,21 +329,44 @@ class UI_TemCompanion(QMainWindow):
         self.aboutButton.setFixedSize(80, 60)
         self.aboutButton.setObjectName("aboutButton")
         self.aboutButton.setText("About")
+        self.aboutButton.setStyleSheet(common_style)
         
-        self.contactButton = QPushButton(self)
-        self.contactButton.setFixedSize(80, 60)
-        self.contactButton.setObjectName("contactButton")
-        self.contactButton.setText("Contact")
+        self.guideButton = QPushButton(self)
+        self.guideButton.setFixedSize(80, 60)
+        self.guideButton.setObjectName("guideButton")
+        self.guideButton.setText("User\nGuide")
+        self.guideButton.setStyleSheet(common_style)
 
         self.donateButton = QPushButton(self)
         self.donateButton.setFixedSize(80, 60)
+        self.donateButton.setStyleSheet("""
+QPushButton {
+background-color: #FFD700;
+color: #000;
+font-weight: bold;
+padding: 0px;
+border: 2px solid #FFA500;
+border-radius: 5px;
+line-height: 1.0;
+}
+QPushButton:hover {
+background-color: #FFA500;
+border: 2px solid #FF8C00;
+}
+""")
         self.donateButton.setObjectName("donateButton")
-        self.donateButton.setText("Buy me\n a LUNCH!")
+        self.donateButton.setText("Buy me\n a COFFEE!")
+        self.donateButton.setToolTip(
+    "☕ Support TemCompanion's development!\n"
+    "Even a small donation helps keep this project alive.\n"
+    "Click to buy me a lunch! 💛"
+)
+
 
         buttonlayout.addWidget(self.openfileButton)
         buttonlayout.addWidget(self.convertButton)
         buttonlayout.addWidget(self.aboutButton)
-        buttonlayout.addWidget(self.contactButton)
+        buttonlayout.addWidget(self.guideButton)
         buttonlayout.addWidget(self.donateButton)
 
         layout.addLayout(buttonlayout)
@@ -357,8 +434,9 @@ class UI_TemCompanion(QMainWindow):
         self.openfileButton.clicked.connect(self.openfile)       
         self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
-        self.contactButton.clicked.connect(self.show_contact)
-        self.donateButton.clicked.connect(self.donate) 
+        self.guideButton.clicked.connect(self.show_user_guide)
+        # self.donateButton.clicked.connect(self.donate) 
+        self.donateButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://paypal.me/matao1984?country.x=US&locale.x=en_US")))
 
         
 
@@ -408,8 +486,20 @@ class UI_TemCompanion(QMainWindow):
         
     def print_info(self):
         html_text = '''
-        <div style="font-family: Arial, sans-serif;">
+        <div style="font-family: Arial">
             <h3 style="color: #2196F3; text-align: center;">TemCompanion</h3>
+
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center;">
+                <p style="color: white; margin: 0; font-size: 13px;">
+                    <b>💛 Enjoying TemCompanion?</b><br>
+                    <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US" 
+                    style="color: #FFD700; text-decoration: none; font-weight: bold;">
+                    ☕ Buy me a coffee
+                    </a> 
+                    to support ongoing development!
+                </p>
+            </div>
             <p style="text-align: center; font-size: 12px;">
                 <b>A comprehensive package for TEM image processing and analysis</b>
             </p>
@@ -429,7 +519,7 @@ class UI_TemCompanion(QMainWindow):
                 <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a>
             </p>
             <p style="font-size: 12px;">
-                See the <b>About</b> for more details. <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US">Buy me a lunch</a> if you like it!
+                See the <b>About</b> for more details. <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US">Buy me a coffee</a> if you like it!
             </p>
             <p style="text-align: left; font-size: 12px">
                 Version: <b>{ver}</b> | Released: <b>{rdate}</b>
@@ -445,9 +535,19 @@ class UI_TemCompanion(QMainWindow):
 # Open file button connected to OpenFile
 
     def openfile(self):
-        self.file, self.file_type = QFileDialog.getOpenFileName(self,"Select a TEM image file:", "",
-                                                     "Velox emd Files (*.emd);;TIA ser Files (*.ser);;DigitalMicrograph Files (*.dm3 *.dm4);;Tiff Files (*.tif *.tiff);;MRC Files (*.mrc);;Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;Pickle Dictionary Files (*.pkl);;Image Series (*.*)")
+        # Use last selected filter as the default; update it after user picks
+        self.file, self.file_type = QFileDialog.getOpenFileName(
+            self,
+            "Select a TEM image file:",
+            "",
+            self._filters,
+            self.last_open_filter
+        )
         if self.file:
+            # Update session-only selected filter
+            if self.file_type:
+                self.last_open_filter = self.file_type
+                self.settings['lastOpenFilter'] = self.last_open_filter
             self.preview()
            
         else: 
@@ -467,43 +567,108 @@ class UI_TemCompanion(QMainWindow):
 #=====================================================================        
     def show_about(self):
         msg = QMessageBox()
-#        msg.setIcon(QMessageBox.Information)
         msg.setText("TemCompanion: a comprehensive package for TEM data processing and analysis."\
                     "<br>"\
                     "This app was designed by Dr. Tao Ma"\
                     "<br>"\
                     "Version: {}  Released: {}"\
                     "<br>"\
+                    "<div style='padding: 10px; border-radius: 5px;'>"
+                    "<b>🌟 TemCompanion is FREE and open-source!</b><br>"
+                    "If this app saved you hours of work, consider "
+                    "<a href='https://paypal.me/matao1984?country.x=US&locale.x=en_US'>buying me a coffee</a> "
+                    "to support future updates and new features!"
+                    "</div>"
+                    "<br>"
+
                     "If TemCompanion helped your TEM image analysis in a publication, please cite:"\
                     "<br>"
                     "Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, "\
                     "SoftwareX, 2025, 31, 102212. "\
                     "<a href=\"https://doi.org/10.1016/j.softx.2025.102212\">doi:10.1016/j.softx.2025.102212</a>"
                     "<br>"\
-                    "Get more information and source code from <a href=\"https://github.com/matao1984/temcompanion\">here</a>.".format(self.ver, self.rdate))
+                    "Get more information and source code from <a href=\"https://github.com/matao1984/temcompanion\">here</a>."
+                    "<br>"\
+                    "Contact: <a href=\"mailto:matao1984@gmail.com\">matao1984@gmail.com</a>".format(self.ver, self.rdate))
         msg.setWindowTitle(f"{self.ver}: About")
 
         msg.exec()
         
 
 #=====================================================================        
-    def show_contact(self):
-        msg = QMessageBox()
-        msg.setText("Ask questions and report bugs to:"\
-                    "<br>"
-                    "<a href=\"mailto:matao1984@gmail.com\">matao1984@gmail.com</a>")
-        msg.setWindowTitle(self.ver + ": Contact")
-
-        msg.exec()
+    def show_user_guide(self):
+        """Display the User Guide in a dialog with markdown rendering"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{self.ver}: User Guide")
+        dialog.resize(950, 750)
         
-#====================================================================
+        layout = QVBoxLayout()
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)  # Enable clickable links
+        
+        # Find the User Guide markdown file
+        # Try to locate it relative to this file
+        guide_path = os.path.join(self.wkdir, "docs", "User Guide.md")
+
+        if os.path.exists(guide_path):
+            try:
+                with open(guide_path, 'r', encoding='utf-8') as f:
+                    md_text = f.read()
+                    
+                # Try to convert markdown to HTML for better rendering
+                try:
+                    
+                    html = markdown.markdown(
+                        md_text, 
+                        extensions=['extra', 'codehilite', 'tables', 'toc']
+                    )
+                    # Add some basic CSS styling
+                    styled_html = f"""
+                    <html>
+                    <head>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }}
+                        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
+                        h2 {{ color: #34495e; margin-top: 30px; }}
+                        h3 {{ color: #7f8c8d; }}
+                        code {{ background-color: #f4f4f4; padding: 2px 6px; border-radius: 3px; }}
+                        pre {{ background-color: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                        a {{ color: #3498db; }}
+                        ul {{ margin-left: 20px; }}
+                        li {{ margin: 5px 0; }}
+                    </style>
+                    </head>
+                    <body>
+                    {html}
+                    </body>
+                    </html>
+                    """
+                    browser.setHtml(styled_html)
+                except ImportError:
+                    # markdown module not available, display as plain text
+                    browser.setPlainText(md_text)
+            except Exception as e:
+                browser.setPlainText(f"Error loading User Guide: {str(e)}")
+        else:
+            browser.setHtml(
+                "<h2>User Guide not found</h2>"
+                "<p>The User Guide document could not be located.</p>"
+                "<p>Please visit <a href='https://github.com/matao1984/temcompanion'>TemCompanion GitHub</a> for documentation.</p>"
+                "<p>Or contact: <a href='mailto:matao1984@gmail.com'>matao1984@gmail.com</a></p>"
+            )
+        
+        layout.addWidget(browser)
+        dialog.setLayout(layout)
+        dialog.exec_()
+        
+#=====================================================================
         
     def donate(self):
         msg = QMessageBox()
-        msg.setText("If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a lunch!</a>"\
+        msg.setText("If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a coffee!</a>"\
                     "<br>"\
                     "Your support is my motivation!")
-        msg.setWindowTitle(self.ver + ": Buy me a LUNCH!")
+        msg.setWindowTitle(self.ver + ": Buy me a COFFEE!")
 
         msg.exec()
 
@@ -611,7 +776,7 @@ class TeeStream:
 # this function is called or the Python program is terminated.
 # pyi_splash.close()
 
-def main(config):    
+def start_gui(config):    
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
     wkdir = config['working_directory']

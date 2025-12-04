@@ -101,6 +101,14 @@ author = {Tao Ma}
 ```
 
 ## 6. Change history
+
+### v1.3.3
+- Fixed a bug in live FFT handling unit conversion
+- Fixed set scale dialog not showing the correct units
+- Changed handle colors for line ROIs to indicate the start (yellow) and end points (blue)
+- Added scale size option in the scalebar settings
+
+
 ### v1.3.2
 - Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
 - Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.

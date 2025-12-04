@@ -69,6 +69,7 @@ class PlotCanvas(QMainWindow):
         scale = img.get('axes', [{}])[-1].get('scale', 1)
         units = img.get('axes', [{}])[-1].get('units', 'px')
         self._scale, self._units, self._unitsPower, dimension = self.parse_scale_units(scale, units)
+        self.real_units = self._units
         # Update the image dictionary with standardized units
         img['axes'][-1]['scale'] = self._scale
         img['axes'][-2]['scale'] = self._scale
@@ -252,21 +253,21 @@ class PlotCanvas(QMainWindow):
             self.img_size = img_size
         else:
             self.img_size = img['data'].shape
-        self.scale = img['axes'][1]['scale'] if 'axes' in img and len(img['axes']) > 1 else 1
-        try:
-            self.units = img['axes'][1]['units'] if 'axes' in img and len(img['axes']) > 1 else 'px'
-            self.units = ''.join(self.units.split(' '))
-        except Exception as e:
-            print(f"Error reading units: {e} Set to pixel scale")
-            self.units = 'px'
-            self.scale = 1
 
+        scale = img.get('axes', [{}])[-1].get('scale', 1)
+        units = img.get('axes', [{}])[-1].get('units', 'px')
+        self.canvas.center = (self.img_size[-1] // 2, self.img_size[-2] // 2)
+        self._scale, self._units, self._unitsPower, dimension = self.parse_scale_units(scale, units)
+        self.attribute['dimension'] = dimension    
+        self.scalebar.parse_units(self.units, self._unitsPower)
         self.canvas.update_img(img['data'], pvmin=pvmin, pvmax=pvmax)
+        self.update_scalebar()
+
 
     def create_scalebar(self):
         # This only creates the scalebar object. The actual length is set in update_scalebar
         self.scalebar = CustomScaleBar(parent=self.canvas.viewbox, units=self.units, power=self._unitsPower)
-        font = 20
+        font = self.attribute['scale_size']
         color = self.canvas.attribute['color']
         location = self.canvas.attribute['location']
         self.scalebar.set_properties(font, color, location)
@@ -310,10 +311,11 @@ class PlotCanvas(QMainWindow):
         # Update scalebar and text with zoom
         dx = self.get_scalebar_length()
         self.scalebar.update_scale(dx)
-        # Update scalebar position and color
+        # Update scalebar position and color and font size
         color = self.canvas.attribute['color']
         location = self.canvas.attribute['location']
-        self.scalebar.set_properties(font_size=20, color=color, location=location)
+        font_size = self.attribute['scale_size']
+        self.scalebar.set_properties(font_size=font_size, color=color, location=location)
         self.scalebar.toggle_visibility(self.attribute['scalebar'])
         
 
@@ -435,11 +437,11 @@ class PlotCanvas(QMainWindow):
 
     def setscale(self):
         # Convert current scale to preferred SI units
-        scale_preferred, units_preferred = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4).split(' ')
-        if self._unitsPower == -1:
-            units_preferred = '1/' + units_preferred
+        # scale_preferred, units_preferred = fn.siFormat(self.scale, suffix='m', power=self._unitsPower, precision=4).split(' ')
+        # if self._unitsPower == -1:
+        #     units_preferred = '1/' + units_preferred
         # Open a dialog to take the scale
-        dialog = SetScaleDialog(scale_preferred, units_preferred)
+        dialog = SetScaleDialog(self.scale, self.units)
         if dialog.exec_() == QDialog.Accepted:
             scale = dialog.scale
             units = dialog.units
@@ -470,7 +472,7 @@ class PlotCanvas(QMainWindow):
             
             # Update the scalebar with the new scale
             #self.scalebar.update_scale(self.get_scalebar_length(), power=self._unitsPower)
-            self.update_scalebar()            
+            # self.update_scalebar()            
             # Keep the history
             self.update_metadata(f'Scale updated to {scale} {units}')
 
@@ -1523,7 +1525,7 @@ class PlotCanvas(QMainWindow):
         self.parent().preview_dict[preview_name] = fft_plot
         fft_plot.show()
         fft_plot.update_metadata(f'Live FFT of {title}.')
-        print(f'Displaying live FFT of {title} from {x0},{y0},{x1},{y1}.')
+        print(f'Displaying live FFT of {title} from {x0}:{x1}, {y0}:{y1}.')
         # Positioning
         self.position_window('center left')
         fft_plot.position_window('center right')
@@ -1556,7 +1558,7 @@ class PlotCanvas(QMainWindow):
             if preview_name in self.parent().preview_dict:
                 fft_canvas = self.parent().preview_dict[preview_name]
                 fft_canvas.update_fft_with_img(self.live_img, resize_fft=resize_fft)
-                print(f'Displaying live FFT of {self.canvas.canvas_name} from {x0},{y0},{x1},{y1}.')
+                print(f'Displaying live FFT of {self.canvas.canvas_name} from {x0}:{x1}, {y0}:{y1}.')
 
     def stop_live_fft(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
@@ -1686,18 +1688,29 @@ class PlotCanvas(QMainWindow):
         end_point = 0.625 * x_range, 0.5 * y_range
 
         selector = pg.LineSegmentROI([start_point, end_point],
-                                        pen=pg.mkPen('y', width=3),
+                                        pen=pg.mkPen('r', width=3),
                                         movable=True,
                                         rotatable=True,
                                         resizable=True
                                         )
+        # Set colors of the side handles
+        h0 = selector.getHandles()[0]
+        h1 = selector.getHandles()[1]
+        h0.pen = pg.mkPen('y', width=5)
+        h0.hoverPen = pg.mkPen('y', width=2)
+        h0.currentPen = h0.pen
+        h0.update()
+        h1.pen = pg.mkPen('b', width=5)
+        h1.hoverPen = pg.mkPen('b', width=2)
+        h1.currentPen = h1.pen
+        h1.update()
         self.canvas.selector.append(selector)
         # self._make_active_selector(selector)
         self.canvas.viewbox.addItem(selector)
 
         # Connect signals for line change
         selector.sigRegionChanged.connect(self.display_distance)
-        self.canvas.setFocus()  # Ensure the canvas has focus to receive key events
+        self.canvas.setFocus()  # Ensure the canvas has focus to receive key events        
         
     def display_distance(self):
         if self.canvas.selector and self.mode_control['measurement']:
@@ -1779,6 +1792,21 @@ class PlotCanvas(QMainWindow):
         self.canvas.selector.append(selector)
         self.canvas.viewbox.addItem(selector)
         self._make_active_selector(selector)
+
+        # # Change colors of the side handles
+        h0 = selector.getHandles()[0]
+        h1 = selector.getHandles()[1]
+
+        h0.pen = pg.mkPen('y', width=5)
+        h0.hoverPen = pg.mkPen('y', width=2)
+        h0.currentPen = h0.pen
+        h0.update()
+
+        h1.pen = pg.mkPen('b', width=5)
+        h1.hoverPen = pg.mkPen('b', width=2)
+        h1.currentPen = h1.pen
+        h1.update()
+
         
 
         line_x, line_profile = self.extract_line_profile()
@@ -2036,7 +2064,7 @@ class PlotCanvas(QMainWindow):
             # Update selector position
             selector.sigRegionChangeFinished.disconnect(self.calculate_fft_distance)
             selector.setPos([x, y])
-            selector.sigRegionChangeFinished.confnect(self.calculate_fft_distance)
+            selector.sigRegionChangeFinished.connect(self.calculate_fft_distance)
 
     def stop_fft_measurement(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
@@ -3067,7 +3095,6 @@ class PlotCanvasFFT(PlotCanvas):
     def update_fft_with_img(self, img, resize_fft=False):
         self.canvas.data = img
         self.calculate_fft()
-        self.set_scalebar_units()
         if resize_fft:
             # Resize the FFT to be the original FFT size
             img_size = self.img_size

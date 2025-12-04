@@ -150,7 +150,7 @@ Redefine the pixel calibration. The acceptable units for real space images are: 
 
 - Measure:
 
-Draw a line on the image to measure the distance and angle. The distance will be calculated with the pixel calibration. The angle is between the line and the horizontal direction. The line position and length can be changed by dragging the end points.
+Draw a line ROI on the image to measure the distance and angle. The distance will be calculated with the pixel calibration. The angle is between the line and the horizontal direction. The line position and length can be changed by dragging the end points. The start point and the end point are in yellow and blue, respectively.
 
 - Measure angle:
 
@@ -164,7 +164,7 @@ To measure the diffraction patterns correctly, the center of the diffraction pat
 
 - Line profile:
 
-Draw a line on the image, and the intensity profile along the line will be extracted and plotted. The line position and length can be changed by dragging the end points. The width of the line can be changed by dragging the side handle, or clicking the "+" or "-" keys. 
+Draw a line ROI on the image, and the intensity profile along the line will be extracted and plotted. The line position and length can be changed by dragging the end points. The start point and the end point are in yellow and blue, respectively. The width of the line can be changed by dragging the side handle, or clicking the "+" or "-" keys. 
 
 - Radial integration:
 
@@ -364,6 +364,8 @@ Some default settings for TemCompanion are saved in the default_config.json file
 
   "location": "lower left", -> Default position for the scalebar;
 
+  "scale_size": 20, -> Default font size of the scalebar text;
+
   "dimension": "si-length", -> No effect;
 
   "colorbar": false, -> Whether to add a colorbar to images;
@@ -461,6 +463,12 @@ author = {Tao Ma}
 ```
 
 ## 8. Change history
+
+### v1.3.3
+- Fixed a bug in live FFT handling unit conversion
+- Fixed set scale dialog not showing the correct units
+- Changed handle colors for line ROIs to indicate the start (yellow) and end points (blue)
+- Added scale size option in the scalebar settings
 
 ### v1.3.2dev
 - Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass.

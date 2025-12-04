@@ -11,6 +11,7 @@
   "scalebar": true,
   "color": "yellow",
   "location": "lower left",
+  "scale_size": 20,
   "dimension": "si-length",
   "colorbar": false,
   "edgesmooth": 0.3,

@@ -138,6 +138,13 @@
 # Added reorder dialog for importing image series with custom order and deletion.
 # Added rotate image and stack by aligning a line ROI to horizontal.
 
+# 2025-12-04 v1.3.3
+# Fixed a bug in live FFT handling unit conversion
+# Fixed set scale dialog not showing the correct units
+# Changed handle colors for line ROIs to indicate the start (yellow) and end points (blue)
+# Added scale size option in the scalebar settings
+
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
                              QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget,

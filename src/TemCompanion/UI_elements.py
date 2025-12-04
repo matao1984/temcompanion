@@ -26,13 +26,14 @@ from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contr
 #=========== Scale bar class used with pyqtgraph ==============================================
 class CustomScaleBar(pg.ScaleBar):
     def __init__(self, parent, dx=1e-9, units='nm', power=1):
-        # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
-        if units == 'nm' and power == 1:
-            self.units = 'm'
-        elif units == '1/nm' and power == -1:
-            self.units = f'm{self.to_superscript(power)}'
-        else: # other units like px
-            self.units = units
+        self.parse_units(units, power)
+        # # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
+        # if units == 'nm' and power == 1:
+        #     self.units = 'm'
+        # elif units == '1/nm' and power == -1:
+        #     self.units = f'm{self.to_superscript(power)}'
+        # else: # other units like px
+        #     self.units = units
         self.power = power
         # Create a scalebar object with 1 nm or 1/nm default length
         super().__init__(dx, suffix=self.units)
@@ -50,6 +51,16 @@ class CustomScaleBar(pg.ScaleBar):
             'z': 'ᶻ', '+': '⁺', '-': '⁻'
         }
         return ''.join(superscript_map.get(char, char) for char in str(text))
+    
+    def parse_units(self, units, power):
+        # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
+        if units == 'nm' and power == 1:
+            self.units = 'm'
+        elif units == '1/nm' and power == -1:
+            self.units = f'm{self.to_superscript(power)}'
+        else: # other units like px
+            self.units = units
+
     
     def make_inverse_units(self):
         if self.units != 'px':
@@ -668,6 +679,16 @@ class CustomSettingsDialog(QDialog):
         h_layout_loc.addWidget(self.sblocation_combox)
         scalebar_layout.addLayout(h_layout_loc)
 
+        h_layout_size = QHBoxLayout()
+        self.sbsize_label = QLabel('Font size')
+        self.sbsize_combobox = QComboBox()
+        sizes = ['8', '10', '12', '14', '16', '18', '20', '22', '24', '26', '28', '30', '32', '36', '40', '44', '48', '52', '56', '60']
+        self.sbsize_combobox.addItems(sizes)
+        self.sbsize_combobox.setCurrentText(f'{self.attribute.get("scale_size", 20)}')
+        h_layout_size.addWidget(self.sbsize_label)
+        h_layout_size.addWidget(self.sbsize_combobox)
+        scalebar_layout.addLayout(h_layout_size)
+
         scalebar_group.setLayout(scalebar_layout)
         layout.addWidget(scalebar_group)
 
@@ -675,8 +696,8 @@ class CustomSettingsDialog(QDialog):
         self.cmap_combobox.currentTextChanged.connect(self.update_colormap)
         self.sbcolor_combobox.sigColorChanged.connect(self.update_scalebar)
         self.scalebar_check.stateChanged.connect(self.update_scalebar)     
-        # self.sbcolor_combobox.currentTextChanged.connect(self.update_scalebar)
         self.sblocation_combox.currentTextChanged.connect(self.update_scalebar)
+        self.sbsize_combobox.currentTextChanged.connect(self.update_scalebar)
 
         
 
@@ -761,6 +782,7 @@ class CustomSettingsDialog(QDialog):
         self.parent().canvas.attribute['scalebar'] = self.scalebar_check.isChecked()
         self.parent().canvas.attribute['color'] = self.sbcolor_combobox.color()
         self.parent().canvas.attribute['location'] = self.sblocation_combox.currentText()
+        self.parent().canvas.attribute['scale_size'] = int(self.sbsize_combobox.currentText())
         
         self.parent().update_scalebar()
         
@@ -771,6 +793,7 @@ class CustomSettingsDialog(QDialog):
         self.colorbar.setChecked(self.original_settings['colorbar'])
         self.sbcolor_combobox.setColor(pg.mkColor(self.original_settings['color']))      
         self.sblocation_combox.setCurrentText(self.original_settings['location'])
+        self.sbsize_combobox.setCurrentText(f'{self.original_settings["scale_size"]}')
         
         # Reset vmin vmax
         self.lut.item.setLevels(min=self.original_settings['vmin'], max=self.original_settings['vmax'])
@@ -1407,8 +1430,8 @@ class SetScaleDialog(QDialog):
         scale_layout = QHBoxLayout()
         scale_label = QLabel('Pixel size:')
         self.scale_input = QLineEdit(self)
-        self.scale_input.setText(str(scale))
-        self.scale_input.setValidator(QDoubleValidator(0.0001, 1e9, 9, self))
+        self.scale_input.setText(f'{scale:.4g}')
+        self.scale_input.setValidator(QDoubleValidator(0.000001, 1e9, 9, self))
         scale_layout.addWidget(scale_label)
         scale_layout.addWidget(self.scale_input)
         layout.addLayout(scale_layout)

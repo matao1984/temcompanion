@@ -2042,8 +2042,8 @@ class PlotCanvas(QMainWindow):
             
             # Run CoM to get more accurate center
             image_data = self.canvas.current_img
-            center_x = image_data.shape[1] // 2 * self.scale
-            center_y = image_data.shape[0] // 2 * self.scale
+            center_x = self.canvas.center[0] * self.scale
+            center_y = self.canvas.center[1] * self.scale
 
             radius = selector.size()[0] / 2
             window_size = int(radius / self.scale)  # in pixels

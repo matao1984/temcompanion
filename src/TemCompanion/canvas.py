@@ -475,8 +475,7 @@ class PlotCanvas(QMainWindow):
             self.canvas.viewbox.setRange(xRange=(0, self.img_size[-1]*self.scale), yRange=(0, self.img_size[-2]*self.scale), padding=0)
             
             # Update the scalebar with the new scale
-            #self.scalebar.update_scale(self.get_scalebar_length(), power=self._unitsPower)
-            # self.update_scalebar()            
+            self.update_scalebar()            
             # Keep the history
             self.update_metadata(f'Scale updated to {scale} {units}')
 

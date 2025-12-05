@@ -459,12 +459,16 @@ class PlotCanvas(QMainWindow):
             self.canvas.data['axes'][-2]['units'] = units
 
             # Convert to SI units
-            scale, units, unitsPower = self.parse_scale_units(scale, units)
+            scale, units, unitsPower, dimension = self.parse_scale_units(scale, units)
 
             # Update the new scale to the image dict
             self.scale = scale
             self.units = units
             self._unitsPower = unitsPower
+            self.attribute['dimension'] = dimension
+
+            self.scalebar.power = self._unitsPower
+            self.scalebar.parse_units(self.units, self._unitsPower)
 
             # self.set_scalebar_units()
             self.canvas.image_item.setScale(self.scale)

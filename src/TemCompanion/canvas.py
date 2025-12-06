@@ -220,6 +220,9 @@ class PlotCanvas(QMainWindow):
             units = '1/nm'
             scale /= 0.1
 
+        else: # Unknown units, set to pixel
+            return 1, 'px', 1, 'px-length'
+
         # Standardize the units into SI format
         real_units_list = ['pm', 'nm', 'µm', 'mm', 'm', 'km']
         reciprocal_units_list = ['1/pm', '1/nm', '1/µm', '1/mm', '1/m', '1/km'] 

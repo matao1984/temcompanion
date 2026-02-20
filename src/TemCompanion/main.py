@@ -144,6 +144,9 @@
 # Changed handle colors for line ROIs to indicate the start (yellow) and end points (blue)
 # Added scale size option in the scalebar settings
 
+# 2026-02-28 v1.3.4
+# Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary. 
+
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 

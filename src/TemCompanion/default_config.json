@@ -14,6 +14,7 @@
   "scale_size": 20,
   "dimension": "si-length",
   "colorbar": false,
+  "colorwheel": true,
   "edgesmooth": 0.3,
   "playback_speed": 100,
   "gif_duration": 200,

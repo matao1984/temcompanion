@@ -5,6 +5,7 @@ from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_reader as im_reader
 from rsciio.mrc import file_reader as mrc_reader
+from skimage.color import rgb2gray, hsv2rgb
 # from rsciio.image import file_writer as im_writer
 import math
 import os
@@ -42,6 +43,7 @@ def find_system_font():
                 if os.path.exists(path):
                     return path
 
+
 def norm_img(data, vmin=None, vmax=None):
     if vmin is None:
         vmin = np.min(data)
@@ -51,6 +53,17 @@ def norm_img(data, vmin=None, vmax=None):
     data = data.astype('float32') #Int32 for calculation
     norm = (data - vmin)/(vmax - vmin)
     return norm
+
+
+# def hsv2rgb(hsv):
+#     # Convert HSV array to RGB array
+#     rgb = np.zeros(hsv.shape, dtype=np.uint8)
+#     for i in range(hsv.shape[0]):
+#         for j in range(hsv.shape[1]):
+#             h, s, v = hsv[i, j]
+#             r, g, b = hsv_to_rgb(h, s, v)
+#             rgb[i, j] = (int(r * 255), int(g * 255), int(b * 255))
+#     return rgb
 
 def getDirectory(path):
     return os.path.dirname(path)
@@ -313,15 +326,15 @@ def load_file(file, file_type):
                 # Check if the data is RGB/RGBA
                 if img['data'].dtype.names is not None:  # Structured array (RGB/RGBA)
                     # Convert structured RGB array to regular 3D array
-                    if 'R' in img['data'].dtype.names:
-                        h, w = img['data'].shape
-                        rgb_array = np.zeros((h, w, 3), dtype=np.uint8)
-                        rgb_array[:, :, 0] = img['data']['R']
-                        rgb_array[:, :, 1] = img['data']['G']
-                        rgb_array[:, :, 2] = img['data']['B']
+                    if 'R' in img['data'].dtype.names and 'G' in img['data'].dtype.names and 'B' in img['data'].dtype.names:
+                        rgb_array = np.stack([img['data']['R'], img['data']['G'], img['data']['B']], axis=-1)
                         img['data'] = rgb2gray(rgb_array)
                 elif img['data'].ndim == 3 and img['data'].shape[2] in [3, 4]:  # Regular RGB/RGBA array
                     img['data'] = rgb2gray(img['data'])
+
+                else:
+                    print('Cannot parse the TIFF file.')
+                    return
 
         except Exception as e: # Error, fall back to image format
             print(f"Error loading TIFF file: {e}. Try loading as image format.")
@@ -340,10 +353,20 @@ def load_file(file, file_type):
             # Only for 2d images
             for ax in img['axes']:
                 ax['navigate'] = 'False'
-        # If RGB or RGBA image, convert to grayscale
-            if np.array(img['data'][0,0].item()).size != 1:
-                img['data'] = rgb2gray(img['data'])
-                
+            # If RGB or RGBA image, convert to grayscale
+            if img['data'].dtype.names is not None:  # Structured array (RGB/RGBA)
+                    # Convert structured RGB array to regular 3D array
+                    if 'R' in img['data'].dtype.names and 'G' in img['data'].dtype.names and 'B' in img['data'].dtype.names:
+                        rgb_array = np.stack([img['data']['R'], img['data']['G'], img['data']['B']], axis=-1)
+                        img['data'] = rgb2gray(rgb_array)
+
+            elif img['data'].ndim == 3 and img['data'].shape[2] in [3, 4]:  # Regular RGB/RGBA array
+                    img['data'] = rgb2gray(img['data'])
+
+            else:
+                print('Unsupported image format! Only RGB images with R,G,B channels are supported for color images!')
+                return
+                    
        
     #Load pickle dictionary
     elif file_type == 'Pickle Dictionary Files (*.pkl)':
@@ -544,19 +567,19 @@ class ImportStackDialog(QDialog):
             self.accept()    
 
 
-@njit(parallel=True)
-def rgb2gray(im):
-    # Convert numpy array "im" with RGB type to gray. A channel is ignored.
-    im_y, im_x = im.shape[0], im.shape[1]
-    gray = np.zeros((im_y, im_x), dtype='int16')
-    for i in prange(im_y):
-        for j in prange(im_x):
-            r = im[i,j][0]
-            g = im[i,j][1]
-            b = im[i,j][2]
-            intensity = r * 0.2125 + g * 0.7154 + b * 0.0721
-            gray[i,j] = np.int16(intensity)
-    return gray
+# @njit(parallel=True)
+# def rgb2gray(im):
+#     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
+#     im_y, im_x = im.shape[0], im.shape[1]
+#     gray = np.zeros((im_y, im_x), dtype='int16')
+#     for i in prange(im_y):
+#         for j in prange(im_x):
+#             r = im[i,j][0]
+#             g = im[i,j][1]
+#             b = im[i,j][2]
+#             intensity = r * 0.2125 + g * 0.7154 + b * 0.0721
+#             gray[i,j] = np.int16(intensity)
+#     return gray
 
 
 def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwargs):

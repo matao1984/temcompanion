@@ -499,13 +499,16 @@ class PlotCanvas(QMainWindow):
             img_y = y / self.scale
             img_size = self.canvas.data['data'].shape
 
-            if 0 <= img_x < img_size[-1] and 0 <= img_y < img_size[-2]:
-                value = self.canvas.current_img[int(img_y), int(img_x)]
-                
+            if 0 <= img_x < img_size[-1] and 0 <= img_y < img_size[-2]:               
                 # Update all labels with offsets
                 x_label = f'{x + self.canvas.offset_x:.3f} {self.units}'
                 y_label = f'{y + self.canvas.offset_y:.3f} {self.units}'
-                val_label = f'{value:.3f}'
+                if self.canvas.data_type == 'Complex Image':
+                    value = self.canvas.img_data[int(img_y), int(img_x)]
+                    val_label = f'{value.real:.3f}{value.imag:+.3f}j'
+                else:
+                    value = self.canvas.current_img[int(img_y), int(img_x)]
+                    val_label = f'{value:.3f}'
                 self.pixel_label.setText(f"{x_label} | {img_x:.1f} px, {y_label} | {img_y:.1f} px, {val_label}")
                 
             else:
@@ -1429,6 +1432,9 @@ class PlotCanvas(QMainWindow):
     def fft(self):
         img_dict = self.get_img_dict_from_canvas()
         # FFT calculation is handled in the PlotCanvasFFT class
+        if img_dict['data'].ndim != 2:
+            QMessageBox.warning(self, 'FFT Warning', 'FFT can only be performed on 2D grayscale images!')
+            return
 
         title = self.canvas.canvas_name
         
@@ -1451,14 +1457,10 @@ class PlotCanvas(QMainWindow):
     
     def windowedfft(self):
         img_dict = self.get_img_dict_from_canvas()
-        # Crop to a square if not
+        if img_dict['data'].ndim != 2:
+            QMessageBox.warning(self, 'FFT Warning', 'FFT can only be performed on 2D grayscale images!')
+            return
         data = img_dict['data']
-        # if data.shape[0] != data.shape[1]:
-        #     # Image will be cropped to square for FFT
-        #     data = filters.crop_to_square(data)
-        #     new_size = data.shape[0]
-        #     for ax in img_dict['axes']:
-        #         ax['size'] = new_size
 
         w = window('hann', data.shape)
         img_dict['data'] = data * w
@@ -1481,6 +1483,9 @@ class PlotCanvas(QMainWindow):
         fft_plot.position_window('center right')
 
     def live_fft(self, fullsize=False, windowed=False, resize_fft=False):
+        if self.canvas.current_img.shape != 2:
+            QMessageBox.warning(self, 'Live FFT Warning', 'Live FFT can only be performed on 2D grayscale images!')
+            return
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors
         # Activate live FFT mode
         self.mode_control['Live_FFT'] = True
@@ -2991,8 +2996,10 @@ class PlotCanvas(QMainWindow):
 class PlotCanvasFFT(PlotCanvas):
     def __init__(self, img, source_img, parent=None):
         # img is the image dictionary, NOT FFT. FFT will be calculated in create_img()
+        # source_img is the original canvas name for this FFT canvas, used to link back to the original image for live FFT
         super().__init__(img, parent)
         self.canvas.data_type = 'FFT'
+        self.attribute['complex_display'] = 'Magnitude'  # Default display mode for complex FFT data
         self.source_img = source_img  # Store the original canvas name
         self._unitsPower = -self._unitsPower  # Inverse the unit
 
@@ -3061,8 +3068,8 @@ class PlotCanvasFFT(PlotCanvas):
         
         # Update image data to fft
         self.canvas.current_img = fft_mag
-        self.canvas.data['fft'] = fft_data
-        self.canvas.data['data'] = fft_mag
+        self.canvas.data['fft'] = fft_data # Store the complex FFT data for later use in masking and iFFT
+        self.canvas.data['data'] = fft_mag # 'data' is what is used for display, so we keep the magnitude here
         self.canvas.data['axes'][0]['size'] = fft_shape[0]
         self.canvas.data['axes'][1]['size'] = fft_shape[1]
         

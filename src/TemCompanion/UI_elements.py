@@ -18,9 +18,12 @@ import copy
 import pickle
 import json
 
+from skimage.color import hsv2rgb
+
 # Internal modules
-from .functions import gamma_correct_lut, find_img_by_title, calculate_angle_from_3_points
+from .functions import gamma_correct_lut, find_img_by_title, calculate_angle_from_3_points, norm_img
 from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
+from .filters import img_to_polar
 
 
 #=========== Scale bar class used with pyqtgraph ==============================================
@@ -118,12 +121,14 @@ class MainFrameCanvas(QWidget):
         self.data = data
         self.img_size = self.data['data'].shape
 
-        if len(self.img_size) == 2:
+        if len(self.img_size) == 2 and np.isrealobj(self.data['data']):
             self.data_type = 'Image'
-        elif len(self.img_size) == 3:
+        elif len(self.img_size) == 2 and np.iscomplexobj(self.data['data']):
+            self.data_type = 'Complex Image'
+        elif len(self.img_size) == 3 and np.isrealobj(self.data['data']):
             self.data_type = 'Image Stack'
         else:
-            QMessageBox.warning(self, 'Open File', 'Data dimension not supported!')
+            QMessageBox.warning(self, 'Open File', 'Data type and/or dimension not supported!')
             return
         
         # Load colormap
@@ -190,8 +195,13 @@ class MainFrameCanvas(QWidget):
             self.slider.valueChanged.connect(self.update_frame)
             
         
-        else:
+        elif self.data_type == 'Image':
             self.current_img = self.img_data
+            self.sh = 0
+        
+        elif self.data_type == 'Complex Image':
+            # For complex images, display the phase and amplitude by default, and allow users to switch 
+            self.current_img = self.complex_to_rgb(self.img_data)
             self.sh = 0
 
         self.setLayout(self.layout)
@@ -199,6 +209,31 @@ class MainFrameCanvas(QWidget):
         self._resize_event(self.size())    
         
         self.attribute = self.parent().attribute
+
+    def complex_to_rgb(self, img):
+        """
+        Convert complex array to RGB using hue for phase and saturation for magnitude.
+      
+        Parameters:
+        img: complex array
+        """
+        # Get magnitude and phase
+        mag = np.abs(img)
+        phase = np.angle(img)
+        
+        # Normalize magnitude to [0, 1]
+        mag_norm = norm_img(mag)
+        
+        # Create HSV array: hue = phase, saturation = magnitude, value = 1
+        h = (phase + np.pi) / (2 * np.pi)  # Convert phase from [-π, π] to [0, 1]
+        s = np.ones_like(h)  # Saturation set to 1
+        v = mag_norm  # Brightness based on normalized magnitude
+        
+        # Convert HSV to RGB
+        hsv = np.stack([h, s, v], axis=-1)
+        rgb = hsv2rgb(hsv)
+        
+        return rgb
 
         
     def keyPressEvent(self, event):
@@ -296,26 +331,62 @@ class MainFrameCanvas(QWidget):
         self.center = self.img_size[-1]//2, self.img_size[-2]//2
         self.offset_x = self.data['axes'][-1]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-1].keys() else 0
         self.offset_y = self.data['axes'][-2]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-2].keys() else 0
-        
-        # Calculate vmin and vmax with percentile
-        self.attribute['vmin'] = np.percentile(self.current_img, pvmin)
-        self.attribute['vmax'] = np.percentile(self.current_img, pvmax)
 
         # Clear previous image item if exists
         if self.image_item is not None:
             self.viewbox.removeItem(self.image_item)
             self.image_item = None
-
-        # Create image item       
-        self.image_item = pg.ImageItem(self.current_img, axisOrder='row-major', 
-                                       autoLevels=False,
-                                       levels=(self.attribute['vmin'], self.attribute['vmax']))
         
-        lut = self.colormap[cmap]
-        lut = gamma_correct_lut(lut, gamma)
-        self.image_item.setLookupTable(lut)
+        if self.data_type in ['Image', 'Image Stack', 'FFT']:
+            # Calculate vmin and vmax with percentile
+            self.attribute['vmin'] = np.percentile(self.current_img, pvmin)
+            self.attribute['vmax'] = np.percentile(self.current_img, pvmax)
+
+            # Create image item       
+            self.image_item = pg.ImageItem(self.current_img, axisOrder='row-major', 
+                                        autoLevels=False,
+                                        levels=(self.attribute['vmin'], self.attribute['vmax']))
+            
+            lut = self.colormap[cmap]
+            lut = gamma_correct_lut(lut, gamma)
+            self.image_item.setLookupTable(lut)
+
+
+        elif self.data_type == 'Complex Image':
+            self.attribute['complex_display'] = 'Phase'
+            self.current_img = self.complex_to_rgb(self.img_data)
+            self.image_item = pg.ImageItem(self.current_img, axisOrder='row-major',
+                                           autoLevels=False,
+                                           levels=(0, 1))  # For RGB images, levels are typically [0, 255] or [0, 1]. Here we use [0, 1] since it's normalized.
+            
+            # Create a wheel to show angle and magnitude
+            wheel_size = self.img_size[0] // 10
+            y, x = np.indices((wheel_size, wheel_size))
+            center = wheel_size // 2, wheel_size // 2
+            x = x - center[0]
+            y = y - center[1]
+            rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
+            phi = np.arctan2(y, x)    
+            wheel = rho * np.exp(1j * phi)            
+
+            self.complex_wheel = self.complex_to_rgb(wheel)
+            # Add alpha channel to make the background transparent
+            alpha = np.zeros((wheel_size, wheel_size, 1), dtype=np.uint8)
+            alpha[rho > wheel_size // 2] = 0
+            alpha[rho <= wheel_size // 2] = 255
+            self.complex_wheel = np.dstack((self.complex_wheel, alpha))
+
+            self.wheel_item = pg.ImageItem(self.complex_wheel, axisOrder='row-major', autoLevels=False, levels=(0, 1))
+            self.wheel_item.setScale(scale)
+
+            self.viewbox.addItem(self.wheel_item)
+            
+
         self.image_item.setScale(scale)
         self.viewbox.addItem(self.image_item)
+        if hasattr(self, 'wheel_item'):
+            self.wheel_item.setZValue(self.image_item.zValue() + 1)  # Ensure the wheel is on top of the image
+
         self.viewbox.invertY(True)  # To match the image coordinate system
         self.viewbox.setAspectLocked(True)
         # self.viewbox.setLimits(xMin=0, xMax=self.img_size[-1]*scale, yMin=0, yMax=self.img_size[-2]*scale)
@@ -357,13 +428,22 @@ class MainFrameCanvas(QWidget):
         # Update the image display with new image data 
         # img must match the original image data dimension
         if self.image_item is not None:
-            self.current_img = img
-            scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
-            self.attribute['vmin'] = np.percentile(img, pvmin)
-            self.attribute['vmax'] = np.percentile(img, pvmax)
-            self.image_item.setImage(img, axisOrder='row-major', 
-                                     autoLevels=False,
-                                     levels=(self.attribute['vmin'], self.attribute['vmax']))
+            if np.isrealobj(img):
+                self.current_img = img
+                scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
+                self.attribute['vmin'] = np.percentile(img, pvmin)
+                self.attribute['vmax'] = np.percentile(img, pvmax)
+                self.image_item.setImage(img, axisOrder='row-major', 
+                                        autoLevels=False,
+                                        levels=(self.attribute['vmin'], self.attribute['vmax']))
+                
+            elif np.iscomplexobj(img):
+                self.current_img = self.complex_to_rgb(img) # Show phase and magnitude for complex images
+                self.image_item.setImage(img, axisOrder='row-major', 
+                                        autoLevels=False,
+                                        levels=(0, 1))
+
+
             self.image_item.setScale(scale)
             self.custom_auto_range()
 
@@ -403,8 +483,8 @@ class MainFrameCanvas(QWidget):
         if img is not None:
             vb = self.plot.getPlotItem().getViewBox()
             vb.setRange(
-                xRange=(0, img.shape[-1] * scale), 
-                yRange=(0, img.shape[-2] * scale), 
+                xRange=(0, img.shape[1] * scale), 
+                yRange=(0, img.shape[0] * scale), 
                 padding=0, 
                 update=True
             )
@@ -621,7 +701,9 @@ class CustomSettingsDialog(QDialog):
         display_group.setLayout(display_layout)
         layout.addWidget(display_group)
 
+
         # Colormap dropdown
+        v_layout_cmap = QVBoxLayout()
         h_layout_cmap = QHBoxLayout()
         self.cmap_label = QLabel("Preset Maps:")
         self.cmap_combobox = QComboBox()
@@ -640,10 +722,33 @@ class CustomSettingsDialog(QDialog):
         h_layout_cmap.addWidget(self.cmap_label)
         h_layout_cmap.addWidget(self.cmap_combobox)
         h_layout_cmap.addWidget(self.colorbar)
+        v_layout_cmap.addLayout(h_layout_cmap)
+
 
         cmap_group = QGroupBox("Colormap", self)
-        cmap_group.setLayout(h_layout_cmap)
+        cmap_group.setLayout(v_layout_cmap)
+
         layout.addWidget(cmap_group)
+
+        if self.parent().canvas.data_type == 'Complex Image': # Special settings for complex images
+            # Add a complex group for display and colorwheel
+            complex_group = QGroupBox("Complex Image Settings", self)
+            complex_layout = QVBoxLayout()
+            self.complex_display_combo = QComboBox()
+            self.complex_display_combo.addItems(['Phase', 'Magnitude', 'Real', 'Imaginary'])
+            self.complex_display_combo.setCurrentText(self.attribute.get('complex_display', 'Magnitude'))
+            self.complex_display_combo.currentTextChanged.connect(self.update_complex_display)
+            complex_layout.addWidget(self.complex_display_combo)
+
+            self.wheel_check = QCheckBox('Show color wheel', self)
+            self.wheel_check.setChecked(self.attribute.get('colorwheel', True))
+            self.wheel_check.stateChanged.connect(self.update_colorwheel)
+            complex_layout.addWidget(self.wheel_check)
+            complex_group.setLayout(complex_layout)
+            layout.addWidget(complex_group)
+
+        
+        
 
         # Set current colormap
         cmap = self.attribute['cmap']
@@ -682,7 +787,7 @@ class CustomSettingsDialog(QDialog):
         h_layout_size = QHBoxLayout()
         self.sbsize_label = QLabel('Font size')
         self.sbsize_combobox = QComboBox()
-        sizes = ['8', '10', '12', '14', '16', '18', '20', '22', '24', '26', '28', '30', '32', '36', '40', '44', '48', '52', '56', '60']
+        sizes = ['4', '6', '8', '10', '12', '14', '16', '18', '20', '22', '24', '26', '28', '30', '32', '36', '40', '44', '48', '52', '56', '60']
         self.sbsize_combobox.addItems(sizes)
         self.sbsize_combobox.setCurrentText(f'{self.attribute.get("scale_size", 20)}')
         h_layout_size.addWidget(self.sbsize_label)
@@ -708,7 +813,12 @@ class CustomSettingsDialog(QDialog):
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.ok_button.clicked.connect(self.accept)     
         layout.addWidget(buttons)
-        
+
+        # Disable gamma, colormap for complex images
+        if self.parent().canvas.data_type == 'Complex Image' and self.attribute['complex_display'] == 'Phase':
+            self.gamma_slider.setEnabled(False)
+            self.cmap_combobox.setEnabled(False)
+            self.colorbar.setEnabled(False)
 
         self.setLayout(layout)
 
@@ -785,6 +895,52 @@ class CustomSettingsDialog(QDialog):
         self.parent().canvas.attribute['scale_size'] = int(self.sbsize_combobox.currentText())
         
         self.parent().update_scalebar()
+
+    def update_colorwheel(self):
+        self.parent().canvas.attribute['colorwheel'] = self.wheel_check.isChecked()
+        if self.wheel_check.isChecked():
+            self.parent().canvas.wheel_item.show()
+        else:
+            self.parent().canvas.wheel_item.hide()
+    
+
+    def update_complex_display(self):
+        display_mode = self.complex_display_combo.currentText()
+        self.parent().canvas.attribute['complex_display'] = display_mode
+        if display_mode == 'Phase':
+            self.parent().canvas.current_img = self.parent().canvas.complex_to_rgb(self.parent().canvas.img_data)
+            self.parent().canvas.update_img(self.parent().canvas.current_img)
+            # self.parent().canvas.image_item.setImage(self.parent().canvas.current_img, axisOrder='row-major', levels=(0, 1))
+            self.wheel_check.setEnabled(True)
+            self.wheel_check.setChecked(self.original_settings.get('colorwheel', True))
+            self.gamma_slider.setEnabled(False)
+            self.cmap_combobox.setEnabled(False)
+            self.colorbar.setEnabled(False)
+
+        elif display_mode == 'Magnitude':
+            mag = np.abs(self.parent().canvas.img_data)
+            self.parent().canvas.update_img(mag)
+            self.wheel_check.setChecked(False)
+            self.wheel_check.setEnabled(False)
+            self.gamma_slider.setEnabled(True)
+            self.cmap_combobox.setEnabled(True)
+            self.colorbar.setEnabled(True)
+        elif display_mode == 'Real':
+            real = np.real(self.parent().canvas.img_data)
+            self.parent().canvas.update_img(real)
+            self.wheel_check.setChecked(False)
+            self.wheel_check.setEnabled(False)
+            self.gamma_slider.setEnabled(True)
+            self.cmap_combobox.setEnabled(True)
+            self.colorbar.setEnabled(True)
+        elif display_mode == 'Imaginary':
+            imag = np.imag(self.parent().canvas.img_data)
+            self.parent().canvas.update_img(imag)
+            self.wheel_check.setChecked(False)
+            self.wheel_check.setEnabled(False)
+            self.gamma_slider.setEnabled(True)
+            self.cmap_combobox.setEnabled(True)
+            self.colorbar.setEnabled(True)
         
     
     def reset_settings(self):
@@ -794,6 +950,7 @@ class CustomSettingsDialog(QDialog):
         self.sbcolor_combobox.setColor(pg.mkColor(self.original_settings['color']))      
         self.sblocation_combox.setCurrentText(self.original_settings['location'])
         self.sbsize_combobox.setCurrentText(f'{self.original_settings["scale_size"]}')
+        self.wheel_check.setChecked(self.original_settings['colorwheel'])
         
         # Reset vmin vmax
         self.lut.item.setLevels(min=self.original_settings['vmin'], max=self.original_settings['vmax'])

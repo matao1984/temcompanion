@@ -332,10 +332,6 @@ def load_file(file, file_type):
                 elif img['data'].ndim == 3 and img['data'].shape[2] in [3, 4]:  # Regular RGB/RGBA array
                     img['data'] = rgb2gray(img['data'])
 
-                else:
-                    print('Cannot parse the TIFF file.')
-                    return
-
         except Exception as e: # Error, fall back to image format
             print(f"Error loading TIFF file: {e}. Try loading as image format.")
             # f = im_reader(file)

@@ -473,6 +473,7 @@ class PlotCanvas(QMainWindow):
             self.scale = scale
             self.units = units
             self._unitsPower = unitsPower
+            self.real_units = units
             self.attribute['dimension'] = dimension
 
             self.scalebar.power = self._unitsPower

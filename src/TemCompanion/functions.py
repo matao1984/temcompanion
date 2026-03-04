@@ -183,6 +183,32 @@ def save_with_pil(input_file, f_name, output_dir, f_type, scalebar=True,
     if apply_gaussian:
         gaussian = {'data': input_file['gaussian'], 'axes': input_file['axes'], 'metadata': input_file['metadata']}
         save_with_pil(gaussian, f_name + '_Gaussian', output_dir, f_type, scalebar=scalebar)
+
+
+def save_as_gif(data, file_path, duration=500, loop=0, label=None):
+    # Save a 3D numpy array as a GIF animation
+    frames = []
+    default_font = find_system_font()
+    z, y, x = data.shape
+
+    for i in range(z):
+        im_data = norm_img(data[i]) * 255
+        im = Image.fromarray(im_data.astype('int16'))
+        im = im.convert('RGB')
+
+        if label is not None:
+            draw = ImageDraw.Draw(im)
+            fn = i + 1 # Frame number starts from 1
+            text = label # Label accepts fn for frame number and {} for expression
+            if 'fn' in label and '{' in label and '}' in label:
+                text = eval(f'f"{label}"') # Evaluate the label as an f-string to replace fn and expressions
+            text_x = int(x / 50)
+            text_y = int(y / 50)
+            font_size = int(x / 30)
+            draw.text((text_x, text_y), text, font=ImageFont.truetype(default_font, font_size), fill='yellow')
+        frames.append(im)
+
+    frames[0].save(file_path, save_all=True, append_images=frames[1:], duration=duration, loop=loop)
     
 
 def add_scalebar_to_pil(im, scale, unit):

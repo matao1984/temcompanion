@@ -35,11 +35,12 @@ from .UI_elements import (AlignStackOFDialog, FilterSettingDialog, MainFrameCanv
                           SimpleMathDialog, DPCDialog, AlignStackOFDialog,
                           ManualCropDialog, ApplyFilterDialog, ListReorderDialog,
                           AlignStackDialog, MetadataViewer, PlotSettingDialog, 
-                          gpaSettings, AngleROI
+                          gpaSettings, AngleROI, ExportGIFDialog
                         )
 
 from .functions import (getDirectory, getFileNameType, save_as_tif16, save_with_pil,
-                        find_img_by_title, apply_filter_on_img_dict, calculate_angle_to_horizontal
+                        find_img_by_title, apply_filter_on_img_dict, calculate_angle_to_horizontal,
+                        save_as_gif
                         )
 
 from . import filters
@@ -2916,24 +2917,26 @@ class PlotCanvas(QMainWindow):
             
     
     def export_stack_gif(self):
-        data = self.get_original_img_dict()
-        img_data = data['data']
-        duration = self.attribute.get('gif_duration', 500)
-        # Normalize data
-        for f in range(img_data.shape[0]):
-            img_data[f] = norm_img(img_data[f]) * 255
-        
-        data_to_export = {'data': img_data, 'metadata': data['metadata'], 'axes': data['axes']}
-        options = QFileDialog.Options()
-        file_path, selection = QFileDialog.getSaveFileName(self.parent(), 
-                                                   "Save as GIF animation", 
-                                                   "", 
-                                                   "GIF Files (*.gif)", 
-                                                   options=options)
-        if file_path:
-            im_writer(file_path, data_to_export, duration=duration, loop=0) 
+        dialog = ExportGIFDialog(parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            duration = dialog.delay_time
+            label = dialog.custom_label
+            file_path = dialog.save_path
+
+            data = self.get_original_img_dict()
+            img_data = data['data']
+
+            # Run in a separate thread in case the file is large
+            self.worker = Worker(save_as_gif, img_data, file_path, duration, 0, label)
+            self.toggle_progress_bar('ON')
+            self.worker.finished.connect(lambda: self.toggle_progress_bar('OFF'))
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.worker.finished.connect(lambda: print(f'{file_path} has been exported.'))
+            self.worker.start()
+
+            # save_as_gif(img_data, file_path, duration=duration, loop=0, label=label)
             
-            print(f'{file_path} has been exported.')
+            # print(f'{file_path} has been exported.')
 
         
     

@@ -17,6 +17,7 @@ import numpy as np
 import copy
 import pickle
 import json
+import os
 
 from skimage.color import hsv2rgb
 
@@ -1721,6 +1722,88 @@ class AlignStackOFDialog(QDialog):
         self.gaussian = self.gaussian_check.isChecked()
         self.accept()
                     
+
+
+#=============== Export GIF dialogue ===========================
+class ExportGIFDialog(QDialog):
+    def __init__(self, parent):
+        # Must pass the plotcanvas as parent
+        super().__init__(parent)
+        self.setWindowTitle("Export as GIF")
+        layout = QVBoxLayout()
+
+        delay_layout = QHBoxLayout()
+        delay_label = QLabel("Frame time (ms):")
+        self.delay_input = QLineEdit(self)
+        self.delay_input.setText('200')
+        self.delay_input.setValidator(QIntValidator(1, 10000, self))
+        delay_layout.addWidget(delay_label)
+        delay_layout.addWidget(self.delay_input)
+
+        label_layout = QHBoxLayout()
+        label = QLabel("Custom label:")
+        self.label_input = QLineEdit(self)
+        self.label_input.setPlaceholderText("e.g., 'Frame {fn}'")
+        self.label_input.setToolTip("Optional custom label for each frame. Use '{fn}' as a placeholder for the frame number. Leave blank for no labels.")
+        label_layout.addWidget(label)
+        label_layout.addWidget(self.label_input)
+
+        path_layout = QHBoxLayout()
+        path_label = QLabel("Save path:")
+        self.path_input = QLineEdit(self)
+        file_path = os.path.splitext(self.parent().process['File Name'])[0] + '.gif'
+        self.path_input.setText(file_path)
+        self.path_input.setToolTip("Path to save the exported GIF. Click the '...' button to browse and select a location.")
+        self.browse_button = QPushButton("...")
+        self.browse_button.clicked.connect(self.browse_file)
+        path_layout.addWidget(path_label)
+        path_layout.addWidget(self.path_input)
+        path_layout.addWidget(self.browse_button)
+
+        layout.addLayout(delay_layout)
+        layout.addLayout(label_layout)
+        layout.addLayout(path_layout)
+
+        # Dialog Buttons (OK and Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+
+    def browse_file(self):
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontConfirmOverwrite
+        options |= QFileDialog.DontUseNativeDialog
+        file_path, _ = QFileDialog.getSaveFileName(self, "Select Save Location", self.path_input.text(), "GIF Files (*.gif)", options=options)
+        if file_path:
+            if not file_path.lower().endswith('.gif'):
+                file_path += '.gif'
+            self.path_input.setText(file_path)
+        
+    def handle_ok(self):
+        if self.delay_input.validator():
+            state = self.delay_input.validator().validate(self.delay_input.text(), 0)[0]
+            if state != QValidator.Acceptable:
+                QMessageBox.warning(self, "Invalid Input", 
+                                  f"Please enter a valid frame time.\n"
+                                  f"Current value: '{self.delay_input.text()}'\n"
+                                  f"Valid range: 1-10000 ms")
+                self.delay_input.setFocus()
+                return
+        
+        self.delay_time = int(self.delay_input.text())
+        if self.label_input.text():
+            self.custom_label = self.label_input.text()
+        else:
+            self.custom_label = None
+        self.save_path = self.path_input.text()
+        if os.path.exists(self.save_path):
+            reply = QMessageBox.question(self, 'File Exists', f"The file '{self.save_path}' already exists. Do you want to overwrite it?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.No:
+                return
+        self.accept()
 
                 
 

@@ -17,7 +17,6 @@
   "colorwheel": true,
   "edgesmooth": 0.3,
   "playback_speed": 100,
-  "gif_duration": 200,
   "alignment_precision": 0.01,
   "filter_parameters": {
     "Apply WF": false,

@@ -204,7 +204,7 @@ def save_as_gif(data, file_path, duration=500, loop=0, label=None):
                 text = eval(f'f"{label}"') # Evaluate the label as an f-string to replace fn and expressions
             text_x = int(x / 50)
             text_y = int(y / 50)
-            font_size = int(x / 30)
+            font_size = max(int(x / 30), 12) # Limit the font size down to 12
             draw.text((text_x, text_y), text, font=ImageFont.truetype(default_font, font_size), fill='yellow')
         frames.append(im)
 

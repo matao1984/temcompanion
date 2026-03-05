@@ -146,7 +146,7 @@
 
 # 2026-02-28 v1.3.4
 # Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary. 
-
+# Added dialog for exporting gif animation with customizable frame time and label. 
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 

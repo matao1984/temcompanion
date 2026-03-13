@@ -361,39 +361,68 @@ class MainFrameCanvas(QWidget):
                                            levels=(0, 1))  # For RGB images, levels are typically [0, 255] or [0, 1]. Here we use [0, 1] since it's normalized.
             
             # Create a wheel to show angle and magnitude
-            wheel_size = self.img_size[0] // 10
-            y, x = np.indices((wheel_size, wheel_size))
-            center = wheel_size // 2, wheel_size // 2
-            x = x - center[0]
-            y = y - center[1]
-            rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
-            phi = np.arctan2(y, x)    
-            wheel = rho * np.exp(1j * phi)            
+            # wheel_size = self.img_size[0] // 10
+            # y, x = np.indices((wheel_size, wheel_size))
+            # center = wheel_size // 2, wheel_size // 2
+            # x = x - center[0]
+            # y = y - center[1]
+            # rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
+            # phi = np.arctan2(y, x)    
+            # wheel = rho * np.exp(1j * phi)            
 
-            self.complex_wheel = self.complex_to_rgb(wheel)
-            # Add alpha channel to make the background transparent
-            alpha = np.zeros((wheel_size, wheel_size, 1), dtype=np.uint8)
-            alpha[rho > wheel_size // 2] = 0
-            alpha[rho <= wheel_size // 2] = 255
-            self.complex_wheel = np.dstack((self.complex_wheel, alpha))
+            # self.complex_wheel = self.complex_to_rgb(wheel)
+            # # Add alpha channel to make the background transparent
+            # alpha = np.zeros((wheel_size, wheel_size, 1), dtype=np.uint8)
+            # alpha[rho > wheel_size // 2] = 0
+            # alpha[rho <= wheel_size // 2] = 255
+            # self.complex_wheel = np.dstack((self.complex_wheel, alpha))
 
-            self.wheel_item = pg.ImageItem(self.complex_wheel, axisOrder='row-major', autoLevels=False, levels=(0, 1))
-            self.wheel_item.setScale(scale)
+            # self.wheel_item = pg.ImageItem(self.complex_wheel, axisOrder='row-major', autoLevels=False, levels=(0, 1))
+            # self.wheel_item.setScale(scale)
 
-            self.viewbox.addItem(self.wheel_item)
+            # self.viewbox.addItem(self.wheel_item)
             
 
         self.image_item.setScale(scale)
         self.viewbox.addItem(self.image_item)
-        if hasattr(self, 'wheel_item'):
-            self.wheel_item.setZValue(self.image_item.zValue() + 1)  # Ensure the wheel is on top of the image
 
         self.viewbox.invertY(True)  # To match the image coordinate system
         self.viewbox.setAspectLocked(True)
         # self.viewbox.setLimits(xMin=0, xMax=self.img_size[-1]*scale, yMin=0, yMax=self.img_size[-2]*scale)
         # Redefined autorange button
         self.custom_auto_range()
+        # Create the wheel for complex images
+        self.create_wheel()
 
+    def create_wheel(self):
+        # Create a wheel to show angle and magnitude
+        scale = self.parent().scale
+        wheel_size = self.img_size[0] // 10
+        y, x = np.indices((wheel_size, wheel_size))
+        center = wheel_size // 2, wheel_size // 2
+        x = x - center[0]
+        y = y - center[1]
+        rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
+        phi = np.arctan2(y, x)    
+        wheel = rho * np.exp(1j * phi)            
+
+        self.complex_wheel = self.complex_to_rgb(wheel)
+        # Rotate the wheel by 180 degrees to match the phase direction in the image
+        self.complex_wheel = np.rot90(self.complex_wheel, 2)
+        # Add alpha channel to make the background transparent
+        alpha = np.zeros((wheel_size, wheel_size, 1), dtype=np.uint8)
+        alpha[rho > wheel_size // 2] = 0
+        alpha[rho <= wheel_size // 2] = 255
+        self.complex_wheel = np.dstack((self.complex_wheel, alpha))
+
+        self.wheel_item = pg.ImageItem(self.complex_wheel, axisOrder='row-major', autoLevels=False, levels=(0, 1))
+        self.wheel_item.setScale(scale)
+
+        self.viewbox.addItem(self.wheel_item)
+
+        if self.image_item is not None:
+            self.wheel_item.setZValue(self.image_item.zValue() + 1)  # Ensure the wheel is on top of the image
+        self.wheel_item.hide()  # Hide the wheel by default
 
     def toggle_colorbar(self, show):
         self.attribute['colorbar'] = show
@@ -428,22 +457,25 @@ class MainFrameCanvas(QWidget):
     def update_img(self, img, pvmin=0.1, pvmax=99.9):
         # Update the image display with new image data 
         # img must match the original image data dimension
+        scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
         if self.image_item is not None:
             if np.isrealobj(img):
                 self.current_img = img
-                scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
                 self.attribute['vmin'] = np.percentile(img, pvmin)
                 self.attribute['vmax'] = np.percentile(img, pvmax)
                 self.image_item.setImage(img, axisOrder='row-major', 
                                         autoLevels=False,
                                         levels=(self.attribute['vmin'], self.attribute['vmax']))
+                if self.wheel_item is not None:
+                    self.wheel_item.hide() # Hide the wheel if the image is not complex anymore
                 
             elif np.iscomplexobj(img):
                 self.current_img = self.complex_to_rgb(img) # Show phase and magnitude for complex images
-                self.image_item.setImage(img, axisOrder='row-major', 
+                self.image_item.setImage(self.current_img, axisOrder='row-major', 
                                         autoLevels=False,
                                         levels=(0, 1))
-
+                if self.wheel_item is not None:
+                    self.wheel_item.show()
 
             self.image_item.setScale(scale)
             self.custom_auto_range()
@@ -737,7 +769,7 @@ class CustomSettingsDialog(QDialog):
             complex_layout = QVBoxLayout()
             self.complex_display_combo = QComboBox()
             self.complex_display_combo.addItems(['Phase', 'Magnitude', 'Real', 'Imaginary'])
-            self.complex_display_combo.setCurrentText(self.attribute.get('complex_display', 'Magnitude'))
+            self.complex_display_combo.setCurrentText(self.attribute.get('complex_display', 'Phase'))
             self.complex_display_combo.currentTextChanged.connect(self.update_complex_display)
             complex_layout.addWidget(self.complex_display_combo)
 
@@ -926,6 +958,7 @@ class CustomSettingsDialog(QDialog):
             self.gamma_slider.setEnabled(True)
             self.cmap_combobox.setEnabled(True)
             self.colorbar.setEnabled(True)
+
         elif display_mode == 'Real':
             real = np.real(self.parent().canvas.img_data)
             self.parent().canvas.update_img(real)
@@ -934,6 +967,7 @@ class CustomSettingsDialog(QDialog):
             self.gamma_slider.setEnabled(True)
             self.cmap_combobox.setEnabled(True)
             self.colorbar.setEnabled(True)
+
         elif display_mode == 'Imaginary':
             imag = np.imag(self.parent().canvas.img_data)
             self.parent().canvas.update_img(imag)
@@ -951,7 +985,8 @@ class CustomSettingsDialog(QDialog):
         self.sbcolor_combobox.setColor(pg.mkColor(self.original_settings['color']))      
         self.sblocation_combox.setCurrentText(self.original_settings['location'])
         self.sbsize_combobox.setCurrentText(f'{self.original_settings["scale_size"]}')
-        self.wheel_check.setChecked(self.original_settings['colorwheel'])
+        if hasattr(self, 'wheel_check'):
+            self.wheel_check.setChecked(self.original_settings['colorwheel'])
         
         # Reset vmin vmax
         self.lut.item.setLevels(min=self.original_settings['vmin'], max=self.original_settings['vmax'])
@@ -2869,3 +2904,54 @@ class AngleROI(pg.PolyLineROI):
 
     def segmentClicked(self, segment, ev=None, pos=None):
         pass # Disable segment click
+
+
+#===============Resize 4DSTEM data dialog========================
+class Resize4DSTEMDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Input scan size')
+        layout = QVBoxLayout()
+        
+        layout1 = QHBoxLayout()
+        x_label = QLabel('Input scan X size:')
+        self.x_input = QLineEdit()
+        self.x_input.setPlaceholderText('e.g., 256')
+        self.x_input.setToolTip('The new size in the X dimension. Must be a positive integer.')
+        x_validator = QIntValidator(1, 10000, self)
+        self.x_input.setValidator(x_validator)
+        layout1.addWidget(x_label)
+        layout1.addWidget(self.x_input)
+        layout.addLayout(layout1)
+        
+        layout2 = QHBoxLayout()
+        y_label = QLabel('Input scan Y size:')
+        self.y_input = QLineEdit()
+        self.y_input.setPlaceholderText('e.g., 256')
+        self.y_input.setToolTip('The new size in the Y dimension. Must be a positive integer.')
+        y_validator = QIntValidator(1, 10000, self)
+        self.y_input.setValidator(y_validator)
+        layout2.addWidget(y_label)
+        layout2.addWidget(self.y_input)
+        layout.addLayout(layout2)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        self.setLayout(layout)
+
+    def handle_ok(self):
+        try:
+            self.new_x = int(self.x_input.text())
+            self.new_y = int(self.y_input.text())
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Input', 'Please enter valid positive integers for scan sizes.')
+            return
+        
+        if self.new_x <= 0 or self.new_y <= 0:
+            QMessageBox.warning(self, 'Invalid Input', 'Scan sizes must be positive integers.')
+            return
+        
+        self.accept()

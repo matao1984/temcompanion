@@ -88,7 +88,7 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
     img_size: tuple of original (FFT) image size
     center: list of tuple of the mask center
     radius: lisf of float of the radius in pixel, length must be equal to center
-    edge_width: fload of the smoothed edge in pixel
+    edge_blur: fload between 0-1 of the smoothed edge in fraction
     '''      
     # Create a grid of coordinates
     Y, X = np.ogrid[:img_size[0], :img_size[1]]
@@ -104,19 +104,22 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
         edge_width = r * edge_blur
         # Create the base circle mask: inside the circle is 1, outside is 0
         inside_circle = (distance <= r - edge_width)
-        outside_circle = (distance >= r)
-    
-        # Transition zone
-        transition_zone = ~inside_circle & ~outside_circle
-        
-        # Smooth edge with a cosine function
+        outside_circle = (distance > r)
 
-        transition_distance = (distance - r) / edge_width
-        transition_mask = 0.5 * (1 + np.cos(np.pi * transition_distance))
-    
-        # Combine masks
         mask[inside_circle] = 1
-        mask[transition_zone] = transition_mask[transition_zone]
+        
+        if edge_blur != 0:
+            # Transition zone
+            transition_zone = ~inside_circle & ~outside_circle
+            
+            # Smooth edge with a cosine function
+
+            transition_distance = (distance - r) / edge_width
+            transition_mask = 0.5 * (1 + np.cos(np.pi * transition_distance))
+    
+            # Combine masks
+            
+            mask[transition_zone] = transition_mask[transition_zone]
 
     return mask
 

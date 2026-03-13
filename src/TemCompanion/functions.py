@@ -5,7 +5,10 @@ from rsciio.tiff import file_reader as tif_reader
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_reader as im_reader
 from rsciio.mrc import file_reader as mrc_reader
+from rsciio.empad import file_reader as empad_reader
+from rsciio.usid import file_reader as usid_reader
 from skimage.color import rgb2gray, hsv2rgb
+import h5py
 # from rsciio.image import file_writer as im_writer
 import math
 import os
@@ -395,6 +398,10 @@ def load_file(file, file_type):
         with open(file, 'rb') as file:
             f = []
             f.append(pickle.load(file))
+
+    #USID
+    elif file_type == 'USID (*.h5 *.hdf5)':
+        f = usid_reader(file)
             
             
     #Load image series from a folder
@@ -491,17 +498,169 @@ def load_file(file, file_type):
             else:
                 img_valid = {}
                 break
-            if img_valid:
-                try: 
-                    img_valid['original_metadata'] = img_dict['original_metadata']
-                    # ['original_metadata'] is optional
-                except:
-                    pass
-
         if img_valid:
-            f_valid.append(img_valid)   
+            try: 
+                img_valid['original_metadata'] = img_dict['original_metadata']
+                # ['original_metadata'] is optional
+            except:
+                pass
+            f_valid.append(img_valid)
+
+
+        # if img_valid:
+        #     f_valid.append(img_valid)   
         
     return f_valid
+
+
+def load_4dstem(file, file_type):
+    # Placeholder function for loading 4D-STEM data
+    # The actual implementation will depend on the specific format of the 4D-STEM data and may require additional libraries
+    print(f"Loading 4D-STEM data from {file} with type {file_type}...")
+    # EMPAD file
+    if file_type == 'EMPAD Files (*.xml)':
+        f = empad_reader(file)[0]
+
+    elif file_type == 'Pickle Dictionary Files (*.pkl)':
+        with open(file, 'rb') as file:
+            f = pickle.load(file)
+
+    elif file_type == 'USID (*.h5 *.hdf5)':
+        f = usid_reader(file)[0]
+
+    elif file_type == 'py4DSTEM (*.h5 *.hdf5)':
+        f = load_py4dstem(file)
+
+    elif file_type == 'DigitalMicrograph Files (*.dm3 *.dm4)':
+        f = dm_reader(file)[0]
+
+
+    # Validate the content of f
+    f_valid = {}
+    for key in ['data', 'axes', 'metadata']:
+        if key in f.keys():
+            f_valid[key] = f[key]
+        else:
+            f_valid = {}
+            break
+    
+    if f_valid:
+        try:
+            f_valid['original_metadata'] = f['original_metadata']
+            # ['original_metadata'] is optional
+        except:
+            pass
+        return f_valid
+    
+    else:
+        print(f"Invalid 4D-STEM data! Missing key: {key}")
+        return
+
+# A very basic reader for py4DSTEM h5/hdf5 files
+def load_py4dstem(file_path):
+    """
+    Read an HDF5 file whose schema is:
+      <unknown_root>/datacube/data
+      <unknown_root>/metadatabundle
+
+    Returns:
+      {
+        "data": np.ndarray,
+        "metadata": dict,
+        "axes": list[dict]
+      }
+    """
+
+    def decode_if_bytes(value):
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode("utf-8", errors="replace")
+        return value
+
+    def to_python(obj):
+        if isinstance(obj, h5py.Dataset):
+            value = obj[()]
+            if isinstance(value, np.ndarray):
+                if value.dtype.kind in {"S", "O"}:
+                    return np.vectorize(decode_if_bytes)(value)
+                return value
+            if isinstance(value, np.generic):
+                return decode_if_bytes(value.item())
+            return decode_if_bytes(value)
+
+        if isinstance(obj, h5py.Group):
+            out = {}
+            if obj.attrs:
+                out["_attrs"] = {k: decode_if_bytes(v) for k, v in obj.attrs.items()}
+            for k, v in obj.items():
+                out[k] = to_python(v)
+            return out
+
+        return obj
+
+    def scalar(value):
+        if isinstance(value, np.ndarray):
+            if value.size == 1:
+                return decode_if_bytes(value.reshape(-1)[0].item())
+            return value.tolist()
+        if isinstance(value, np.generic):
+            return decode_if_bytes(value.item())
+        return decode_if_bytes(value)
+
+    with h5py.File(file_path, "r") as f:
+        candidates = [
+            grp for grp in f.values()
+            if isinstance(grp, h5py.Group)
+            and "datacube" in grp
+            and "metadatabundle" in grp
+        ]
+
+        if candidates:
+            root = candidates[0]
+        elif "datacube" in f and "metadatabundle" in f:
+            root = f
+        else:
+            raise KeyError(
+                "Could not find a root group containing both 'datacube' and 'metadatabundle'."
+            )
+
+        if "data" not in root["datacube"]:
+            raise KeyError("Missing dataset 'datacube/data'.")
+
+        data = root["datacube"]["data"][()]
+        metadata = to_python(root["metadatabundle"])
+
+        if "calibration" not in metadata:
+            raise KeyError("Missing 'metadatabundle/calibration'.")
+
+        calibration = metadata["calibration"]
+        r_scale = scalar(calibration["R_pixel_size"])
+        r_units = scalar(calibration["R_pixel_units"])
+        q_scale = scalar(calibration["Q_pixel_size"])
+        q_units = scalar(calibration["Q_pixel_units"])
+
+        if data.ndim != 4:
+            raise ValueError(f"Expected 4D data, got shape {data.shape}")
+
+        axis_names = ["scan_y", "scan_x", "height", "width"]
+        axis_scales = [r_scale, r_scale, q_scale, q_scale]
+        axis_units = [r_units, r_units, q_units, q_units]
+
+        axes = [
+            {
+                "index_in_array": i,
+                "name": axis_names[i],
+                "navigate": False,
+                "offset": 0,
+                "scale": axis_scales[i],
+                "size": int(data.shape[i]),
+                "units": axis_units[i],
+            }
+            for i in range(4)
+        ]
+
+        return {"data": data, "metadata": metadata, "axes": axes}
+
+
 
 class ImportStackDialog(QDialog):
     def __init__(self, items):

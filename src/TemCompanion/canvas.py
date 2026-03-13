@@ -28,6 +28,8 @@ from skimage.transform import warp, rescale, resize
 
 from rsciio.tiff import file_writer as tif_writer
 from rsciio.image import file_writer as im_writer
+from rsciio.usid import file_reader as usid_reader
+from rsciio.usid import file_writer as usid_writer
 
 # Internal imports
 from .UI_elements import (AlignStackOFDialog, FilterSettingDialog, MainFrameCanvas, CustomScaleBar, 
@@ -213,11 +215,11 @@ class PlotCanvas(QMainWindow):
         elif units == '1/um':
             units = '1/µm'
 
-        # Handle Angstrom cases:
-        if units in ['A', 'Å', 'ang', 'Ang', 'Angstrom', 'Ångstrom']:
+        # Handle Angstrom cases after lowercasing the input string.
+        if units in ['a', 'å', 'ang', 'angstrom']:
             units = 'nm'
             scale *= 0.1
-        elif units in ['1/A', '1/Å', '1/ang', '1/Ang', '1/Angstrom', '1/Ångstrom']:
+        elif units in ['1/a', '1/å', '1/ang', '1/angstrom', 'a^-1', 'å^-1', 'ang^-1', 'angstrom^-1']:
             units = '1/nm'
             scale /= 0.1
 
@@ -499,9 +501,9 @@ class PlotCanvas(QMainWindow):
             
             img_x = x / self.scale
             img_y = y / self.scale
-            img_size = self.canvas.data['data'].shape
+            img_size = self.canvas.img_size
 
-            if 0 <= img_x < img_size[-1] and 0 <= img_y < img_size[-2]:               
+            if 0 <= int(img_x) < img_size[-1] and 0 <= int(img_y) < img_size[-2]:               
                 # Update all labels with offsets
                 x_label = f'{x + self.canvas.offset_x:.3f} {self.units}'
                 y_label = f'{y + self.canvas.offset_y:.3f} {self.units}'
@@ -591,6 +593,12 @@ class PlotCanvas(QMainWindow):
         # Return the original image data together with the full dictionary
         img_dict = copy.deepcopy(self.canvas.data)
         return img_dict
+    
+    def new_img_from_display(self):
+        # Duplicate the current canvas and plot the image in a new window
+        img_dict = self.get_img_dict_from_canvas()
+        canvas_name = f"{self.canvas.canvas_name}_copy"
+        self.plot_new_image(img_dict, canvas_name, parent=self.parent(), position='center')
     
     def plot_new_image(self, img_dict, canvas_name, parent=None, metadata=None, position=None):
         # Plot a new image in a new window
@@ -832,6 +840,7 @@ class PlotCanvas(QMainWindow):
             "Color TIFF Files (*.tiff);;"
             "Color PNG Files (*.png);;"
             "Color JPEG Files (*.jpg);;"
+            "USID (*.hdf5);;"
             "Pickle Dictionary Files (*.pkl)"
         )
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(
@@ -863,6 +872,14 @@ class PlotCanvas(QMainWindow):
                         img_to_save[key] = img_dict[key]
                 with open(self.file_path, 'wb') as f:
                     pickle.dump(img_to_save, f)
+
+            elif self.selected_type == 'USID (*.hdf5)':
+                img_dict = self.get_img_dict_from_canvas()
+                for key in ['data', 'axes', 'metadata', 'original_metadata']:
+                    if key in img_dict.keys():
+                        img_to_save[key] = img_dict[key]
+                usid_writer(self.file_path, img_to_save)
+
             else:                            
                 # Save the current data only
                 current_img = self.get_img_dict_from_canvas()
@@ -1485,7 +1502,7 @@ class PlotCanvas(QMainWindow):
         fft_plot.position_window('center right')
 
     def live_fft(self, fullsize=False, windowed=False, resize_fft=False):
-        if self.canvas.current_img.shape != 2:
+        if self.canvas.current_img.ndim != 2:
             QMessageBox.warning(self, 'Live FFT Warning', 'Live FFT can only be performed on 2D grayscale images!')
             return
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)  # Clean up any existing modes or selectors

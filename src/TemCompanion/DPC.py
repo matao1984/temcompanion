@@ -59,7 +59,7 @@ def reconstruct_iDPC(DPCx, DPCy, rotation=0, cutoff=0.02):
 #     return ifftshift(1 - gaussian)
 
 # Calculate the divergence
-def reconstruct_dDPC(DPCx, DPCy, rotation, cutoff=0.02, inverse=False):
+def reconstruct_dDPC(DPCx, DPCy, rotation=0, cutoff=0.02, inverse=False):
     if DPCx.ndim == 2:
         # Rotate the DPC vector images
         if rotation != 0:

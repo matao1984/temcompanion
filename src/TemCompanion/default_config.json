@@ -7,6 +7,8 @@
   "pvmax": 99.9,
   "fft_pvmin": 30,
   "fft_pvmax": 99.9,
+  "4dstem_pvmin": 0.1,
+  "4dstem_pvmax": 99,
   "gamma": 1.0,
   "scalebar": true,
   "color": "yellow",
@@ -40,6 +42,7 @@
     "GS-cutoff": "0.3"
   },
   "default_open": "Velox emd Files (*.emd)",
+  "default_open_4dstem": "EMPAD Files (*.xml)",
   "default_batch_open": "Velox emd Files (*.emd)",
   "default_save": "16-bit TIFF Files (*.tiff)",
   "gpa": {

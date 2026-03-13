@@ -148,6 +148,16 @@
 # Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary. 
 # Added dialog for exporting gif animation with customizable frame time and label. 
 
+# 2026-04-01 v2.0.0
+# Added support for 4D-STEM data 
+# Available functions for 4D-STEM data include:
+# - View and navigate the 4D data in both real space and reciprocal space
+# - Crop and flip data in both spaces
+# - Calibrate both real space and reciprocal space
+# - Generate virtual image from point, circle, or annular detectors with interactive and resizable ROIs
+# - Average diffraction patterns from selected regions in real space
+# - CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
                              QWidget, QPushButton, QMessageBox, QFileDialog, 
                              QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget,
@@ -165,9 +175,11 @@ import markdown
 
 #===================Import internal modules==========================================
 
-from .functions import load_file, getFileNameType
+from .functions import load_file, load_4dstem, getFileNameType
 from .batch_convert import BatchConverter
 from .canvas import PlotCanvas
+from .stem4d import PlotCanvas4D
+from .UI_elements import Resize4DSTEMDialog
 
         
 #=====================Main Window UI ===============================================
@@ -191,24 +203,37 @@ class UI_TemCompanion(QMainWindow):
             "Tiff Files (*.tif *.tiff);;"
             "MRC Files (*.mrc);;"
             "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;"
+            "USID (*.h5 *.hdf5);;"
             "Pickle Dictionary Files (*.pkl);;"
             "Image Series (*.*)"
         )
+
+        self._filters_4dstem = (
+            "EMPAD Files (*.xml);;"
+            "DigitalMicrograph Files (*.dm3 *.dm4);;"
+            "USID (*.h5 *.hdf5);;"
+            "py4DSTEM (*.h5 *.hdf5);;"
+            "Pickle Dictionary Files (*.pkl)"
+        )
+
         # Session-only settings (reset on restart)
         # Initialize defaults from config
         self.wkdir = config.pop('working_directory')
         self.colormap = config.pop('colormap')
         self.filter_parameters = config.pop('filter_parameters')
         default_open_filter = config.pop('default_open', "Velox emd Files (*.emd)")
+        default_open_4dstem_filter = config.pop('default_open_4dstem', "EMPAD Files (*.xml)")
         default_batch_filter = config.pop('default_batch_open', "Velox emd Files (*.emd)")
         default_save_filter = config.pop('default_save', "16-bit TIFF Files (*.tiff)")
 
         self.settings = {
             'lastOpenFilter': default_open_filter,
+            'last4DSTEMOpenFilter': default_open_4dstem_filter,
             'lastBatchOpenFilter': default_batch_filter,
             'lastSaveFilter': default_save_filter,
         }
         self.last_open_filter = self.settings['lastOpenFilter']
+        self.last_open_4dstem_filter = self.settings['last4DSTEMOpenFilter']
 
         self.attribute = config  # Remaining config items are default image settings
 
@@ -291,8 +316,8 @@ class UI_TemCompanion(QMainWindow):
 
     def setupUi(self):
         # Window size 
-        self.size_with_dock = 400, 450
-        self.size_without_dock = 400, 100
+        self.size_with_dock = 450, 450
+        self.size_without_dock = 450, 100
         self.setObjectName("TemCompanion")
         self.setWindowTitle(f"TemCompanion Ver {self.ver}")
         self.resize(*self.size_with_dock)
@@ -323,6 +348,13 @@ background-color: #D0D0D0;
         self.openfileButton.setObjectName("OpenFile")
         self.openfileButton.setText('Open \nImages')
         self.openfileButton.setStyleSheet(common_style)
+
+        self.open4DSTEMButton = QPushButton(self)
+        self.open4DSTEMButton.setFixedSize(80, 60)
+        self.open4DSTEMButton.setObjectName("Open4DSTEM")
+        self.open4DSTEMButton.setText('Open \n4D-STEM')
+        self.open4DSTEMButton.setStyleSheet(common_style)
+
         
         
         
@@ -374,6 +406,7 @@ border: 2px solid #FF8C00;
 
 
         buttonlayout.addWidget(self.openfileButton)
+        buttonlayout.addWidget(self.open4DSTEMButton)
         buttonlayout.addWidget(self.convertButton)
         buttonlayout.addWidget(self.aboutButton)
         buttonlayout.addWidget(self.guideButton)
@@ -441,7 +474,8 @@ border: 2px solid #FF8C00;
 
 
         # Connect all functions
-        self.openfileButton.clicked.connect(self.openfile)       
+        self.openfileButton.clicked.connect(self.openfile)
+        self.open4DSTEMButton.clicked.connect(self.open_4dstem)       
         self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
         self.guideButton.clicked.connect(self.show_user_guide)
@@ -563,6 +597,23 @@ border: 2px solid #FF8C00;
         else: 
             self.file = None # Canceled, set back to None
 
+
+#======================================================================
+    def open_4dstem(self):
+        self.file, self.file_type = QFileDialog.getOpenFileName(
+            self,
+            "Select a 4D-STEM data file:",
+            "",
+            self._filters_4dstem,
+            self.last_open_4dstem_filter
+        )
+        if self.file:
+            if self.file_type:
+                self.last_open_4dstem_filter = self.file_type
+                self.settings['last4DSTEMOpenFilter'] = self.last_open_4dstem_filter
+            self.preview_4dstem()
+        else:
+            self.file = None
 
                 
 
@@ -724,6 +775,69 @@ border: 2px solid #FF8C00;
 
         
         finally:    
+            f = None
+
+
+#=============================== Open 4DSTEM dataset ======================================
+    def preview_4dstem(self):
+        f_name = getFileNameType(self.file)[0]
+        try:
+            f = load_4dstem(self.file, self.file_type)
+            # Check if the data is 4D
+            if f["data"].ndim != 4:
+                if f["data"].ndim == 3:
+                # Open a dialog to prompt to resize
+                    original_shape = f["data"].shape
+                    dialog = Resize4DSTEMDialog(parent=self)
+                    if dialog.exec_() == QDialog.Accepted:
+                        new_x = dialog.new_x
+                        new_y = dialog.new_y
+                        if new_x * new_y != original_shape[0]:
+                            QMessageBox.warning(self, "Resize Error", "Cannot resize to the specified dimensions. Please try again.")
+                            return
+                        f["data"] = f["data"].reshape((new_y, new_x, original_shape[1], original_shape[2]))
+                        # Update the axes as [scan_x, scan_y, height, width]
+                        new_axes = [None] * 4
+                        for axis in f['axes']:
+                            if axis['index_in_array'] == 0 and axis['size'] == original_shape[0]:
+                                new_x_axis = axis.copy()
+                                new_x_axis['size'] = new_x
+                                new_y_axis = axis.copy()
+                                new_y_axis['size'] = new_y
+                                new_axes[0] = new_x_axis
+                                new_axes[1] = new_y_axis
+                            elif axis['index_in_array'] == 1 and axis['size'] == original_shape[1]:
+                                # Height of diffraction pattern, keep unchanged
+                                new_axes[2] = axis.copy()
+                            elif axis['index_in_array'] == 2 and axis['size'] == original_shape[2]:
+                                # Width of diffraction pattern, keep unchanged
+                                new_axes[3] = axis.copy()
+                        f['axes'] = new_axes
+
+                    else:
+                        return
+                else:
+                    QMessageBox.warning(self, "Data Error", "The selected file does not contain 4D data.")
+                    return
+
+            preview_name = f_name + ": 4D-STEM"
+            preview_im = PlotCanvas4D(f, parent=self)
+
+            preview_name_r = preview_name + "_r"
+            preview_name_q = preview_name + "_q"
+            preview_im.R_canvas.canvas.canvas_name = preview_name_r
+            self.preview_dict[preview_name_r] = preview_im.R_canvas
+            preview_im.Q_canvas.canvas.canvas_name = preview_name_q
+            self.preview_dict[preview_name_q] = preview_im.Q_canvas
+
+            preview_im.show()
+
+            print(f'Opened successfully: {f_name}.')
+            print(f'Real space size: {f["data"].shape[0]} x {f["data"].shape[1]}.')
+            print(f'Diffraction space size: {f["data"].shape[2]} x {f["data"].shape[3]}.')
+        except Exception as e:
+                print(f'Opened unsuccessful: {f_name}. Error: {e}')
+        finally:
             f = None
 
 

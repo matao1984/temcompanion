@@ -1,7 +1,20 @@
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtWidgets import (QApplication,QWidget, QMainWindow, QFileDialog, QSizePolicy, QVBoxLayout, QDialog,
-                             QHBoxLayout, QApplication, QMessageBox, QProgressBar, QCheckBox, QSpinBox, QLabel)
+from PyQt5.QtWidgets import (
+    QWidget,
+    QMainWindow,
+    QFileDialog,
+    QSizePolicy,
+    QVBoxLayout,
+    QDialog,
+    QHBoxLayout,
+    QApplication,
+    QMessageBox,
+    QProgressBar,
+    QCheckBox,
+    QSpinBox,
+    QLabel,
+)
 from PyQt5.QtGui import QDropEvent, QDragEnterEvent
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -12,10 +25,9 @@ from .functions import getDirectory, getFileNameType, convert_file
 from .UI_elements import FilterSettingBatchConvert
 
 
-
-#========================Batch conversion window ===================
+# ========================Batch conversion window ===================
 class BatchConverter(QMainWindow):
-    def __init__(self,parent):
+    def __init__(self, parent):
         super().__init__(parent)
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
@@ -23,14 +35,14 @@ class BatchConverter(QMainWindow):
 
         self.scale_bar = True
         self.files = None
-        self.output_dir = None 
+        self.output_dir = None
         self.get_filter_parameters()
         # Default filter settings
-        self.apply_wf = self.filter_parameters.get('Apply WF', False)
-        self.apply_absf = self.filter_parameters.get('Apply ABSF', False)
-        self.apply_nl = self.filter_parameters.get('Apply NL', False)
-        self.apply_bw = self.filter_parameters.get('Apply Bw', False)
-        self.apply_gaussian = self.filter_parameters.get('Apply GS', False)
+        self.apply_wf = self.filter_parameters.get("Apply WF", False)
+        self.apply_absf = self.filter_parameters.get("Apply ABSF", False)
+        self.apply_nl = self.filter_parameters.get("Apply NL", False)
+        self.apply_bw = self.filter_parameters.get("Apply Bw", False)
+        self.apply_gaussian = self.filter_parameters.get("Apply GS", False)
 
         self.setAcceptDrops(True)
 
@@ -45,7 +57,9 @@ class BatchConverter(QMainWindow):
         )
         # Session-only last selected filter (reset each app run)
         try:
-            self.last_batch_filter = self.parent().settings.get('lastBatchOpenFilter', "Velox emd Files (*.emd)")
+            self.last_batch_filter = self.parent().settings.get(
+                "lastBatchOpenFilter", "Velox emd Files (*.emd)"
+            )
         except Exception:
             self.last_batch_filter = "Velox emd Files (*.emd)"
 
@@ -53,75 +67,74 @@ class BatchConverter(QMainWindow):
         self.setWindowTitle("Batch Conversion")
         self.setObjectName("BatchConverter")
         self.resize(400, 300)
-        
-        self.openfileButton = QtWidgets.QPushButton("Open \nFiles",self)
+
+        self.openfileButton = QtWidgets.QPushButton("Open \nFiles", self)
         self.openfileButton.setFixedSize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
         self.openfileButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
-        self.openfilebox = QtWidgets.QTextEdit(self,readOnly=True)
-        self.openfilebox.resize(240,60)
+
+        self.openfilebox = QtWidgets.QTextEdit(self, readOnly=True)
+        self.openfilebox.resize(240, 60)
         self.openfilebox.setObjectName("OpenFileBox")
         self.openfilebox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 
-        
-        self.filterButton = QtWidgets.QPushButton("Also Apply Filters",self)
+        self.filterButton = QtWidgets.QPushButton("Also Apply Filters", self)
         self.filterButton.setFixedSize(160, 60)
         self.filterButton.setObjectName("filterButton")
         self.filterButton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        
-        self.convertlabel = QtWidgets.QLabel('Select the output format: ',self)
-        
+
+        self.convertlabel = QtWidgets.QLabel("Select the output format: ", self)
+
         self.convertlabel.setObjectName("ConvertTo")
-        
-        
+
         self.formatselect = QtWidgets.QComboBox(self)
-        
-        self.formatselect.addItems(['tiff + png','tiff', 'png', 'jpg'])
+
+        self.formatselect.addItems(["tiff + png", "tiff", "png", "jpg"])
         self.formatselect.setObjectName("FormatSelect")
-        
-        self.setdirButton = QtWidgets.QPushButton("Output \nDirectory",self)
+
+        self.setdirButton = QtWidgets.QPushButton("Output \nDirectory", self)
         self.setdirButton.setFixedSize(80, 60)
         self.setdirButton.setObjectName("SetDir")
         self.setdirButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
+
         self.outputdirbox = QtWidgets.QTextEdit(self, readOnly=True)
         self.outputdirbox.resize(240, 40)
         self.outputdirbox.setObjectName("OutPutDirBox")
         self.outputdirbox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
-        
-        self.checkscalebar = QtWidgets.QCheckBox("Add scale bar to images",self)       
+
+        self.checkscalebar = QtWidgets.QCheckBox("Add scale bar to images", self)
         self.checkscalebar.setChecked(True)
         self.checkscalebar.setObjectName("checkscalebar")
-        
+
         self.metadatacheck = QCheckBox("Export metadata", self)
         self.metadatacheck.setChecked(False)
         self.metadatacheck.setObjectName("metadatacheck")
-        
-        self.convertButton = QtWidgets.QPushButton("Convert \nAll",self)
+
+        self.convertButton = QtWidgets.QPushButton("Convert \nAll", self)
         self.convertButton.setFixedSize(80, 60)
         self.convertButton.setObjectName("convertButton")
         self.convertButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
+
         # Thread count control
         self.thread_label = QLabel("Number of threads:", self)
         self.thread_spinbox = QSpinBox(self)
         self.thread_spinbox.setMinimum(1)
         self.thread_spinbox.setMaximum(os.cpu_count() or 8)
         self.thread_spinbox.setValue(min(8, os.cpu_count() or 8))
-        self.thread_spinbox.setToolTip(f"Number of parallel threads for batch processing (1-{os.cpu_count() or 8})")
+        self.thread_spinbox.setToolTip(
+            f"Number of parallel threads for batch processing (1-{os.cpu_count() or 8})"
+        )
         self.thread_spinbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-        
+
         self.convertbox = QtWidgets.QTextEdit(self, readOnly=True)
-        self.convertbox.resize(240,40)
+        self.convertbox.resize(240, 40)
         self.convertbox.setObjectName("convertbox")
         self.convertbox.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(False)
-        
+
         layout = QVBoxLayout()
         layout1 = QHBoxLayout()
         layout1.addWidget(self.openfileButton)
@@ -129,12 +142,11 @@ class BatchConverter(QMainWindow):
         layout2 = QHBoxLayout()
         layout2_1 = QVBoxLayout()
         layout2_1_1 = QHBoxLayout()
-        
+
         layout2_1_1.addWidget(self.convertlabel)
         layout2_1_1.addWidget(self.formatselect)
-        
-        
-        #layout2_1.addLayout(layout2_1_1)
+
+        # layout2_1.addLayout(layout2_1_1)
         layout2_1.addWidget(self.checkscalebar)
         layout2_1.addWidget(self.metadatacheck)
         layout2.addLayout(layout2_1)
@@ -157,30 +169,27 @@ class BatchConverter(QMainWindow):
         layout.addLayout(layout4)
         layout.addLayout(layout5)
         layout.addWidget(self.progress_bar)
-        
+
         self.central_widget.setLayout(layout)
 
-        
-#====================================================================
-# Connect all functions
+        # ====================================================================
+        # Connect all functions
         self.openfileButton.clicked.connect(self.openfile)
         self.setdirButton.clicked.connect(self.set_dir)
-        
+
         self.filterButton.clicked.connect(self.filter_settings)
         self.checkscalebar.stateChanged.connect(self.set_scalebar)
         self.convertButton.clicked.connect(self.convert_emd)
-        
-        
-        
+
     def set_scalebar(self):
         self.scale_bar = self.checkscalebar.isChecked()
-        
-    def get_filter_parameters(self):        
+
+    def get_filter_parameters(self):
         # Read default filter parameters from the main window
         self.filter_parameters = self.parent().filter_parameters
-        
-#===================================================================
-# Open file button connected to OpenFile
+
+    # ===================================================================
+    # Open file button connected to OpenFile
 
     def openfile(self):
         self.files, self.filetype = QFileDialog.getOpenFileNames(
@@ -188,49 +197,47 @@ class BatchConverter(QMainWindow):
             "Select files to be converted:",
             "",
             self._filters,
-            self.last_batch_filter
+            self.last_batch_filter,
         )
         if self.files:
             if self.filetype:
                 self.last_batch_filter = self.filetype
                 # Update parent session settings if available
                 try:
-                    self.parent().settings['lastBatchOpenFilter'] = self.last_batch_filter
+                    self.parent().settings["lastBatchOpenFilter"] = (
+                        self.last_batch_filter
+                    )
                 except Exception:
                     pass
             self.output_dir = getDirectory(self.files[0])
             self.outputdirbox.setText(self.output_dir)
-            self.openfilebox.setText('')
+            self.openfilebox.setText("")
             for file in self.files:
                 self.openfilebox.append(file)
                 QApplication.processEvents()
-        else: 
-            self.files = None # Canceled, set back to None
-            
-    
-    
+        else:
+            self.files = None  # Canceled, set back to None
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
             event.ignore()
-    
+
     def dropEvent(self, event: QDropEvent):
         files = [url.toLocalFile() for url in event.mimeData().urls()]
         if files:
             self.files = files
             self.output_dir = getDirectory(self.files[0])
             self.outputdirbox.setText(self.output_dir)
-            self.openfilebox.setText('')
+            self.openfilebox.setText("")
             for file in self.files:
                 self.openfilebox.append(file)
                 QApplication.processEvents()
-            event.acceptProposedAction() 
-                
+            event.acceptProposedAction()
 
-
-#===================================================================
-# Output directory button connected to SetDir
+    # ===================================================================
+    # Output directory button connected to SetDir
 
     def set_dir(self):
         output_dir = QFileDialog.getExistingDirectory(self, "Select Directory")
@@ -238,65 +245,90 @@ class BatchConverter(QMainWindow):
             self.output_dir = str(output_dir)
             self.outputdirbox.setText(self.output_dir)
             QApplication.processEvents()
-            
-#===================================================================
-# Let's go button connected to convertButton
+
+    # ===================================================================
+    # Let's go button connected to convertButton
     def refresh_output(self, text):
         self.convertbox.append(text)
-        
-    def convert_emd(self): 
-        if self.files == None:
-            QMessageBox.warning(self, 'No files loaded', 'Select file(s) to convert!')
-            
+
+    def convert_emd(self):
+        if self.files is None:
+            QMessageBox.warning(self, "No files loaded", "Select file(s) to convert!")
+
         else:
-            self.refresh_output('Converting, please wait...')
+            self.refresh_output("Converting, please wait...")
             self.f_type = self.formatselect.currentText()
-           
-            # Load filter parameters 
-            delta_wf = int(self.filter_parameters['WF Delta'])
-            order_wf = int(self.filter_parameters['WF Bw-order'])
-            cutoff_wf = float(self.filter_parameters['WF Bw-cutoff'])
-            delta_absf = int(self.filter_parameters['ABSF Delta'])
-            order_absf = int(self.filter_parameters['ABSF Bw-order'])
-            cutoff_absf = float(self.filter_parameters['ABSF Bw-cutoff'])
-            delta_nl = int(self.filter_parameters['NL Delta'])
-            order_nl = int(self.filter_parameters['NL Bw-order'])
-            N = int(self.filter_parameters['NL Cycles'])
-            cutoff_nl = float(self.filter_parameters['NL Bw-cutoff'])
-            order_bw = int(self.filter_parameters['Bw-order'])
-            cutoff_bw = float(self.filter_parameters['Bw-cutoff'])
-            cutoff_gaussian = float(self.filter_parameters['GS-cutoff'])
-            
+
+            # Load filter parameters
+            delta_wf = int(self.filter_parameters["WF Delta"])
+            order_wf = int(self.filter_parameters["WF Bw-order"])
+            cutoff_wf = float(self.filter_parameters["WF Bw-cutoff"])
+            delta_absf = int(self.filter_parameters["ABSF Delta"])
+            order_absf = int(self.filter_parameters["ABSF Bw-order"])
+            cutoff_absf = float(self.filter_parameters["ABSF Bw-cutoff"])
+            delta_nl = int(self.filter_parameters["NL Delta"])
+            order_nl = int(self.filter_parameters["NL Bw-order"])
+            N = int(self.filter_parameters["NL Cycles"])
+            cutoff_nl = float(self.filter_parameters["NL Bw-cutoff"])
+            order_bw = int(self.filter_parameters["Bw-order"])
+            cutoff_bw = float(self.filter_parameters["Bw-cutoff"])
+            cutoff_gaussian = float(self.filter_parameters["GS-cutoff"])
+
             save_metadata = self.metadatacheck.isChecked()
-            
+
             # Get thread count from spinbox
             num_threads = self.thread_spinbox.value()
 
-            # Run batch conversion in a background QThread 
-            self.worker = BatchConversionWorker(self.files, self.output_dir, self.f_type, save_metadata=save_metadata, scalebar = self.scale_bar,
-                                 apply_wf = self.apply_wf, delta_wf = delta_wf, order_wf = order_wf, cutoff_wf = cutoff_wf,
-                                 apply_absf = self.apply_absf, delta_absf = delta_absf, order_absf = order_absf, cutoff_absf = cutoff_absf,
-                                 apply_nl = self.apply_nl, N = N, delta_nl = delta_nl, order_nl = order_nl, cutoff_nl = cutoff_nl,
-                                 apply_bw = self.apply_bw, order_bw = order_bw, cutoff_bw = cutoff_bw,
-                                 apply_gaussian = self.apply_gaussian, cutoff_gaussian = cutoff_gaussian,
-                                 num_threads = num_threads)
-            
+            # Run batch conversion in a background QThread
+            self.worker = BatchConversionWorker(
+                self.files,
+                self.output_dir,
+                self.f_type,
+                save_metadata=save_metadata,
+                scalebar=self.scale_bar,
+                apply_wf=self.apply_wf,
+                delta_wf=delta_wf,
+                order_wf=order_wf,
+                cutoff_wf=cutoff_wf,
+                apply_absf=self.apply_absf,
+                delta_absf=delta_absf,
+                order_absf=order_absf,
+                cutoff_absf=cutoff_absf,
+                apply_nl=self.apply_nl,
+                N=N,
+                delta_nl=delta_nl,
+                order_nl=order_nl,
+                cutoff_nl=cutoff_nl,
+                apply_bw=self.apply_bw,
+                order_bw=order_bw,
+                cutoff_bw=cutoff_bw,
+                apply_gaussian=self.apply_gaussian,
+                cutoff_gaussian=cutoff_gaussian,
+                num_threads=num_threads,
+            )
+
             # Wire up progress and cleanup; start the worker thread
             self.progress_bar.setVisible(True)
             self.worker.progress.connect(self.refresh_output)
-            self.worker.finished.connect(lambda: self.progress_bar.setVisible(False))  
-            self.worker.finished.connect(self.worker.deleteLater) 
-            self.worker.finished.connect(lambda: self.refresh_output("Conversion finished!")) 
+            self.worker.finished.connect(lambda: self.progress_bar.setVisible(False))
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.worker.finished.connect(
+                lambda: self.refresh_output("Conversion finished!")
+            )
             self.worker.start()
-                         
-            
-            
-#================ Define filter settings function ============================
-    
+
+    # ================ Define filter settings function ============================
+
     def filter_settings(self):
-        dialog = FilterSettingBatchConvert(self.apply_wf, self.apply_absf, self.apply_nl,
-                                      self.apply_bw, self.apply_gaussian, 
-                                      self.filter_parameters, parent=self)
+        dialog = FilterSettingBatchConvert(
+            self.apply_wf,
+            self.apply_absf,
+            self.apply_nl,
+            self.apply_bw,
+            self.apply_gaussian,
+            self.filter_parameters,
+            parent=self,
+        )
         if dialog.exec_() == QDialog.Accepted:
             # Update filter settings based on user input
             self.apply_wf = dialog.apply_wf
@@ -305,42 +337,39 @@ class BatchConverter(QMainWindow):
             self.apply_bw = dialog.apply_bw
             self.apply_gaussian = dialog.apply_gaussian
             self.filter_parameters = dialog.parameters
-     
 
 
-                    
-
-#================Batch Conversion Worker Thread====================================
+# ================Batch Conversion Worker Thread====================================
 # Top-level function for pickling (required for multiprocessing)
 def process_file_worker(file_data):
     """Worker function that runs in separate process"""
     file, args, kwargs = file_data
-    
+
     # Import here to avoid issues with process spawning
-    from .functions import getFileNameType, convert_file
-    
+
     try:
         ext = getFileNameType(file)[1].lower()
-        if ext == 'emd':
-            filetype = 'Velox emd Files (*.emd)'
-        elif ext in ['dm3', 'dm4']:
-            filetype = 'DigitalMicrograph Files (*.dm3 *.dm4)'
-        elif ext == 'ser':
-            filetype = 'TIA ser Files (*.ser)'
-        elif ext in ['tif', 'tiff']:
-            filetype = 'Tiff Files (*.tif *.tiff)'
-        elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
-            filetype = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
-        elif ext == 'pkl':
-            filetype = 'Pickle Dictionary Files (*.pkl)'
+        if ext == "emd":
+            filetype = "Velox emd Files (*.emd)"
+        elif ext in ["dm3", "dm4"]:
+            filetype = "DigitalMicrograph Files (*.dm3 *.dm4)"
+        elif ext == "ser":
+            filetype = "TIA ser Files (*.ser)"
+        elif ext in ["tif", "tiff"]:
+            filetype = "Tiff Files (*.tif *.tiff)"
+        elif ext in ["jpg", "jpeg", "png", "bmp"]:
+            filetype = "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)"
+        elif ext == "pkl":
+            filetype = "Pickle Dictionary Files (*.pkl)"
         else:
-            return (file, False, 'Unsupported file format')
+            return (file, False, "Unsupported file format")
 
         convert_file(file, filetype, *args, **kwargs)
-        return (file, True, 'Converted successfully')
+        return (file, True, "Converted successfully")
 
     except Exception as e:
         import traceback
+
         return (file, False, f"{str(e)}\n{traceback.format_exc()}")
 
 
@@ -363,7 +392,7 @@ class BatchConversionWorker(QThread):
         """Run batch conversion with multiprocessing"""
         total_files = len(self.files)
         completed = 0
-        
+
         msg = f"Starting batch conversion of {total_files} file(s) using {self.max_workers} processes..."
         self.progress.emit(msg)
 
@@ -373,20 +402,22 @@ class BatchConversionWorker(QThread):
         # Use ProcessPoolExecutor for true parallel processing
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all files for processing
-            future_to_file = {executor.submit(process_file_worker, data): data[0] 
-                             for data in file_data}
-            
+            future_to_file = {
+                executor.submit(process_file_worker, data): data[0]
+                for data in file_data
+            }
+
             # Process completed tasks as they finish
             for future in as_completed(future_to_file):
                 try:
                     file, success, message = future.result()
                     completed += 1
-                    
+
                     if success:
                         msg = f"[{completed}/{total_files}] '{file}' has been converted"
                     else:
                         msg = f"[{completed}/{total_files}] '{file}' has been skipped. Error: {message}"
-                    
+
                     self.progress.emit(msg)
                 except Exception as e:
                     completed += 1

@@ -1,14 +1,40 @@
 from PyQt5 import QtWidgets
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
-                             QWidget, QPushButton, QMessageBox, QFileDialog, 
-                             QDialog, QAction, QHBoxLayout, QLineEdit, QLabel, 
-                             QComboBox, QCheckBox, QGroupBox, 
-                             QFormLayout, QDialogButtonBox,  QSlider, QMenu, QSizePolicy, QRadioButton,
-                             QListWidget, QListWidgetItem
-                             )
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QPushButton,
+    QMessageBox,
+    QFileDialog,
+    QDialog,
+    QAction,
+    QHBoxLayout,
+    QLineEdit,
+    QLabel,
+    QComboBox,
+    QCheckBox,
+    QGroupBox,
+    QFormLayout,
+    QDialogButtonBox,
+    QSlider,
+    QMenu,
+    QSizePolicy,
+    QRadioButton,
+    QListWidget,
+    QListWidgetItem,
+)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
-from PyQt5.QtGui import QImage, QPixmap, QIcon, QFont, QIntValidator, QDoubleValidator, QValidator
+from PyQt5.QtGui import (
+    QImage,
+    QPixmap,
+    QIcon,
+    QFont,
+    QIntValidator,
+    QDoubleValidator,
+    QValidator,
+)
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
@@ -22,12 +48,21 @@ import os
 from skimage.color import hsv2rgb
 
 # Internal modules
-from .functions import gamma_correct_lut, find_img_by_title, calculate_angle_from_3_points, norm_img
-from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contrast, find_rotation_ang_min_curl
-from .filters import img_to_polar
+from .functions import (
+    gamma_correct_lut,
+    find_img_by_title,
+    calculate_angle_from_3_points,
+    norm_img,
+)
+from .DPC import (
+    reconstruct_iDPC,
+    reconstruct_dDPC,
+    find_rotation_ang_max_contrast,
+    find_rotation_ang_min_curl,
+)
 
 
-def Open4DSTEMFileDialog(parent, title, filters, selected_filter='', directory=''):
+def Open4DSTEMFileDialog(parent, title, filters, selected_filter="", directory=""):
     """Open a 4D-STEM file dialog with an optional Lazy-load checkbox.
 
     Returns
@@ -44,7 +79,7 @@ def Open4DSTEMFileDialog(parent, title, filters, selected_filter='', directory='
     # Non-native dialog is required to inject custom widgets on all platforms.
     dialog.setOption(QFileDialog.DontUseNativeDialog, True)
 
-    lazy_checkbox = QCheckBox('Do not load data into memory (for large files)')
+    lazy_checkbox = QCheckBox("Do not load data into memory (for large files)")
     lazy_checkbox.setChecked(False)
 
     layout = dialog.layout()
@@ -59,9 +94,9 @@ def Open4DSTEMFileDialog(parent, title, filters, selected_filter='', directory='
     return None, selected_filter, False
 
 
-#=========== Scale bar class used with pyqtgraph ==============================================
+# =========== Scale bar class used with pyqtgraph ==============================================
 class CustomScaleBar(pg.ScaleBar):
-    def __init__(self, parent, dx=1e-9, units='nm', power=1):
+    def __init__(self, parent, dx=1e-9, units="nm", power=1):
         self.parse_units(units, power)
         # # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
         # if units == 'nm' and power == 1:
@@ -77,37 +112,64 @@ class CustomScaleBar(pg.ScaleBar):
 
     def to_superscript(self, text):
         superscript_map = {
-            '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-            '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-            'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ',
-            'f': 'ᶠ', 'g': 'ᵍ', 'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ',
-            'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ',
-            'p': 'ᵖ', 'q': 'ᑫ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ',
-            'u': 'ᵘ', 'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ',
-            'z': 'ᶻ', '+': '⁺', '-': '⁻'
+            "0": "⁰",
+            "1": "¹",
+            "2": "²",
+            "3": "³",
+            "4": "⁴",
+            "5": "⁵",
+            "6": "⁶",
+            "7": "⁷",
+            "8": "⁸",
+            "9": "⁹",
+            "a": "ᵃ",
+            "b": "ᵇ",
+            "c": "ᶜ",
+            "d": "ᵈ",
+            "e": "ᵉ",
+            "f": "ᶠ",
+            "g": "ᵍ",
+            "h": "ʰ",
+            "i": "ⁱ",
+            "j": "ʲ",
+            "k": "ᵏ",
+            "l": "ˡ",
+            "m": "ᵐ",
+            "n": "ⁿ",
+            "o": "ᵒ",
+            "p": "ᵖ",
+            "q": "ᑫ",
+            "r": "ʳ",
+            "s": "ˢ",
+            "t": "ᵗ",
+            "u": "ᵘ",
+            "v": "ᵛ",
+            "w": "ʷ",
+            "x": "ˣ",
+            "y": "ʸ",
+            "z": "ᶻ",
+            "+": "⁺",
+            "-": "⁻",
         }
-        return ''.join(superscript_map.get(char, char) for char in str(text))
-    
+        return "".join(superscript_map.get(char, char) for char in str(text))
+
     def parse_units(self, units, power):
         # Always receive dx in nm or 1/nm. But internally it uses m or 1/m
-        if units == 'nm' and power == 1:
-            self.units = 'm'
-        elif units == '1/nm' and power == -1:
-            self.units = f'm{self.to_superscript(power)}'
-        else: # other units like px
+        if units == "nm" and power == 1:
+            self.units = "m"
+        elif units == "1/nm" and power == -1:
+            self.units = f"m{self.to_superscript(power)}"
+        else:  # other units like px
             self.units = units
 
-    
     def make_inverse_units(self):
-        if self.units != 'px':
+        if self.units != "px":
             self.power = -self.power
             # Units can only be 'm' or 'm^(-1)' or px
-            if self.units == 'm':
-                self.units = f'm{self.to_superscript(self.power)}'
-            elif self.units == 'm⁻¹':
-                self.units = 'm'
-
-        
+            if self.units == "m":
+                self.units = f"m{self.to_superscript(self.power)}"
+            elif self.units == "m⁻¹":
+                self.units = "m"
 
     def set_properties(self, font_size, color, location):
         font = QFont()
@@ -117,66 +179,70 @@ class CustomScaleBar(pg.ScaleBar):
         text_label.setColor(color)
         self.bar.setBrush(pg.mkBrush(color))
 
-        if location == 'lower left':
+        if location == "lower left":
             loc = (0, 1), (0.2, 0.95)
-        elif location == 'lower right':
+        elif location == "lower right":
             loc = (1, 1), (0.95, 0.95)
-        elif location == 'upper right':
+        elif location == "upper right":
             loc = (1, 0), (0.95, 0.08)
-        elif location == 'upper left':
+        elif location == "upper left":
             loc = (0, 0), (0.2, 0.08)
         self.anchor(loc[0], loc[1])
-    
+
     def update_scale(self, dx):
         # dx is always in nm or 1/nm or px
-        if self.units != 'px':
+        if self.units != "px":
             si_dx = dx * 1e-9 if self.power == 1 else dx / 1e-9
             text = fn.siFormat(si_dx, suffix=self.units, power=self.power)
         else:
-            text = f'{dx} {self.units}'
+            text = f"{dx} {self.units}"
         self.text.setText(text)
         self.size = dx
         self.updateBar()
-        
+
     def toggle_visibility(self, show):
         if show:
             self.show()
         else:
             self.hide()
 
-#=========== Main frame widget to take the image item and maintain the aspect ratio ===========
+
+# =========== Main frame widget to take the image item and maintain the aspect ratio ===========
 class MainFrameCanvas(QWidget):
     """A widget that maintains a specified aspect ratio."""
+
     def __init__(self, data, parent=None):
         # Image canvas that keeps the aspect ratio
         # data is the image dictionary
         super().__init__(parent)
         self.data = data
-        self.img_size = self.data['data'].shape
+        self.img_size = self.data["data"].shape
 
-        if len(self.img_size) == 2 and np.isrealobj(self.data['data']):
-            self.data_type = 'Image'
-        elif len(self.img_size) == 2 and np.iscomplexobj(self.data['data']):
-            self.data_type = 'Complex Image'
-        elif len(self.img_size) == 3 and np.isrealobj(self.data['data']):
-            self.data_type = 'Image Stack'
+        if len(self.img_size) == 2 and np.isrealobj(self.data["data"]):
+            self.data_type = "Image"
+        elif len(self.img_size) == 2 and np.iscomplexobj(self.data["data"]):
+            self.data_type = "Complex Image"
+        elif len(self.img_size) == 3 and np.isrealobj(self.data["data"]):
+            self.data_type = "Image Stack"
         else:
-            QMessageBox.warning(self, 'Open File', 'Data type and/or dimension not supported!')
+            QMessageBox.warning(
+                self, "Open File", "Data type and/or dimension not supported!"
+            )
             return
-        
+
         # Load colormap
         self.colormap = self.parent().colormap
-        
-        self.ratio = self.img_size[-1] / self.img_size[-2]       
-        self.img_data = self.data['data']
-        self.center = self.img_size[-1]//2, self.img_size[-2]//2
+
+        self.ratio = self.img_size[-1] / self.img_size[-2]
+        self.img_data = self.data["data"]
+        self.center = self.img_size[-1] // 2, self.img_size[-2] // 2
         self.offset_x = 0
         self.offset_y = 0
-        
+
         # ROI
         self.selector = []
         self.active_selector = None
-     
+
         self.image_item = None
         self.idx = None
         self.slider = None
@@ -189,95 +255,92 @@ class MainFrameCanvas(QWidget):
         self.timer.timeout.connect(self.next_frame)
 
         self.plot = pg.PlotWidget()
-        self.plot.setBackground('white')
-        self.plot.plotItem.showAxis('left', False)
-        self.plot.plotItem.showAxis('bottom', False)
+        self.plot.setBackground("white")
+        self.plot.plotItem.showAxis("left", False)
+        self.plot.plotItem.showAxis("bottom", False)
         self.plot.plotItem.setContentsMargins(0, 0, 0, 0)
         self.plot.plotItem.setMenuEnabled(False, enableViewBoxMenu=True)
         self.plot.disableAutoRange()
         self.plot.hideButtons()
-        
 
         self.viewbox = self.plot.getViewBox()
         self.viewbox.setDefaultPadding(0)
         self.viewbox.enableAutoRange(enable=False)
-  
+
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(0)   
+        self.layout.setSpacing(0)
 
-        if self.data_type == 'Image Stack':
+        if self.data_type == "Image Stack":
             self.stack_size = self.img_data.shape[0]
             self.idx = 0
-            self.current_img = self.img_data[self.idx]    
+            self.current_img = self.img_data[self.idx]
 
             # Slider bar
-            self.sh = 34 # Slider height
+            self.sh = 34  # Slider height
             self.slider = QSlider(Qt.Horizontal)
             self.slider.setFixedHeight(self.sh)
-            self.slider.setRange(0,self.stack_size - 1)
+            self.slider.setRange(0, self.stack_size - 1)
             slider_layout = QHBoxLayout()
             slider_layout.addWidget(self.slider)
             self.frame = QLabel()
-            self.frame.setText(f'{self.idx + 1}')
+            self.frame.setText(f"{self.idx + 1}")
             slider_layout.addWidget(self.frame)
             slider_layout.setContentsMargins(0, 0, 0, 0)
             slider_layout.setSpacing(0)
 
             self.layout.addLayout(slider_layout)
             self.slider.valueChanged.connect(self.update_frame)
-            
-        
-        elif self.data_type == 'Image':
+
+        elif self.data_type == "Image":
             self.current_img = self.img_data
             self.sh = 0
-        
-        elif self.data_type == 'Complex Image':
-            # For complex images, display the phase and amplitude by default, and allow users to switch 
+
+        elif self.data_type == "Complex Image":
+            # For complex images, display the phase and amplitude by default, and allow users to switch
             self.current_img = self.complex_to_rgb(self.img_data)
             self.sh = 0
 
         self.setLayout(self.layout)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self._resize_event(self.size())    
-        
+        self._resize_event(self.size())
+
         self.attribute = self.parent().attribute
 
     def complex_to_rgb(self, img):
         """
         Convert complex array to RGB using hue for phase and saturation for magnitude.
-      
+
         Parameters:
         img: complex array
         """
         # Get magnitude and phase
         mag = np.abs(img)
         phase = np.angle(img)
-        
+
         # Normalize magnitude to [0, 1]
         mag_norm = norm_img(mag)
-        
+
         # Create HSV array: hue = phase, saturation = magnitude, value = 1
         h = (phase + np.pi) / (2 * np.pi)  # Convert phase from [-π, π] to [0, 1]
         s = np.ones_like(h)  # Saturation set to 1
         v = mag_norm  # Brightness based on normalized magnitude
-        
+
         # Convert HSV to RGB
         hsv = np.stack([h, s, v], axis=-1)
         rgb = hsv2rgb(hsv)
-        
+
         return rgb
 
-        
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Space and self.data_type == 'Image Stack':
+        if event.key() == Qt.Key_Space and self.data_type == "Image Stack":
             self.toggle_play()
-        if event.key() == Qt.Key_Comma and self.data_type == 'Image Stack':
+        if event.key() == Qt.Key_Comma and self.data_type == "Image Stack":
             if self.slider.value() > 1:
                 self.slider.setValue(self.slider.value() - 1)
             else:
                 self.slider.setValue(self.slider.maximum())
-        if event.key() == Qt.Key_Period and self.data_type == 'Image Stack':
+        if event.key() == Qt.Key_Period and self.data_type == "Image Stack":
             if self.slider.value() < self.slider.maximum():
                 self.slider.setValue(self.slider.value() + 1)
             else:
@@ -285,71 +348,77 @@ class MainFrameCanvas(QWidget):
 
         # Key events for moving the selector ROI
         if event.key() == Qt.Key_Up:
-            if self.active_selector is not None: 
+            if self.active_selector is not None:
                 selector_box = self.active_selector.parentBounds()
                 x0 = selector_box.x()
                 y0 = selector_box.y()
-                x1 = x0 + selector_box.width() 
+                x1 = x0 + selector_box.width()
                 y1 = y0 + selector_box.height()
                 step = 1 * self.parent().scale
                 if y0 >= step:
                     self.active_selector.setPos([x0, y0 - step])
-        
+
         elif event.key() == Qt.Key_Down:
-            if self.active_selector is not None: 
+            if self.active_selector is not None:
                 selector_box = self.active_selector.parentBounds()
                 x0 = selector_box.x()
                 y0 = selector_box.y()
-                x1 = x0 + selector_box.width() 
+                x1 = x0 + selector_box.width()
                 y1 = y0 + selector_box.height()
                 step = 1 * self.parent().scale
                 if y1 <= (self.img_size[0] * self.parent().scale - step):
                     self.active_selector.setPos([x0, y0 + step])
-        
+
         elif event.key() == Qt.Key_Left:
-            if self.active_selector is not None: 
+            if self.active_selector is not None:
                 selector_box = self.active_selector.parentBounds()
                 x0 = selector_box.x()
                 y0 = selector_box.y()
-                x1 = x0 + selector_box.width() 
+                x1 = x0 + selector_box.width()
                 y1 = y0 + selector_box.height()
                 step = 1 * self.parent().scale
                 if x0 >= step:
                     self.active_selector.setPos([x0 - step, y0])
-        
+
         elif event.key() == Qt.Key_Right:
-            if self.active_selector is not None: 
+            if self.active_selector is not None:
                 selector_box = self.active_selector.parentBounds()
                 x0 = selector_box.x()
                 y0 = selector_box.y()
-                x1 = x0 + selector_box.width() 
+                x1 = x0 + selector_box.width()
                 y1 = y0 + selector_box.height()
                 step = 1 * self.parent().scale
                 if x1 <= (self.img_size[1] * self.parent().scale - step):
                     self.active_selector.setPos([x0 + step, y0])
 
         elif event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
-            if self.active_selector is not None and self.parent().mode_control['lineprofile']:
+            if (
+                self.active_selector is not None
+                and self.parent().mode_control["lineprofile"]
+            ):
                 size = self.active_selector.size()
-                l, w = size.x(), size.y()
+                length, width = size.x(), size.y()
                 step = 1 * self.parent().scale
-                w += step
-                self.active_selector.setSize([l, w])
+                width += step
+                self.active_selector.setSize([length, width])
 
         elif event.key() == Qt.Key_Minus or event.key() == Qt.Key_Underscore:
-            if self.active_selector is not None and self.parent().mode_control['lineprofile']:
+            if (
+                self.active_selector is not None
+                and self.parent().mode_control["lineprofile"]
+            ):
                 size = self.active_selector.size()
-                l, w = size.x(), size.y()
+                length, width = size.x(), size.y()
                 step = 1 * self.parent().scale
-                if w > step:
-                    w -= step
-                    self.active_selector.setSize([l, w])
+                if width > step:
+                    width -= step
+                    self.active_selector.setSize([length, width])
 
     def toggle_play(self):
         self.isPlaying = not self.isPlaying
-        t = self.parent().attribute.get('playback_speed', 100)
+        t = self.parent().attribute.get("playback_speed", 100)
         if self.isPlaying:
-            self.timer.start(t) 
+            self.timer.start(t)
         else:
             self.timer.stop()
 
@@ -359,39 +428,49 @@ class MainFrameCanvas(QWidget):
         else:
             self.slider.setValue(0)
 
-    def create_img(self, cmap='gray', pvmin=0.1, pvmax=99.9, gamma=1.0):
-        scale = self.parent().scale 
-        self.center = self.img_size[-1]//2, self.img_size[-2]//2
-        self.offset_x = self.data['axes'][-1]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-1].keys() else 0
-        self.offset_y = self.data['axes'][-2]['offset'] if len(self.data['axes']) > 1 and 'offset' in self.data['axes'][-2].keys() else 0
+    def create_img(self, cmap="gray", pvmin=0.1, pvmax=99.9, gamma=1.0):
+        scale = self.parent().scale
+        self.center = self.img_size[-1] // 2, self.img_size[-2] // 2
+        self.offset_x = (
+            self.data["axes"][-1]["offset"]
+            if len(self.data["axes"]) > 1 and "offset" in self.data["axes"][-1].keys()
+            else 0
+        )
+        self.offset_y = (
+            self.data["axes"][-2]["offset"]
+            if len(self.data["axes"]) > 1 and "offset" in self.data["axes"][-2].keys()
+            else 0
+        )
 
         # Clear previous image item if exists
         if self.image_item is not None:
             self.viewbox.removeItem(self.image_item)
             self.image_item = None
-        
-        if self.data_type in ['Image', 'Image Stack', 'FFT']:
-            # Calculate vmin and vmax with percentile
-            self.attribute['vmin'] = np.percentile(self.current_img, pvmin)
-            self.attribute['vmax'] = np.percentile(self.current_img, pvmax)
 
-            # Create image item       
-            self.image_item = pg.ImageItem(self.current_img, axisOrder='row-major', 
-                                        autoLevels=False,
-                                        levels=(self.attribute['vmin'], self.attribute['vmax']))
-            
+        if self.data_type in ["Image", "Image Stack", "FFT"]:
+            # Calculate vmin and vmax with percentile
+            self.attribute["vmin"] = np.percentile(self.current_img, pvmin)
+            self.attribute["vmax"] = np.percentile(self.current_img, pvmax)
+
+            # Create image item
+            self.image_item = pg.ImageItem(
+                self.current_img,
+                axisOrder="row-major",
+                autoLevels=False,
+                levels=(self.attribute["vmin"], self.attribute["vmax"]),
+            )
+
             lut = self.colormap[cmap]
             lut = gamma_correct_lut(lut, gamma)
             self.image_item.setLookupTable(lut)
 
-
-        elif self.data_type == 'Complex Image':
-            self.attribute['complex_display'] = 'Phase'
+        elif self.data_type == "Complex Image":
+            self.attribute["complex_display"] = "Phase"
             self.current_img = self.complex_to_rgb(self.img_data)
-            self.image_item = pg.ImageItem(self.current_img, axisOrder='row-major',
-                                           autoLevels=False,
-                                           levels=(0, 1))  # For RGB images, levels are typically [0, 255] or [0, 1]. Here we use [0, 1] since it's normalized.
-            
+            self.image_item = pg.ImageItem(
+                self.current_img, axisOrder="row-major", autoLevels=False, levels=(0, 1)
+            )  # For RGB images, levels are typically [0, 255] or [0, 1]. Here we use [0, 1] since it's normalized.
+
             # Create a wheel to show angle and magnitude
             # wheel_size = self.img_size[0] // 10
             # y, x = np.indices((wheel_size, wheel_size))
@@ -399,8 +478,8 @@ class MainFrameCanvas(QWidget):
             # x = x - center[0]
             # y = y - center[1]
             # rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
-            # phi = np.arctan2(y, x)    
-            # wheel = rho * np.exp(1j * phi)            
+            # phi = np.arctan2(y, x)
+            # wheel = rho * np.exp(1j * phi)
 
             # self.complex_wheel = self.complex_to_rgb(wheel)
             # # Add alpha channel to make the background transparent
@@ -413,7 +492,6 @@ class MainFrameCanvas(QWidget):
             # self.wheel_item.setScale(scale)
 
             # self.viewbox.addItem(self.wheel_item)
-            
 
         self.image_item.setScale(scale)
         self.viewbox.addItem(self.image_item)
@@ -434,9 +512,9 @@ class MainFrameCanvas(QWidget):
         center = wheel_size // 2, wheel_size // 2
         x = x - center[0]
         y = y - center[1]
-        rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
-        phi = np.arctan2(y, x)    
-        wheel = rho * np.exp(1j * phi)            
+        rho = np.hypot(y, x)  # calculate sqrt(x**2 + y**2)
+        phi = np.arctan2(y, x)
+        wheel = rho * np.exp(1j * phi)
 
         self.complex_wheel = self.complex_to_rgb(wheel)
         # Rotate the wheel by 180 degrees to match the phase direction in the image
@@ -447,33 +525,43 @@ class MainFrameCanvas(QWidget):
         alpha[rho <= wheel_size // 2] = 255
         self.complex_wheel = np.dstack((self.complex_wheel, alpha))
 
-        self.wheel_item = pg.ImageItem(self.complex_wheel, axisOrder='row-major', autoLevels=False, levels=(0, 1))
+        self.wheel_item = pg.ImageItem(
+            self.complex_wheel, axisOrder="row-major", autoLevels=False, levels=(0, 1)
+        )
         self.wheel_item.setScale(scale)
 
         self.viewbox.addItem(self.wheel_item)
 
         if self.image_item is not None:
-            self.wheel_item.setZValue(self.image_item.zValue() + 1)  # Ensure the wheel is on top of the image
+            self.wheel_item.setZValue(
+                self.image_item.zValue() + 1
+            )  # Ensure the wheel is on top of the image
         self.wheel_item.hide()  # Hide the wheel by default
 
     def toggle_colorbar(self, show):
-        self.attribute['colorbar'] = show
+        self.attribute["colorbar"] = show
         # Create a colorbar on the right side of the image
         if show:
             if self.colorbar is None:
                 if self.image_item is not None:
                     cb_width = 25
-                    lut = self.colormap[self.attribute['cmap']]
-                    lut = gamma_correct_lut(lut, self.attribute['gamma'])
+                    lut = self.colormap[self.attribute["cmap"]]
+                    lut = gamma_correct_lut(lut, self.attribute["gamma"])
                     cm = pg.ColorMap(pos=np.linspace(0, 1, 256), color=lut)
-                    self.colorbar = pg.ColorBarItem(values=(self.attribute['vmin'], self.attribute['vmax']),
-                                                    width=cb_width, colorMap=cm, interactive=False)
-                    self.colorbar.setImageItem(self.image_item, insert_in=self.plot.plotItem)
+                    self.colorbar = pg.ColorBarItem(
+                        values=(self.attribute["vmin"], self.attribute["vmax"]),
+                        width=cb_width,
+                        colorMap=cm,
+                        interactive=False,
+                    )
+                    self.colorbar.setImageItem(
+                        self.image_item, insert_in=self.plot.plotItem
+                    )
 
                     # Set the colorbar text color
                     axis = self.colorbar.axis
-                    axis.setTextPen(pg.mkPen('black')) 
-                    axis.setPen(pg.mkPen('black'))
+                    axis.setTextPen(pg.mkPen("black"))
+                    axis.setPen(pg.mkPen("black"))
 
                     layout = self.plot.plotItem.layout
                     layout.setColumnFixedWidth(5, cb_width + 40)
@@ -487,25 +575,33 @@ class MainFrameCanvas(QWidget):
                 self._resize_event(self.size())
 
     def update_img(self, img, pvmin=0.1, pvmax=99.9):
-        # Update the image display with new image data 
+        # Update the image display with new image data
         # img must match the original image data dimension
-        scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
+        scale = self.parent().scale if hasattr(self.parent(), "scale") else 1
         if self.image_item is not None:
             if np.isrealobj(img):
                 self.current_img = img
-                self.attribute['vmin'] = np.percentile(img, pvmin)
-                self.attribute['vmax'] = np.percentile(img, pvmax)
-                self.image_item.setImage(img, axisOrder='row-major', 
-                                        autoLevels=False,
-                                        levels=(self.attribute['vmin'], self.attribute['vmax']))
+                self.attribute["vmin"] = np.percentile(img, pvmin)
+                self.attribute["vmax"] = np.percentile(img, pvmax)
+                self.image_item.setImage(
+                    img,
+                    axisOrder="row-major",
+                    autoLevels=False,
+                    levels=(self.attribute["vmin"], self.attribute["vmax"]),
+                )
                 if self.wheel_item is not None:
-                    self.wheel_item.hide() # Hide the wheel if the image is not complex anymore
-                
+                    self.wheel_item.hide()  # Hide the wheel if the image is not complex anymore
+
             elif np.iscomplexobj(img):
-                self.current_img = self.complex_to_rgb(img) # Show phase and magnitude for complex images
-                self.image_item.setImage(self.current_img, axisOrder='row-major', 
-                                        autoLevels=False,
-                                        levels=(0, 1))
+                self.current_img = self.complex_to_rgb(
+                    img
+                )  # Show phase and magnitude for complex images
+                self.image_item.setImage(
+                    self.current_img,
+                    axisOrder="row-major",
+                    autoLevels=False,
+                    levels=(0, 1),
+                )
                 if self.wheel_item is not None:
                     self.wheel_item.show()
 
@@ -520,11 +616,10 @@ class MainFrameCanvas(QWidget):
 
         current_ratio = (w - self.cb_width) / (h - self.sh)
         # Horizontal space for colorbar
-        
-        
+
         if current_ratio > self.ratio:
             # Container is too wide, adjust width
-            target_w = np.ceil((h-self.sh) * self.ratio) + self.cb_width
+            target_w = np.ceil((h - self.sh) * self.ratio) + self.cb_width
             h_margin = (w - target_w) / 2
             h_margin0 = int(h_margin)
             h_margin1 = int(w - target_w - h_margin0)
@@ -536,44 +631,45 @@ class MainFrameCanvas(QWidget):
             v_margin0 = int(v_margin)
             v_margin1 = int(h - target_h - v_margin0)
             self.layout.setContentsMargins(0, v_margin0, 0, v_margin1)
-        
+
         # Ensure the contained widget is added last
         if self.layout.itemAt(1) is None:
             self.layout.addWidget(self.plot)
 
     def custom_auto_range(self):
         img = self.image_item.image
-        scale = self.parent().scale if hasattr(self.parent(), 'scale') else 1
-        
+        scale = self.parent().scale if hasattr(self.parent(), "scale") else 1
+
         if img is not None:
             vb = self.plot.getPlotItem().getViewBox()
             vb.setRange(
-                xRange=(0, img.shape[1] * scale), 
-                yRange=(0, img.shape[0] * scale), 
-                padding=0, 
-                update=True
+                xRange=(0, img.shape[1] * scale),
+                yRange=(0, img.shape[0] * scale),
+                padding=0,
+                update=True,
             )
-
 
     def update_frame(self):
         # For 3D image stacks, change to the frame specified
         if self.slider is not None:
             self.idx = self.slider.value()
-            self.frame.setText(f'{self.idx + 1}')
+            self.frame.setText(f"{self.idx + 1}")
             self.current_img = self.img_data[self.idx]
-            self.image_item.setImage(self.current_img, axisOrder='row-major')
+            self.image_item.setImage(self.current_img, axisOrder="row-major")
 
             # Update live FFT if in live FFT mode
-            if self.parent().mode_control['Live_FFT']:
+            if self.parent().mode_control["Live_FFT"]:
                 self.parent().update_live_fft()
 
- #========= SimpleLevelsWidget ================================================
+
+# ========= SimpleLevelsWidget ================================================
 class SimpleLevelsWidget(QtWidgets.QWidget):
     """Minimal histogram + level control for an ImageItem."""
+
     sigLevelsChanged = pyqtSignal(object)
     sigLevelChangeFinished = pyqtSignal(object)
 
-    def __init__(self, image_item, orientation='horizontal', bins=512, parent=None):
+    def __init__(self, image_item, orientation="horizontal", bins=512, parent=None):
         super().__init__(parent)
         self.item = self  # for compatibility with previous self.lut.item usage
         self.image_item = image_item
@@ -584,22 +680,24 @@ class SimpleLevelsWidget(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.plot = pg.PlotWidget(parent=self)
-        self.plot.setBackground('k')
+        self.plot.setBackground("k")
         self.plot_item = self.plot.getPlotItem()
         self.plot_item.hideButtons()
         self.plot_item.setContentsMargins(0, 0, 0, 0)
         self.plot_item.vb.setMenuEnabled(False)
-        self.plot_item.showAxis('top', True)
-        self.plot_item.hideAxis('bottom')
-        self.plot_item.hideAxis('left')
+        self.plot_item.showAxis("top", True)
+        self.plot_item.hideAxis("bottom")
+        self.plot_item.hideAxis("left")
         self.plot.setMouseEnabled(x=True, y=False)
 
         self.curve = self.plot.plot(pen=pg.mkPen((200, 200, 200, 100), width=1))
         layout.addWidget(self.plot)
 
         # LinearRegionItem along X to select min/max levels
-        region_orientation = 'vertical'  # x-axis range selection
-        self.region = pg.LinearRegionItem(orientation=region_orientation, movable=True, swapMode='block')
+        region_orientation = "vertical"  # x-axis range selection
+        self.region = pg.LinearRegionItem(
+            orientation=region_orientation, movable=True, swapMode="block"
+        )
         self.plot.addItem(self.region)
 
         # Connect signals
@@ -607,7 +705,7 @@ class SimpleLevelsWidget(QtWidgets.QWidget):
         self.region.sigRegionChangeFinished.connect(self._region_changed)
 
         # Track image changes to refresh histogram
-        if hasattr(self.image_item, 'sigImageChanged'):
+        if hasattr(self.image_item, "sigImageChanged"):
             self.image_item.sigImageChanged.connect(self.update_histogram)
 
         # Init histogram and region range
@@ -652,7 +750,7 @@ class SimpleLevelsWidget(QtWidgets.QWidget):
 
     # Helpers
     def _data_min_max(self):
-        img = getattr(self.image_item, 'image', None)
+        img = getattr(self.image_item, "image", None)
         if img is None:
             return (0.0, 1.0)
         arr = np.asarray(img)
@@ -671,30 +769,27 @@ class SimpleLevelsWidget(QtWidgets.QWidget):
         self.curve.setBrush(pg.mkBrush(100, 100, 200))
 
 
-
-#========= Image settings dialog =============================
+# ========= Image settings dialog =============================
 class CustomSettingsDialog(QDialog):
     def __init__(self, image_item, parent):
         # parent should be the PlotCanvas object
-        super().__init__(parent) 
+        super().__init__(parent)
         self.image_item = image_item
-        self.img_data = self.parent().canvas.img_data 
+        self.img_data = self.parent().canvas.img_data
 
-        self.setWindowTitle("Image Settings")        
+        self.setWindowTitle("Image Settings")
         self.attribute = self.parent().canvas.attribute
         self.colormap = self.parent().canvas.colormap
 
-        
-        
-        self.colorbar = QCheckBox('Colorbar', self)
-        if self.attribute['colorbar']:
+        self.colorbar = QCheckBox("Colorbar", self)
+        if self.attribute["colorbar"]:
             self.colorbar.setChecked(True)
         else:
             self.colorbar.setChecked(False)
         self.colorbar.stateChanged.connect(self.set_colorbar)
-        
+
         self.original_settings = copy.copy(self.attribute)
-        
+
         # Create the layout
         layout = QVBoxLayout()
 
@@ -704,18 +799,19 @@ class CustomSettingsDialog(QDialog):
         # Insert a LUT adjustment
         levels = self.image_item.getLevels()
         vmin, vmax = levels[0], levels[1]
-        self.original_settings['vmin'] = vmin
-        self.original_settings['vmax'] = vmax
+        self.original_settings["vmin"] = vmin
+        self.original_settings["vmax"] = vmax
 
-        self.lut = SimpleLevelsWidget(self.image_item, orientation='horizontal', bins=512, parent=self)
+        self.lut = SimpleLevelsWidget(
+            self.image_item, orientation="horizontal", bins=512, parent=self
+        )
         self.lut.item.setLevels(vmin, vmax)
         self.lut.setMinimumHeight(100)
 
-        
         self.lut.item.sigLevelsChanged.connect(self.update_colorbar_levels)
         self.lut.item.sigLevelsChanged.connect(self.update_level_labels)
         display_layout.addWidget(self.lut)
-        
+
         # for comparison
         # self.pglut = pg.HistogramLUTWidget(parent=self, image=self.image_item, orientation='horizontal')
         # self.pglut.item.setLevels(vmin, vmax)
@@ -740,8 +836,6 @@ class CustomSettingsDialog(QDialog):
         h_layout_vmax.addWidget(self.vmax_set)
         display_layout.addLayout(h_layout_vmax)
 
-        
-
         self.vmin_set.clicked.connect(self.set_levels)
         self.vmax_set.clicked.connect(self.set_levels)
 
@@ -755,7 +849,7 @@ class CustomSettingsDialog(QDialog):
         self.gamma_slider = QSlider(Qt.Horizontal)
         self.gamma_slider.setMinimum(1)
         self.gamma_slider.setMaximum(20)
-        self.gamma_slider.setValue(int(self.attribute['gamma'] * 10))
+        self.gamma_slider.setValue(int(self.attribute["gamma"] * 10))
         self.gamma_value_label = QLabel(f"{self.attribute['gamma']:.1f}")
         h_layout_gamma.addWidget(gamma_label)
         h_layout_gamma.addWidget(self.gamma_slider)
@@ -766,20 +860,43 @@ class CustomSettingsDialog(QDialog):
         display_group.setLayout(display_layout)
         layout.addWidget(display_group)
 
-
         # Colormap dropdown
         v_layout_cmap = QVBoxLayout()
         h_layout_cmap = QHBoxLayout()
         self.cmap_label = QLabel("Preset Maps:")
         self.cmap_combobox = QComboBox()
         self.cmap_combobox.setIconSize(QSize(80, 20))
-        colormaps = ['viridis', 'plasma', 'inferno', 'magma', 'cividis',
-                     'gray', 'spring', 'summer', 'autumn', 'winter', 'cool',
-                      'Wistia', 'hot',
-                     'Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Lime', 'Purple',
-                     'Magenta', 'Pink', 'Blue', 'Maize',
-                     'jet', 'rainbow', 'turbo', 'hsv', 'seismic'
-                     ]
+        colormaps = [
+            "viridis",
+            "plasma",
+            "inferno",
+            "magma",
+            "cividis",
+            "gray",
+            "spring",
+            "summer",
+            "autumn",
+            "winter",
+            "cool",
+            "Wistia",
+            "hot",
+            "Red",
+            "Orange",
+            "Yellow",
+            "Green",
+            "Cyan",
+            "Lime",
+            "Purple",
+            "Magenta",
+            "Pink",
+            "Blue",
+            "Maize",
+            "jet",
+            "rainbow",
+            "turbo",
+            "hsv",
+            "seismic",
+        ]
         for cmap_name in colormaps:
             icon = self.create_colormap_icon(cmap_name)
             self.cmap_combobox.addItem(icon, cmap_name)
@@ -789,72 +906,97 @@ class CustomSettingsDialog(QDialog):
         h_layout_cmap.addWidget(self.colorbar)
         v_layout_cmap.addLayout(h_layout_cmap)
 
-
         cmap_group = QGroupBox("Colormap", self)
         cmap_group.setLayout(v_layout_cmap)
 
         layout.addWidget(cmap_group)
 
-        if self.parent().canvas.data_type == 'Complex Image': # Special settings for complex images
+        if (
+            self.parent().canvas.data_type == "Complex Image"
+        ):  # Special settings for complex images
             # Add a complex group for display and colorwheel
             complex_group = QGroupBox("Complex Image Settings", self)
             complex_layout = QVBoxLayout()
             self.complex_display_combo = QComboBox()
-            self.complex_display_combo.addItems(['Phase', 'Magnitude', 'Real', 'Imaginary'])
-            self.complex_display_combo.setCurrentText(self.attribute.get('complex_display', 'Phase'))
-            self.complex_display_combo.currentTextChanged.connect(self.update_complex_display)
+            self.complex_display_combo.addItems(
+                ["Phase", "Magnitude", "Real", "Imaginary"]
+            )
+            self.complex_display_combo.setCurrentText(
+                self.attribute.get("complex_display", "Phase")
+            )
+            self.complex_display_combo.currentTextChanged.connect(
+                self.update_complex_display
+            )
             complex_layout.addWidget(self.complex_display_combo)
 
-            self.wheel_check = QCheckBox('Show color wheel', self)
-            self.wheel_check.setChecked(self.attribute.get('colorwheel', True))
+            self.wheel_check = QCheckBox("Show color wheel", self)
+            self.wheel_check.setChecked(self.attribute.get("colorwheel", True))
             self.wheel_check.stateChanged.connect(self.update_colorwheel)
             complex_layout.addWidget(self.wheel_check)
             complex_group.setLayout(complex_layout)
             layout.addWidget(complex_group)
 
-        
-        
-
         # Set current colormap
-        cmap = self.attribute['cmap']
+        cmap = self.attribute["cmap"]
         self.cmap_combobox.setCurrentText(cmap)
-            
+
         # Scalebar customization
 
         scalebar_group = QGroupBox("Scalebar Customization", self)
         scalebar_layout = QVBoxLayout()
 
         self.scalebar_check = QCheckBox("Add scalebar to image")
-        self.scalebar_check.setChecked(self.attribute['scalebar'])
+        self.scalebar_check.setChecked(self.attribute["scalebar"])
         scalebar_layout.addWidget(self.scalebar_check)
 
         h_layout_scalebar = QHBoxLayout()
-        self.sbcolor_label = QLabel('Scalebar color')
+        self.sbcolor_label = QLabel("Scalebar color")
         self.sbcolor_combobox = pg.ColorButton()
-        self.sbcolor_combobox.setColor(pg.mkColor(self.attribute['color']))
-        
-        
-        
+        self.sbcolor_combobox.setColor(pg.mkColor(self.attribute["color"]))
+
         h_layout_scalebar.addWidget(self.sbcolor_label)
         h_layout_scalebar.addWidget(self.sbcolor_combobox)
         scalebar_layout.addLayout(h_layout_scalebar)
 
         h_layout_loc = QHBoxLayout()
-        self.sbloc_label = QLabel('Scalebar location')
+        self.sbloc_label = QLabel("Scalebar location")
         self.sblocation_combox = QComboBox()
-        sbloc = ['lower left', 'lower right', 'upper left', 'upper right']
+        sbloc = ["lower left", "lower right", "upper left", "upper right"]
         self.sblocation_combox.addItems(sbloc)
-        self.sblocation_combox.setCurrentText(self.attribute['location'])
+        self.sblocation_combox.setCurrentText(self.attribute["location"])
         h_layout_loc.addWidget(self.sbloc_label)
         h_layout_loc.addWidget(self.sblocation_combox)
         scalebar_layout.addLayout(h_layout_loc)
 
         h_layout_size = QHBoxLayout()
-        self.sbsize_label = QLabel('Font size')
+        self.sbsize_label = QLabel("Font size")
         self.sbsize_combobox = QComboBox()
-        sizes = ['4', '6', '8', '10', '12', '14', '16', '18', '20', '22', '24', '26', '28', '30', '32', '36', '40', '44', '48', '52', '56', '60']
+        sizes = [
+            "4",
+            "6",
+            "8",
+            "10",
+            "12",
+            "14",
+            "16",
+            "18",
+            "20",
+            "22",
+            "24",
+            "26",
+            "28",
+            "30",
+            "32",
+            "36",
+            "40",
+            "44",
+            "48",
+            "52",
+            "56",
+            "60",
+        ]
         self.sbsize_combobox.addItems(sizes)
-        self.sbsize_combobox.setCurrentText(f'{self.attribute.get("scale_size", 20)}')
+        self.sbsize_combobox.setCurrentText(f"{self.attribute.get('scale_size', 20)}")
         h_layout_size.addWidget(self.sbsize_label)
         h_layout_size.addWidget(self.sbsize_combobox)
         scalebar_layout.addLayout(h_layout_size)
@@ -865,22 +1007,23 @@ class CustomSettingsDialog(QDialog):
         # Connect all functions
         self.cmap_combobox.currentTextChanged.connect(self.update_colormap)
         self.sbcolor_combobox.sigColorChanged.connect(self.update_scalebar)
-        self.scalebar_check.stateChanged.connect(self.update_scalebar)     
+        self.scalebar_check.stateChanged.connect(self.update_scalebar)
         self.sblocation_combox.currentTextChanged.connect(self.update_scalebar)
         self.sbsize_combobox.currentTextChanged.connect(self.update_scalebar)
-
-        
 
         # Apply button
         buttons = QDialogButtonBox(QDialogButtonBox.Reset | QDialogButtonBox.Ok)
         self.reset_button = buttons.button(QDialogButtonBox.Reset)
         self.reset_button.clicked.connect(self.reset_settings)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
-        self.ok_button.clicked.connect(self.accept)     
+        self.ok_button.clicked.connect(self.accept)
         layout.addWidget(buttons)
 
         # Disable gamma, colormap for complex images
-        if self.parent().canvas.data_type == 'Complex Image' and self.attribute['complex_display'] == 'Phase':
+        if (
+            self.parent().canvas.data_type == "Complex Image"
+            and self.attribute["complex_display"] == "Phase"
+        ):
             self.gamma_slider.setEnabled(False)
             self.cmap_combobox.setEnabled(False)
             self.colorbar.setEnabled(False)
@@ -891,7 +1034,7 @@ class CustomSettingsDialog(QDialog):
         lut = self.colormap[cmap_name]
         width = 40
         strip = np.repeat(lut[None, :, :], width, axis=0)
-        qimg = QImage(strip, 256, width, 256*4, QImage.Format.Format_RGBA8888)
+        qimg = QImage(strip, 256, width, 256 * 4, QImage.Format.Format_RGBA8888)
         pixmap = QPixmap.fromImage(qimg)
         icon = QIcon(pixmap)
         return icon
@@ -907,21 +1050,22 @@ class CustomSettingsDialog(QDialog):
             vmin = float(self.vmin_input.text())
             vmax = float(self.vmax_input.text())
             if vmin >= vmax:
-                QMessageBox.warning(self, "Invalid Input", 
-                                        "Vmin must be less than Vmax.")
+                QMessageBox.warning(
+                    self, "Invalid Input", "Vmin must be less than Vmax."
+                )
                 return
             self.lut.item.setLevels(min=vmin, max=vmax)
         except ValueError as e:
-            QMessageBox.warning(self, "Invalid Input", f"Invalid input for vmin/vmax: {e}")
+            QMessageBox.warning(
+                self, "Invalid Input", f"Invalid input for vmin/vmax: {e}"
+            )
 
     def update_gamma(self):
         gamma_value = self.gamma_slider.value() / 10.0
         self.gamma_value_label.setText(f"{gamma_value:.1f}")
-        self.parent().canvas.attribute['gamma'] = gamma_value
-        # Apply gamma to LUT 
+        self.parent().canvas.attribute["gamma"] = gamma_value
+        # Apply gamma to LUT
         self.update_colormap()
-
-        
 
     def set_colorbar(self):
         if self.colorbar.isChecked():
@@ -933,7 +1077,6 @@ class CustomSettingsDialog(QDialog):
         if self.parent().canvas.colorbar is not None:
             self.parent().canvas.colorbar.setLevels(self.lut.item.getLevels())
 
-
     def update_colormap(self):
         # Apply colormap
         self.cmap_name = self.cmap_combobox.currentText()
@@ -943,7 +1086,7 @@ class CustomSettingsDialog(QDialog):
         lut = gamma_correct_lut(lut, g)
 
         self.parent().canvas.image_item.setLookupTable(lut)
-        self.parent().canvas.attribute['cmap'] = self.cmap_name
+        self.parent().canvas.attribute["cmap"] = self.cmap_name
         # Update the LUT widget
         # cmap = pg.ColorMap(pos=np.linspace(0, 1, 256), color=lut)
         # self.lut.item.gradient.setColorMap(cmap)
@@ -954,35 +1097,40 @@ class CustomSettingsDialog(QDialog):
 
     def update_scalebar(self):
         # Apply scalebar styles
-        self.parent().canvas.attribute['scalebar'] = self.scalebar_check.isChecked()
-        self.parent().canvas.attribute['color'] = self.sbcolor_combobox.color()
-        self.parent().canvas.attribute['location'] = self.sblocation_combox.currentText()
-        self.parent().canvas.attribute['scale_size'] = int(self.sbsize_combobox.currentText())
-        
+        self.parent().canvas.attribute["scalebar"] = self.scalebar_check.isChecked()
+        self.parent().canvas.attribute["color"] = self.sbcolor_combobox.color()
+        self.parent().canvas.attribute["location"] = (
+            self.sblocation_combox.currentText()
+        )
+        self.parent().canvas.attribute["scale_size"] = int(
+            self.sbsize_combobox.currentText()
+        )
+
         self.parent().update_scalebar()
 
     def update_colorwheel(self):
-        self.parent().canvas.attribute['colorwheel'] = self.wheel_check.isChecked()
+        self.parent().canvas.attribute["colorwheel"] = self.wheel_check.isChecked()
         if self.wheel_check.isChecked():
             self.parent().canvas.wheel_item.show()
         else:
             self.parent().canvas.wheel_item.hide()
-    
 
     def update_complex_display(self):
         display_mode = self.complex_display_combo.currentText()
-        self.parent().canvas.attribute['complex_display'] = display_mode
-        if display_mode == 'Phase':
-            self.parent().canvas.current_img = self.parent().canvas.complex_to_rgb(self.parent().canvas.img_data)
+        self.parent().canvas.attribute["complex_display"] = display_mode
+        if display_mode == "Phase":
+            self.parent().canvas.current_img = self.parent().canvas.complex_to_rgb(
+                self.parent().canvas.img_data
+            )
             self.parent().canvas.update_img(self.parent().canvas.current_img)
             # self.parent().canvas.image_item.setImage(self.parent().canvas.current_img, axisOrder='row-major', levels=(0, 1))
             self.wheel_check.setEnabled(True)
-            self.wheel_check.setChecked(self.original_settings.get('colorwheel', True))
+            self.wheel_check.setChecked(self.original_settings.get("colorwheel", True))
             self.gamma_slider.setEnabled(False)
             self.cmap_combobox.setEnabled(False)
             self.colorbar.setEnabled(False)
 
-        elif display_mode == 'Magnitude':
+        elif display_mode == "Magnitude":
             mag = np.abs(self.parent().canvas.img_data)
             self.parent().canvas.update_img(mag)
             self.wheel_check.setChecked(False)
@@ -991,7 +1139,7 @@ class CustomSettingsDialog(QDialog):
             self.cmap_combobox.setEnabled(True)
             self.colorbar.setEnabled(True)
 
-        elif display_mode == 'Real':
+        elif display_mode == "Real":
             real = np.real(self.parent().canvas.img_data)
             self.parent().canvas.update_img(real)
             self.wheel_check.setChecked(False)
@@ -1000,7 +1148,7 @@ class CustomSettingsDialog(QDialog):
             self.cmap_combobox.setEnabled(True)
             self.colorbar.setEnabled(True)
 
-        elif display_mode == 'Imaginary':
+        elif display_mode == "Imaginary":
             imag = np.imag(self.parent().canvas.img_data)
             self.parent().canvas.update_img(imag)
             self.wheel_check.setChecked(False)
@@ -1008,26 +1156,27 @@ class CustomSettingsDialog(QDialog):
             self.gamma_slider.setEnabled(True)
             self.cmap_combobox.setEnabled(True)
             self.colorbar.setEnabled(True)
-        
-    
+
     def reset_settings(self):
         # Reset scalebar
-        self.scalebar_check.setChecked(self.original_settings['scalebar'])
-        self.colorbar.setChecked(self.original_settings['colorbar'])
-        self.sbcolor_combobox.setColor(pg.mkColor(self.original_settings['color']))      
-        self.sblocation_combox.setCurrentText(self.original_settings['location'])
-        self.sbsize_combobox.setCurrentText(f'{self.original_settings["scale_size"]}')
-        if hasattr(self, 'wheel_check'):
-            self.wheel_check.setChecked(self.original_settings['colorwheel'])
-        
+        self.scalebar_check.setChecked(self.original_settings["scalebar"])
+        self.colorbar.setChecked(self.original_settings["colorbar"])
+        self.sbcolor_combobox.setColor(pg.mkColor(self.original_settings["color"]))
+        self.sblocation_combox.setCurrentText(self.original_settings["location"])
+        self.sbsize_combobox.setCurrentText(f"{self.original_settings['scale_size']}")
+        if hasattr(self, "wheel_check"):
+            self.wheel_check.setChecked(self.original_settings["colorwheel"])
+
         # Reset vmin vmax
-        self.lut.item.setLevels(min=self.original_settings['vmin'], max=self.original_settings['vmax'])
+        self.lut.item.setLevels(
+            min=self.original_settings["vmin"], max=self.original_settings["vmax"]
+        )
         # Reset colormap
-        self.gamma_slider.setValue(int(self.original_settings['gamma'] * 10))
-        cmap = self.original_settings['cmap']
+        self.gamma_slider.setValue(int(self.original_settings["gamma"] * 10))
+        cmap = self.original_settings["cmap"]
         self.cmap_combobox.setCurrentText(cmap)
 
-    def position_window(self, pos='center'):
+    def position_window(self, pos="center"):
         # Set the window pop up position
         # Possible positions are:
         # 'center': screen center
@@ -1035,7 +1184,7 @@ class CustomSettingsDialog(QDialog):
         # 'center right': right side with the left edge on the screen
         # 'next to parent': the left edge next to its parent window
         # tuple (x, y): specific position of screen fraction (0-1)
-        
+
         # Get screen resolution
         screen_geometry = QApplication.primaryScreen().availableGeometry()
         width = screen_geometry.width()
@@ -1043,49 +1192,48 @@ class CustomSettingsDialog(QDialog):
         screen_top = screen_geometry.top()
         screen_left = screen_geometry.left()
         frame_size = self.frameGeometry()
-        
-        if pos == 'center':
+
+        if pos == "center":
             x = screen_left + (width - frame_size.width()) // 2
             y = screen_top + (height - frame_size.height()) // 2
 
-        elif pos == 'center left':
+        elif pos == "center left":
             x = screen_left + (width // 2 - frame_size.width())
             y = screen_top + (height - frame_size.height()) // 2
 
-        elif pos == 'center right':
+        elif pos == "center right":
             x = screen_left + (width // 2)
             y = screen_top + (height - frame_size.height()) // 2
 
-        elif pos == 'next to parent':
+        elif pos == "next to parent":
             if self.parent() is not None:
                 parent = self.parent()
                 parent_geometry = parent.frameGeometry()
                 x = parent_geometry.x() + parent_geometry.width()
                 y = parent_geometry.y()
-        
+
         else:
             # Handle tuple case
             if isinstance(pos, tuple) and len(pos) == 2:
                 x = int(width * pos[0])
-                y = int(height * pos[1])   
+                y = int(height * pos[1])
 
         # Clamp coordinates to screen bounds (including top screen offset)
-        
+
         x = max(screen_left, min(x, screen_left + width - frame_size.width()))
-        y = max(screen_top, min(y, screen_top + height - frame_size.height()))   
-                
+        y = max(screen_top, min(y, screen_top + height - frame_size.height()))
+
         self.move(x, y)
 
-            
 
-#============ Filter settings dialog for plot canvas ===========================
+# ============ Filter settings dialog for plot canvas ===========================
 class FilterSettingDialog(QDialog):
     # Same as FilterSettingBatchConvert but without apply to check boxes
     def __init__(self, parameters, parent):
         super().__init__(parent)
-        self.setWindowTitle("Filter Settings")        
+        self.setWindowTitle("Filter Settings")
         layout = QVBoxLayout()
-        
+
         default_values = parameters
         self.parameters = {}
 
@@ -1096,25 +1244,31 @@ class FilterSettingDialog(QDialog):
         cutoff_validator.setNotation(QDoubleValidator.StandardNotation)
         cycles_validator = QIntValidator(1, 100, self)
 
-        # Wiener Filter Section      
-        self.wiener_group = QGroupBox('Wiener Filter Settings', self)
+        # Wiener Filter Section
+        self.wiener_group = QGroupBox("Wiener Filter Settings", self)
         form_layout = QFormLayout()
-        self.delta_wf = QLabel('WF Delta')
-        self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        self.delta_wf = QLabel("WF Delta")
+        self.delta_wf.setToolTip(
+            "Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time."
+        )
         self.delta_wf_input = QLineEdit()
-        self.delta_wf_input.setText(default_values['WF Delta'])
+        self.delta_wf_input.setText(default_values["WF Delta"])
         self.delta_wf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_wf, self.delta_wf_input)
-        self.order_wf = QLabel('WF Bw-order')
-        self.order_wf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_wf = QLabel("WF Bw-order")
+        self.order_wf.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_wf_input = QLineEdit()
-        self.order_wf_input.setText(default_values['WF Bw-order'])
+        self.order_wf_input.setText(default_values["WF Bw-order"])
         self.order_wf_input.setValidator(order_validator)
         form_layout.addRow(self.order_wf, self.order_wf_input)
-        self.cutoff_wf = QLabel('WF Bw-cutoff')
-        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_wf = QLabel("WF Bw-cutoff")
+        self.cutoff_wf.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_wf_input = QLineEdit()
-        self.cutoff_wf_input.setText(default_values['WF Bw-cutoff'])
+        self.cutoff_wf_input.setText(default_values["WF Bw-cutoff"])
         self.cutoff_wf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_wf, self.cutoff_wf_input)
         self.wiener_group.setLayout(form_layout)
@@ -1122,97 +1276,119 @@ class FilterSettingDialog(QDialog):
         layout.addWidget(self.wiener_group)
 
         # ABS Filter Section
-        self.absf_group = QGroupBox('ABS Filter Settings', self)
+        self.absf_group = QGroupBox("ABS Filter Settings", self)
         form_layout = QFormLayout()
-        self.delta_absf = QLabel('ABSF Delta')
-        self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        self.delta_absf = QLabel("ABSF Delta")
+        self.delta_absf.setToolTip(
+            "Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time."
+        )
         self.delta_absf_input = QLineEdit()
-        self.delta_absf_input.setText(default_values['ABSF Delta'])
+        self.delta_absf_input.setText(default_values["ABSF Delta"])
         self.delta_absf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_absf, self.delta_absf_input)
-        self.order_absf = QLabel('ABSF Bw-order')
-        self.order_absf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_absf = QLabel("ABSF Bw-order")
+        self.order_absf.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_absf_input = QLineEdit()
-        self.order_absf_input.setText(default_values['ABSF Bw-order'])
+        self.order_absf_input.setText(default_values["ABSF Bw-order"])
         self.order_absf_input.setValidator(order_validator)
         form_layout.addRow(self.order_absf, self.order_absf_input)
-        self.cutoff_absf = QLabel('ABSF Bw-cutoff')
-        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_absf = QLabel("ABSF Bw-cutoff")
+        self.cutoff_absf.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_absf_input = QLineEdit()
-        self.cutoff_absf_input.setText(default_values['ABSF Bw-cutoff'])
+        self.cutoff_absf_input.setText(default_values["ABSF Bw-cutoff"])
         self.cutoff_absf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_absf, self.cutoff_absf_input)
         self.absf_group.setLayout(form_layout)
-        #self.absf_group.setLayout(self.create_form_layout(["ABSF Delta", "ABSF Bw-order", "ABSF Bw-cutoff"], default_values, self.parameters))
+        # self.absf_group.setLayout(self.create_form_layout(["ABSF Delta", "ABSF Bw-order", "ABSF Bw-cutoff"], default_values, self.parameters))
         self.absf_group.setEnabled(True)
-        #self.absf_check.stateChanged.connect(lambda: self.absf_group.setEnabled(self.absf_check.isChecked()))
+        # self.absf_check.stateChanged.connect(lambda: self.absf_group.setEnabled(self.absf_check.isChecked()))
         layout.addWidget(self.absf_group)
 
         # Non-Linear Filter Section
-        self.nl_group = QGroupBox('Non-Linear Filter Settings', self)
+        self.nl_group = QGroupBox("Non-Linear Filter Settings", self)
         form_layout = QFormLayout()
-        self.N = QLabel('NL Cycles')
-        self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
+        self.N = QLabel("NL Cycles")
+        self.N.setToolTip(
+            "Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time."
+        )
         self.N_input = QLineEdit()
-        self.N_input.setText(default_values['NL Cycles'])
+        self.N_input.setText(default_values["NL Cycles"])
         self.N_input.setValidator(cycles_validator)
         form_layout.addRow(self.N, self.N_input)
-        self.delta_nl = QLabel('NL Delta')
-        self.delta_nl.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
+        self.delta_nl = QLabel("NL Delta")
+        self.delta_nl.setToolTip(
+            "Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time."
+        )
         self.delta_nl_input = QLineEdit()
-        self.delta_nl_input.setText(default_values['NL Delta'])
+        self.delta_nl_input.setText(default_values["NL Delta"])
         self.delta_nl_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_nl, self.delta_nl_input)
-        self.order_nl = QLabel('NL Bw-order')
-        self.order_nl.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_nl = QLabel("NL Bw-order")
+        self.order_nl.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_nl_input = QLineEdit()
-        self.order_nl_input.setText(default_values['NL Bw-order'])
+        self.order_nl_input.setText(default_values["NL Bw-order"])
         self.order_nl_input.setValidator(order_validator)
         form_layout.addRow(self.order_nl, self.order_nl_input)
-        self.cutoff_nl = QLabel('NL Lowpass-cutoff')
-        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_nl = QLabel("NL Lowpass-cutoff")
+        self.cutoff_nl.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_nl_input = QLineEdit()
-        self.cutoff_nl_input.setText(default_values['NL Bw-cutoff'])
+        self.cutoff_nl_input.setText(default_values["NL Bw-cutoff"])
         self.cutoff_nl_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_nl, self.cutoff_nl_input)
         self.nl_group.setLayout(form_layout)
-        #self.nl_group.setLayout(self.create_form_layout(["NL Cycles", "NL Delta", "NL Bw-order", "NL Bw-cutoff"], default_values, self.parameters))
+        # self.nl_group.setLayout(self.create_form_layout(["NL Cycles", "NL Delta", "NL Bw-order", "NL Bw-cutoff"], default_values, self.parameters))
         self.nl_group.setEnabled(True)
-        #self.nl_check.stateChanged.connect(lambda: self.nl_group.setEnabled(self.nl_check.isChecked()))
+        # self.nl_check.stateChanged.connect(lambda: self.nl_group.setEnabled(self.nl_check.isChecked()))
         layout.addWidget(self.nl_group)
-        
+
         # Butterworth filter Section
-        self.bw_group = QGroupBox('Butterworth Filter Settings', self)
+        self.bw_group = QGroupBox("Butterworth Filter Settings", self)
         form_layout = QFormLayout()
-        self.order_bw = QLabel('Bw-order')
-        self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_bw = QLabel("Bw-order")
+        self.order_bw.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_bw_input = QLineEdit()
-        self.order_bw_input.setText(default_values['Bw-order'])
+        self.order_bw_input.setText(default_values["Bw-order"])
         self.order_bw_input.setValidator(order_validator)
         form_layout.addRow(self.order_bw, self.order_bw_input)
-        self.cutoff_bw = QLabel('Bw-cutoff')
-        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_bw = QLabel("Bw-cutoff")
+        self.cutoff_bw.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_bw_input = QLineEdit()
-        self.cutoff_bw_input.setText(default_values['Bw-cutoff'])
+        self.cutoff_bw_input.setText(default_values["Bw-cutoff"])
         self.cutoff_bw_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_bw, self.cutoff_bw_input)
         self.bw_group.setLayout(form_layout)
         self.bw_group.setEnabled(True)
         layout.addWidget(self.bw_group)
-        
+
         # Gaussian filter Section
-        self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
+        self.gaussian_group = QGroupBox("Gaussian Filter Settings", self)
         form_layout = QFormLayout()
-        self.hp_cutoff_gaussian = QLabel('High-pass Gaussian cutoff')
-        self.hp_cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the highpass starts. Must be between 0-1. Set to 0 for no highpass.')
+        self.hp_cutoff_gaussian = QLabel("High-pass Gaussian cutoff")
+        self.hp_cutoff_gaussian.setToolTip(
+            "Fraction of radius in reciprocal space from where the highpass starts. Must be between 0-1. Set to 0 for no highpass."
+        )
         self.hp_cutoff_gaussian_input = QLineEdit()
-        self.hp_cutoff_gaussian_input.setText(default_values['GS-hp-cutoff'])
+        self.hp_cutoff_gaussian_input.setText(default_values["GS-hp-cutoff"])
         self.hp_cutoff_gaussian_input.setValidator(cutoff_validator)
         form_layout.addRow(self.hp_cutoff_gaussian, self.hp_cutoff_gaussian_input)
-        self.cutoff_gaussian = QLabel('Low-pass Gaussian cutoff')
-        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1. Set to 1 for no lowpass.')
+        self.cutoff_gaussian = QLabel("Low-pass Gaussian cutoff")
+        self.cutoff_gaussian.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1. Set to 1 for no lowpass."
+        )
         self.cutoff_gaussian_input = QLineEdit()
-        self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
+        self.cutoff_gaussian_input.setText(default_values["GS-cutoff"])
         self.cutoff_gaussian_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
         self.gaussian_group.setLayout(form_layout)
@@ -1226,66 +1402,78 @@ class FilterSettingDialog(QDialog):
         layout.addWidget(buttons)
 
         self.setLayout(layout)
-    
+
     def handle_ok(self):
         # Validate all inputs before accepting
         inputs_to_validate = [
-            (self.delta_wf_input, 'WF Delta', '1-99'),
-            (self.order_wf_input, 'WF Bw-order', '1-12'),
-            (self.cutoff_wf_input, 'WF Bw-cutoff', '0.0-1.0'),
-            (self.delta_absf_input, 'ABSF Delta', '1-99'),
-            (self.order_absf_input, 'ABSF Bw-order', '1-12'),
-            (self.cutoff_absf_input, 'ABSF Bw-cutoff', '0.0-1.0'),
-            (self.N_input, 'NL Cycles', '1-100'),
-            (self.delta_nl_input, 'NL Delta', '1-99'),
-            (self.order_nl_input, 'NL Bw-order', '1-12'),
-            (self.cutoff_nl_input, 'NL Bw-cutoff', '0.0-1.0'),
-            (self.order_bw_input, 'Bw-order', '1-12'),
-            (self.cutoff_bw_input, 'Bw-cutoff', '0.0-1.0'),
-            (self.hp_cutoff_gaussian_input, 'GS-hp-cutoff', '0.0-1.0'),
-            (self.cutoff_gaussian_input, 'GS-cutoff', '0.0-1.0')
+            (self.delta_wf_input, "WF Delta", "1-99"),
+            (self.order_wf_input, "WF Bw-order", "1-12"),
+            (self.cutoff_wf_input, "WF Bw-cutoff", "0.0-1.0"),
+            (self.delta_absf_input, "ABSF Delta", "1-99"),
+            (self.order_absf_input, "ABSF Bw-order", "1-12"),
+            (self.cutoff_absf_input, "ABSF Bw-cutoff", "0.0-1.0"),
+            (self.N_input, "NL Cycles", "1-100"),
+            (self.delta_nl_input, "NL Delta", "1-99"),
+            (self.order_nl_input, "NL Bw-order", "1-12"),
+            (self.cutoff_nl_input, "NL Bw-cutoff", "0.0-1.0"),
+            (self.order_bw_input, "Bw-order", "1-12"),
+            (self.cutoff_bw_input, "Bw-cutoff", "0.0-1.0"),
+            (self.hp_cutoff_gaussian_input, "GS-hp-cutoff", "0.0-1.0"),
+            (self.cutoff_gaussian_input, "GS-cutoff", "0.0-1.0"),
         ]
-        
+
         for input_field, field_name, valid_range in inputs_to_validate:
             if input_field.validator():
                 state = input_field.validator().validate(input_field.text(), 0)[0]
                 if state != QValidator.Acceptable:
-                    QMessageBox.warning(self, "Invalid Input", 
-                                      f"Please enter a valid value for {field_name}.\n"
-                                      f"Current value: '{input_field.text()}'\n"
-                                      f"Valid range: {valid_range}")
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Input",
+                        f"Please enter a valid value for {field_name}.\n"
+                        f"Current value: '{input_field.text()}'\n"
+                        f"Valid range: {valid_range}",
+                    )
                     input_field.setFocus()
                     return
-        
-        parameters = {'WF Delta': self.delta_wf_input.text(),
-                      'WF Bw-order': self.order_wf_input.text(),
-                      'WF Bw-cutoff': self.cutoff_wf_input.text(),
-                      'ABSF Delta': self.delta_absf_input.text(),
-                      'ABSF Bw-order': self.order_absf_input.text(),
-                      'ABSF Bw-cutoff': self.cutoff_absf_input.text(),
-                      'NL Cycles': self.N_input.text(),
-                      'NL Delta': self.delta_nl_input.text(),
-                      'NL Bw-order': self.order_nl_input.text(),
-                      'NL Bw-cutoff': self.cutoff_nl_input.text(),
-                      'Bw-order': self.order_bw_input.text(),
-                      'Bw-cutoff': self.cutoff_bw_input.text(),
-                      'GS-hp-cutoff': self.hp_cutoff_gaussian_input.text(),
-                      'GS-cutoff': self.cutoff_gaussian_input.text()
-                        }
-        
-        self.parameters = parameters        
-        
+
+        parameters = {
+            "WF Delta": self.delta_wf_input.text(),
+            "WF Bw-order": self.order_wf_input.text(),
+            "WF Bw-cutoff": self.cutoff_wf_input.text(),
+            "ABSF Delta": self.delta_absf_input.text(),
+            "ABSF Bw-order": self.order_absf_input.text(),
+            "ABSF Bw-cutoff": self.cutoff_absf_input.text(),
+            "NL Cycles": self.N_input.text(),
+            "NL Delta": self.delta_nl_input.text(),
+            "NL Bw-order": self.order_nl_input.text(),
+            "NL Bw-cutoff": self.cutoff_nl_input.text(),
+            "Bw-order": self.order_bw_input.text(),
+            "Bw-cutoff": self.cutoff_bw_input.text(),
+            "GS-hp-cutoff": self.hp_cutoff_gaussian_input.text(),
+            "GS-cutoff": self.cutoff_gaussian_input.text(),
+        }
+
+        self.parameters = parameters
+
         self.accept()
 
-    
 
-#============ Define a dialogue for filter settings for batch convert ===========================
+# ============ Define a dialogue for filter settings for batch convert ===========================
 class FilterSettingBatchConvert(QDialog):
-    def __init__(self, apply_wf, apply_absf, apply_nl, apply_bw, apply_gaussian, parameters, parent=None):
+    def __init__(
+        self,
+        apply_wf,
+        apply_absf,
+        apply_nl,
+        apply_bw,
+        apply_gaussian,
+        parameters,
+        parent=None,
+    ):
         super().__init__(parent)
-        self.setWindowTitle("Filter Settings")        
+        self.setWindowTitle("Filter Settings")
         layout = QVBoxLayout()
-        
+
         default_values = parameters
         self.parameters = {}
 
@@ -1299,139 +1487,177 @@ class FilterSettingBatchConvert(QDialog):
         self.wiener_check = QCheckBox("Apply Wiener Filter")
         self.wiener_check.setChecked(apply_wf)
 
-        self.wiener_group = QGroupBox('Wiener Filter Settings', self)
+        self.wiener_group = QGroupBox("Wiener Filter Settings", self)
         form_layout = QFormLayout()
-        self.delta_wf = QLabel('WF Delta')
-        self.delta_wf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        self.delta_wf = QLabel("WF Delta")
+        self.delta_wf.setToolTip(
+            "Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time."
+        )
         self.delta_wf_input = QLineEdit()
-        self.delta_wf_input.setText(default_values['WF Delta'])
+        self.delta_wf_input.setText(default_values["WF Delta"])
         self.delta_wf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_wf, self.delta_wf_input)
-        self.order_wf = QLabel('WF Bw-order')
-        self.order_wf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_wf = QLabel("WF Bw-order")
+        self.order_wf.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_wf_input = QLineEdit()
-        self.order_wf_input.setText(default_values['WF Bw-order'])
+        self.order_wf_input.setText(default_values["WF Bw-order"])
         self.order_wf_input.setValidator(order_validator)
         form_layout.addRow(self.order_wf, self.order_wf_input)
-        self.cutoff_wf = QLabel('WF Bw-cutoff')
-        self.cutoff_wf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_wf = QLabel("WF Bw-cutoff")
+        self.cutoff_wf.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_wf_input = QLineEdit()
-        self.cutoff_wf_input.setText(default_values['WF Bw-cutoff'])
+        self.cutoff_wf_input.setText(default_values["WF Bw-cutoff"])
         self.cutoff_wf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_wf, self.cutoff_wf_input)
         self.wiener_group.setLayout(form_layout)
         self.wiener_group.setEnabled(apply_wf)
-        self.wiener_check.stateChanged.connect(lambda: self.wiener_group.setEnabled(self.wiener_check.isChecked()))
+        self.wiener_check.stateChanged.connect(
+            lambda: self.wiener_group.setEnabled(self.wiener_check.isChecked())
+        )
         layout.addWidget(self.wiener_check)
         layout.addWidget(self.wiener_group)
 
         # ABS Filter Section
         self.absf_check = QCheckBox("Apply ABS Filter")
         self.absf_check.setChecked(apply_absf)
-        self.absf_group = QGroupBox('ABS Filter Settings', self)
+        self.absf_group = QGroupBox("ABS Filter Settings", self)
         form_layout = QFormLayout()
-        self.delta_absf = QLabel('ABSF Delta')
-        self.delta_absf.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time.') 
+        self.delta_absf = QLabel("ABSF Delta")
+        self.delta_absf.setToolTip(
+            "Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but takes more time."
+        )
         self.delta_absf_input = QLineEdit()
-        self.delta_absf_input.setText(default_values['ABSF Delta'])
+        self.delta_absf_input.setText(default_values["ABSF Delta"])
         self.delta_absf_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_absf, self.delta_absf_input)
-        self.order_absf = QLabel('ABSF Bw-order')
-        self.order_absf.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_absf = QLabel("ABSF Bw-order")
+        self.order_absf.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_absf_input = QLineEdit()
-        self.order_absf_input.setText(default_values['ABSF Bw-order'])
+        self.order_absf_input.setText(default_values["ABSF Bw-order"])
         self.order_absf_input.setValidator(order_validator)
         form_layout.addRow(self.order_absf, self.order_absf_input)
-        self.cutoff_absf = QLabel('ABSF Bw-cutoff')
-        self.cutoff_absf.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_absf = QLabel("ABSF Bw-cutoff")
+        self.cutoff_absf.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_absf_input = QLineEdit()
-        self.cutoff_absf_input.setText(default_values['ABSF Bw-cutoff'])
+        self.cutoff_absf_input.setText(default_values["ABSF Bw-cutoff"])
         self.cutoff_absf_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_absf, self.cutoff_absf_input)
         self.absf_group.setLayout(form_layout)
         self.absf_group.setEnabled(apply_absf)
-        self.absf_check.stateChanged.connect(lambda: self.absf_group.setEnabled(self.absf_check.isChecked()))
+        self.absf_check.stateChanged.connect(
+            lambda: self.absf_group.setEnabled(self.absf_check.isChecked())
+        )
         layout.addWidget(self.absf_check)
         layout.addWidget(self.absf_group)
 
         # Non-Linear Filter Section
         self.nl_check = QCheckBox("Apply Non-Linear Filter")
         self.nl_check.setChecked(apply_nl)
-        self.nl_group = QGroupBox('Non-Linear Filter Settings', self)
+        self.nl_group = QGroupBox("Non-Linear Filter Settings", self)
         form_layout = QFormLayout()
-        self.N = QLabel('NL Cycles')
-        self.N.setToolTip('Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time.')
+        self.N = QLabel("NL Cycles")
+        self.N.setToolTip(
+            "Repetition of Wiener-Lowpass filter cycles. More repetition gives stronger filtering effect but takes more time."
+        )
         self.N_input = QLineEdit()
-        self.N_input.setText(default_values['NL Cycles'])
+        self.N_input.setText(default_values["NL Cycles"])
         self.N_input.setValidator(cycles_validator)
         form_layout.addRow(self.N, self.N_input)
-        self.delta_nl = QLabel('NL Delta')
-        self.delta_nl.setToolTip('Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time.') 
+        self.delta_nl = QLabel("NL Delta")
+        self.delta_nl.setToolTip(
+            "Threashold for diffraction spots removal. Smaller delta gives smoothier averaging background but taks more time."
+        )
         self.delta_nl_input = QLineEdit()
-        self.delta_nl_input.setText(default_values['NL Delta'])
+        self.delta_nl_input.setText(default_values["NL Delta"])
         self.delta_nl_input.setValidator(delta_validator)
         form_layout.addRow(self.delta_nl, self.delta_nl_input)
-        self.order_nl = QLabel('NL Bw-order')
-        self.order_nl.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_nl = QLabel("NL Bw-order")
+        self.order_nl.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_nl_input = QLineEdit()
-        self.order_nl_input.setText(default_values['NL Bw-order'])
+        self.order_nl_input.setText(default_values["NL Bw-order"])
         self.order_nl_input.setValidator(order_validator)
         form_layout.addRow(self.order_nl, self.order_nl_input)
-        self.cutoff_nl = QLabel('NL Lowpass-cutoff')
-        self.cutoff_nl.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_nl = QLabel("NL Lowpass-cutoff")
+        self.cutoff_nl.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_nl_input = QLineEdit()
-        self.cutoff_nl_input.setText(default_values['NL Bw-cutoff'])
+        self.cutoff_nl_input.setText(default_values["NL Bw-cutoff"])
         self.cutoff_nl_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_nl, self.cutoff_nl_input)
         self.nl_group.setLayout(form_layout)
         self.nl_group.setEnabled(apply_nl)
-        self.nl_check.stateChanged.connect(lambda: self.nl_group.setEnabled(self.nl_check.isChecked()))
+        self.nl_check.stateChanged.connect(
+            lambda: self.nl_group.setEnabled(self.nl_check.isChecked())
+        )
         layout.addWidget(self.nl_check)
         layout.addWidget(self.nl_group)
-        
-        # Butterworth filter 
+
+        # Butterworth filter
         self.bw_check = QCheckBox("Apply Butterworth Filter")
         self.bw_check.setChecked(apply_bw)
-        self.bw_group = QGroupBox('Butterworth Filter Settings', self)
+        self.bw_group = QGroupBox("Butterworth Filter Settings", self)
         form_layout = QFormLayout()
-        self.order_bw = QLabel('Bw-order')
-        self.order_bw.setToolTip('The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff.') 
+        self.order_bw = QLabel("Bw-order")
+        self.order_bw.setToolTip(
+            "The order of the lowpass Butterworth filter. Bigger number gives a steeper cutoff."
+        )
         self.order_bw_input = QLineEdit()
-        self.order_bw_input.setText(default_values['Bw-order'])
+        self.order_bw_input.setText(default_values["Bw-order"])
         self.order_bw_input.setValidator(order_validator)
         form_layout.addRow(self.order_bw, self.order_bw_input)
-        self.cutoff_bw = QLabel('Bw-cutoff')
-        self.cutoff_bw.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1.')
+        self.cutoff_bw = QLabel("Bw-cutoff")
+        self.cutoff_bw.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1."
+        )
         self.cutoff_bw_input = QLineEdit()
-        self.cutoff_bw_input.setText(default_values['Bw-cutoff'])
+        self.cutoff_bw_input.setText(default_values["Bw-cutoff"])
         self.cutoff_bw_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_bw, self.cutoff_bw_input)
         self.bw_group.setLayout(form_layout)
         self.bw_group.setEnabled(apply_bw)
-        self.bw_check.stateChanged.connect(lambda: self.bw_group.setEnabled(self.bw_check.isChecked()))
+        self.bw_check.stateChanged.connect(
+            lambda: self.bw_group.setEnabled(self.bw_check.isChecked())
+        )
         layout.addWidget(self.bw_check)
         layout.addWidget(self.bw_group)
-        
-        # Gaussian filter 
+
+        # Gaussian filter
         self.gaussian_check = QCheckBox("Apply Gaussian Filter")
         self.gaussian_check.setChecked(apply_gaussian)
-        self.gaussian_group = QGroupBox('Gaussian Filter Settings', self)
+        self.gaussian_group = QGroupBox("Gaussian Filter Settings", self)
         form_layout = QFormLayout()
-        self.hp_cutoff_gaussian = QLabel('High-pass Gaussian cutoff')
-        self.hp_cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the highpass starts. Must be between 0-1. Set to 0 for no highpass.')
+        self.hp_cutoff_gaussian = QLabel("High-pass Gaussian cutoff")
+        self.hp_cutoff_gaussian.setToolTip(
+            "Fraction of radius in reciprocal space from where the highpass starts. Must be between 0-1. Set to 0 for no highpass."
+        )
         self.hp_cutoff_gaussian_input = QLineEdit()
-        self.hp_cutoff_gaussian_input.setText(default_values['GS-hp-cutoff'])
+        self.hp_cutoff_gaussian_input.setText(default_values["GS-hp-cutoff"])
         self.hp_cutoff_gaussian_input.setValidator(cutoff_validator)
         form_layout.addRow(self.hp_cutoff_gaussian, self.hp_cutoff_gaussian_input)
-        self.cutoff_gaussian = QLabel('Low-pass Gaussian cutoff')
-        self.cutoff_gaussian.setToolTip('Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1. Set to 1 for no lowpass.')
+        self.cutoff_gaussian = QLabel("Low-pass Gaussian cutoff")
+        self.cutoff_gaussian.setToolTip(
+            "Fraction of radius in reciprocal space from where the taper of the lowpass starts. Must be between 0-1. Set to 1 for no lowpass."
+        )
         self.cutoff_gaussian_input = QLineEdit()
-        self.cutoff_gaussian_input.setText(default_values['GS-cutoff'])
+        self.cutoff_gaussian_input.setText(default_values["GS-cutoff"])
         self.cutoff_gaussian_input.setValidator(cutoff_validator)
         form_layout.addRow(self.cutoff_gaussian, self.cutoff_gaussian_input)
         self.gaussian_group.setLayout(form_layout)
         self.gaussian_group.setEnabled(apply_gaussian)
-        self.gaussian_check.stateChanged.connect(lambda: self.gaussian_group.setEnabled(self.gaussian_check.isChecked()))
+        self.gaussian_check.stateChanged.connect(
+            lambda: self.gaussian_group.setEnabled(self.gaussian_check.isChecked())
+        )
         layout.addWidget(self.gaussian_check)
         layout.addWidget(self.gaussian_group)
 
@@ -1442,37 +1668,40 @@ class FilterSettingBatchConvert(QDialog):
         layout.addWidget(buttons)
 
         self.setLayout(layout)
-    
+
     def handle_ok(self):
         # Validate all inputs before accepting
         inputs_to_validate = [
-            (self.delta_wf_input, 'WF Delta', '1-99'),
-            (self.order_wf_input, 'WF Bw-order', '1-12'),
-            (self.cutoff_wf_input, 'WF Bw-cutoff', '0.0-1.0'),
-            (self.delta_absf_input, 'ABSF Delta', '1-99'),
-            (self.order_absf_input, 'ABSF Bw-order', '1-12'),
-            (self.cutoff_absf_input, 'ABSF Bw-cutoff', '0.0-1.0'),
-            (self.N_input, 'NL Cycles', '1-100'),
-            (self.delta_nl_input, 'NL Delta', '1-99'),
-            (self.order_nl_input, 'NL Bw-order', '1-12'),
-            (self.cutoff_nl_input, 'NL Bw-cutoff', '0.0-1.0'),
-            (self.order_bw_input, 'Bw-order', '1-12'),
-            (self.cutoff_bw_input, 'Bw-cutoff', '0.0-1.0'),
-            (self.hp_cutoff_gaussian_input, 'GS-hp-cutoff', '0.0-1.0'),
-            (self.cutoff_gaussian_input, 'GS-cutoff', '0.0-1.0')
+            (self.delta_wf_input, "WF Delta", "1-99"),
+            (self.order_wf_input, "WF Bw-order", "1-12"),
+            (self.cutoff_wf_input, "WF Bw-cutoff", "0.0-1.0"),
+            (self.delta_absf_input, "ABSF Delta", "1-99"),
+            (self.order_absf_input, "ABSF Bw-order", "1-12"),
+            (self.cutoff_absf_input, "ABSF Bw-cutoff", "0.0-1.0"),
+            (self.N_input, "NL Cycles", "1-100"),
+            (self.delta_nl_input, "NL Delta", "1-99"),
+            (self.order_nl_input, "NL Bw-order", "1-12"),
+            (self.cutoff_nl_input, "NL Bw-cutoff", "0.0-1.0"),
+            (self.order_bw_input, "Bw-order", "1-12"),
+            (self.cutoff_bw_input, "Bw-cutoff", "0.0-1.0"),
+            (self.hp_cutoff_gaussian_input, "GS-hp-cutoff", "0.0-1.0"),
+            (self.cutoff_gaussian_input, "GS-cutoff", "0.0-1.0"),
         ]
-        
+
         for input_field, field_name, valid_range in inputs_to_validate:
             if input_field.validator():
                 state = input_field.validator().validate(input_field.text(), 0)[0]
                 if state != QValidator.Acceptable:
-                    QMessageBox.warning(self, "Invalid Input", 
-                                      f"Please enter a valid value for {field_name}.\n"
-                                      f"Current value: '{input_field.text()}'\n"
-                                      f"Valid range: {valid_range}")
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Input",
+                        f"Please enter a valid value for {field_name}.\n"
+                        f"Current value: '{input_field.text()}'\n"
+                        f"Valid range: {valid_range}",
+                    )
                     input_field.setFocus()
                     return
-        
+
         parameters = {}
 
         self.apply_wf = self.wiener_check.isChecked()
@@ -1480,27 +1709,29 @@ class FilterSettingBatchConvert(QDialog):
         self.apply_nl = self.nl_check.isChecked()
         self.apply_bw = self.bw_check.isChecked()
         self.apply_gaussian = self.gaussian_check.isChecked()
-        parameters = {'WF Delta': self.delta_wf_input.text(),
-                      'WF Bw-order': self.order_wf_input.text(),
-                      'WF Bw-cutoff': self.cutoff_wf_input.text(),
-                      'ABSF Delta': self.delta_absf_input.text(),
-                      'ABSF Bw-order': self.order_absf_input.text(),
-                      'ABSF Bw-cutoff': self.cutoff_absf_input.text(),
-                      'NL Cycles': self.N_input.text(),
-                      'NL Delta': self.delta_nl_input.text(),
-                      'NL Bw-order': self.order_nl_input.text(),
-                      'NL Bw-cutoff': self.cutoff_nl_input.text(),
-                      'Bw-order': self.order_bw_input.text(),
-                      'Bw-cutoff': self.cutoff_bw_input.text(),
-                      'GS-cutoff': self.cutoff_gaussian_input.text(),
-                      'GS-hp-cutoff': self.hp_cutoff_gaussian_input.text()
-            }
-        
-        self.parameters = parameters        
-        
+        parameters = {
+            "WF Delta": self.delta_wf_input.text(),
+            "WF Bw-order": self.order_wf_input.text(),
+            "WF Bw-cutoff": self.cutoff_wf_input.text(),
+            "ABSF Delta": self.delta_absf_input.text(),
+            "ABSF Bw-order": self.order_absf_input.text(),
+            "ABSF Bw-cutoff": self.cutoff_absf_input.text(),
+            "NL Cycles": self.N_input.text(),
+            "NL Delta": self.delta_nl_input.text(),
+            "NL Bw-order": self.order_nl_input.text(),
+            "NL Bw-cutoff": self.cutoff_nl_input.text(),
+            "Bw-order": self.order_bw_input.text(),
+            "Bw-cutoff": self.cutoff_bw_input.text(),
+            "GS-cutoff": self.cutoff_gaussian_input.text(),
+            "GS-hp-cutoff": self.hp_cutoff_gaussian_input.text(),
+        }
+
+        self.parameters = parameters
+
         self.accept()
 
-#=========== Apply filter dialogue ==================================
+
+# =========== Apply filter dialogue ==================================
 class ApplyFilterDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1519,56 +1750,59 @@ class ApplyFilterDialog(QDialog):
         self.setLayout(layout)
 
     def apply_current_clicked(self):
-            self.apply_to = 'current'
-            self.accept()
+        self.apply_to = "current"
+        self.accept()
 
     def apply_stack_clicked(self):
-            self.apply_to = 'stack'
-            self.accept()
+        self.apply_to = "stack"
+        self.accept()
 
-        
 
-#=========== Rotate image dialogue ==================================
+# =========== Rotate image dialogue ==================================
 class RotateImageDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Rotate image")        
+        self.setWindowTitle("Rotate image")
         layout = QVBoxLayout()
         self.rotate_ang = None
-        
+
         # Create validator for angle (0-360 degrees)
         angle_validator = QDoubleValidator(0.0, 360.0, 2, self)
         angle_validator.setNotation(QDoubleValidator.StandardNotation)
-        
+
         self.angle_input = QLineEdit(self)
-        self.angle_input.setPlaceholderText('Enter angle in degrees')
+        self.angle_input.setPlaceholderText("Enter angle in degrees")
         self.angle_input.setValidator(angle_validator)
         layout.addWidget(self.angle_input)
-        
+
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-        
+
     def handle_ok(self):
         # Validate angle input
         if self.angle_input.validator():
             state = self.angle_input.validator().validate(self.angle_input.text(), 0)[0]
             if state != QValidator.Acceptable:
-                QMessageBox.warning(self, "Invalid Input", 
-                                  f"Please enter a valid rotation angle.\n"
-                                  f"Current value: '{self.angle_input.text()}'\n"
-                                  f"Valid range: 0.0-360.0 degrees")
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    f"Please enter a valid rotation angle.\n"
+                    f"Current value: '{self.angle_input.text()}'\n"
+                    f"Valid range: 0.0-360.0 degrees",
+                )
                 self.angle_input.setFocus()
                 return
-        
+
         self.rotate_ang = self.angle_input.text()
         self.accept()
-        
-#============== Manual crop dialog ================================
+
+
+# ============== Manual crop dialog ================================
 class ManualCropDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1577,39 +1811,39 @@ class ManualCropDialog(QDialog):
         self.y_range = None
         layout = QVBoxLayout()
         x_layout = QHBoxLayout()
-        x_label = QLabel('x range')
+        x_label = QLabel("x range")
         self.x_min = QLineEdit()
-        self.x_min.setPlaceholderText('xmin')
-        x_label2 = QLabel(':')
+        self.x_min.setPlaceholderText("xmin")
+        x_label2 = QLabel(":")
         self.x_max = QLineEdit()
-        self.x_max.setPlaceholderText('xmax')
+        self.x_max.setPlaceholderText("xmax")
         x_layout.addWidget(x_label)
         x_layout.addWidget(self.x_min)
         x_layout.addWidget(x_label2)
         x_layout.addWidget(self.x_max)
         y_layout = QHBoxLayout()
-        y_label = QLabel('y range')
+        y_label = QLabel("y range")
         self.y_min = QLineEdit()
-        self.y_min.setPlaceholderText('ymin')
-        y_label2 = QLabel(':')
+        self.y_min.setPlaceholderText("ymin")
+        y_label2 = QLabel(":")
         self.y_max = QLineEdit()
-        self.y_max.setPlaceholderText('ymax')
+        self.y_max.setPlaceholderText("ymax")
         y_layout.addWidget(y_label)
         y_layout.addWidget(self.y_min)
         y_layout.addWidget(y_label2)
         y_layout.addWidget(self.y_max)
-        
+
         layout.addLayout(x_layout)
         layout.addLayout(y_layout)
-        
+
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-        
+
     def handle_ok(self):
         # Validate the inputs
         try:
@@ -1617,92 +1851,109 @@ class ManualCropDialog(QDialog):
             xmax = int(self.x_max.text())
             ymin = int(self.y_min.text())
             ymax = int(self.y_max.text())
-        except:
-            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be integers!')
+        except Exception:
+            QMessageBox.warning(
+                self, "Manual Input", "Invalid crop range. Index must be integers!"
+            )
             return
-            
+
         img_size = self.parent().img_size
         if xmin < 0 or xmax < 0 or ymin < 0 or ymax < 0:
-            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be positive!')
+            QMessageBox.warning(
+                self, "Manual Input", "Invalid crop range. Index must be positive!"
+            )
             return
-        
+
         elif xmax > img_size[-1] or ymax > img_size[-2]:
-            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Index must be smaller than the image size!')
+            QMessageBox.warning(
+                self,
+                "Manual Input",
+                "Invalid crop range. Index must be smaller than the image size!",
+            )
             return
-        
+
         elif xmin > xmax or ymin > ymax:
-            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Min must be greater than max!')
+            QMessageBox.warning(
+                self,
+                "Manual Input",
+                "Invalid crop range. Min must be greater than max!",
+            )
             return
-        
+
         elif xmax - xmin < 5 or ymax - ymin < 5:
-            QMessageBox.warning(self, 'Manual Input', 'Invalid crop range. Crop range must be at least 5 pixels!')
+            QMessageBox.warning(
+                self,
+                "Manual Input",
+                "Invalid crop range. Crop range must be at least 5 pixels!",
+            )
             return
-        
+
         else:
             self.x_range = xmin, xmax
             self.y_range = ymin, ymax
         self.accept()
-        
-        
 
-#============ Set scale dialogue ==================================
+
+# ============ Set scale dialogue ==================================
 class SetScaleDialog(QDialog):
     def __init__(self, scale, units, parent=None):
         super().__init__(parent)
-        
-        self.setWindowTitle("Set pixel scale")        
+
+        self.setWindowTitle("Set pixel scale")
         layout = QVBoxLayout()
         scale_layout = QHBoxLayout()
-        scale_label = QLabel('Pixel size:')
+        scale_label = QLabel("Pixel size:")
         self.scale_input = QLineEdit(self)
-        self.scale_input.setText(f'{scale:.4g}')
+        self.scale_input.setText(f"{scale:.4g}")
         self.scale_input.setValidator(QDoubleValidator(0.000001, 1e9, 9, self))
         scale_layout.addWidget(scale_label)
         scale_layout.addWidget(self.scale_input)
         layout.addLayout(scale_layout)
         unit_layout = QHBoxLayout()
-        unit_label = QLabel('Unit:')
+        unit_label = QLabel("Unit:")
         self.unit_input = QComboBox(self)
-        self.unit_input.addItems(['pm', 'nm', 'um', 'mm', 'm', '1/pm', '1/nm', '1/um', '1/mm', '1/m'])
+        self.unit_input.addItems(
+            ["pm", "nm", "um", "mm", "m", "1/pm", "1/nm", "1/um", "1/mm", "1/m"]
+        )
         self.unit_input.insertSeparator(5)
         self.unit_input.setCurrentText(str(units))
         unit_layout.addWidget(unit_label)
         unit_layout.addWidget(self.unit_input)
         layout.addLayout(unit_layout)
-        
+
         # Dialog Buttons (OK and Cancel)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-        
+
     def handle_ok(self):
         self.scale = self.scale_input.text()
         self.units = self.unit_input.currentText()
         self.accept()
-        
 
-#================= Align Stack dialogue =====================================
+
+# ================= Align Stack dialogue =====================================
 class AlignStackDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        self.setWindowTitle('Align stack parameters')
+
+        self.setWindowTitle("Align stack parameters")
         layout = QVBoxLayout()
-  
-        self.apply_window_check = QCheckBox('Apply a Hann window filter')
+
+        self.apply_window_check = QCheckBox("Apply a Hann window filter")
         self.apply_window_check.setChecked(True)
-        self.crop_img_check = QCheckBox('Crop to common area')
+        self.crop_img_check = QCheckBox("Crop to common area")
         self.crop_img_check.setChecked(True)
-        self.crop_to_square_check = QCheckBox('Crop to the biggest square')
+        self.crop_to_square_check = QCheckBox("Crop to the biggest square")
         self.crop_to_square_check.setEnabled(True)
         self.crop_img_check.stateChanged.connect(self.crop_to_square_change)
         self.crop_to_square_check.setChecked(False)
-        self.normalization_check = QCheckBox('Normalize intensities before alignment')
+        self.normalization_check = QCheckBox("Normalize intensities before alignment")
         self.normalization_check.setChecked(False)
-        self.phase_correlation_check = QCheckBox('Use phase correlation')
+        self.phase_correlation_check = QCheckBox("Use phase correlation")
         self.phase_correlation_check.setChecked(False)
         layout.addWidget(self.apply_window_check)
         layout.addWidget(self.crop_img_check)
@@ -1715,19 +1966,17 @@ class AlignStackDialog(QDialog):
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-        
+
     def crop_to_square_change(self):
         enable = not self.crop_to_square_check.isEnabled()
         self.crop_to_square_check.setEnabled(enable)
         if not enable:
             self.crop_to_square_check.setChecked(False)
-            
- 
-        
+
     def handle_ok(self):
-        #self.get_algorithm()
+        # self.get_algorithm()
         self.crop_to_square = False
         self.apply_window = self.apply_window_check.isChecked()
         self.crop_img = self.crop_img_check.isChecked()
@@ -1735,19 +1984,19 @@ class AlignStackDialog(QDialog):
         self.phase_correlation = self.phase_correlation_check.isChecked()
         if self.crop_img:
             self.crop_to_square = self.crop_to_square_check.isChecked()
-            
-        self.accept()
-        
 
-#==============Alignment with optical flow dialog==================
+        self.accept()
+
+
+# ==============Alignment with optical flow dialog==================
 class AlignStackOFDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        self.setWindowTitle('Optical flow parameters')
+
+        self.setWindowTitle("Optical flow parameters")
         layout = QVBoxLayout()
 
-        self.window_size_label = QLabel('Window size: 15')
+        self.window_size_label = QLabel("Window size: 15")
         layout.addWidget(self.window_size_label)
 
         self.window_size = QSlider(self)
@@ -1755,16 +2004,22 @@ class AlignStackOFDialog(QDialog):
         self.window_size.setMinimum(3)
         self.window_size.setMaximum(100)
         self.window_size.setValue(15)
-        self.window_size.setToolTip('Radius of the window considered around each pixel.')
+        self.window_size.setToolTip(
+            "Radius of the window considered around each pixel."
+        )
         self.window_size.valueChanged.connect(self.update_window_size_label)
 
-        self.prefilter_check = QCheckBox('Prefilter before alignment')
-        self.prefilter_check.setToolTip('Apply a median filter with window size 3. This helps to remove potential outliers.')
+        self.prefilter_check = QCheckBox("Prefilter before alignment")
+        self.prefilter_check.setToolTip(
+            "Apply a median filter with window size 3. This helps to remove potential outliers."
+        )
         self.prefilter_check.setChecked(False)
 
-        self.gaussian_check = QCheckBox('Integrate with Gaussian kernel')
+        self.gaussian_check = QCheckBox("Integrate with Gaussian kernel")
         self.gaussian_check.setChecked(False)
-        self.gaussian_check.setToolTip('Use Gaussian kernel to integrate the optical flow field. This helps to smooth the displacement field.')
+        self.gaussian_check.setToolTip(
+            "Use Gaussian kernel to integrate the optical flow field. This helps to smooth the displacement field."
+        )
 
         layout.addWidget(self.window_size_label)
         layout.addWidget(self.window_size)
@@ -1776,22 +2031,20 @@ class AlignStackOFDialog(QDialog):
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-            
+
     def update_window_size_label(self):
-        self.window_size_label.setText(f'Window size: {self.window_size.value()}')
- 
-        
+        self.window_size_label.setText(f"Window size: {self.window_size.value()}")
+
     def handle_ok(self):
         self.window_size_value = self.window_size.value()
         self.prefilter = self.prefilter_check.isChecked()
         self.gaussian = self.gaussian_check.isChecked()
         self.accept()
-                    
 
 
-#=============== Export GIF dialogue ===========================
+# =============== Export GIF dialogue ===========================
 class ExportGIFDialog(QDialog):
     def __init__(self, parent):
         # Must pass the plotcanvas as parent
@@ -1802,7 +2055,7 @@ class ExportGIFDialog(QDialog):
         delay_layout = QHBoxLayout()
         delay_label = QLabel("Frame time (ms):")
         self.delay_input = QLineEdit(self)
-        self.delay_input.setText('200')
+        self.delay_input.setText("200")
         self.delay_input.setValidator(QIntValidator(1, 10000, self))
         delay_layout.addWidget(delay_label)
         delay_layout.addWidget(self.delay_input)
@@ -1811,16 +2064,20 @@ class ExportGIFDialog(QDialog):
         label = QLabel("Custom label:")
         self.label_input = QLineEdit(self)
         self.label_input.setPlaceholderText("e.g., Frame {fn}")
-        self.label_input.setToolTip("Optional custom label for each frame. Use '{fn}' as a placeholder for the frame number. Leave blank for no labels.")
+        self.label_input.setToolTip(
+            "Optional custom label for each frame. Use '{fn}' as a placeholder for the frame number. Leave blank for no labels."
+        )
         label_layout.addWidget(label)
         label_layout.addWidget(self.label_input)
 
         path_layout = QHBoxLayout()
         path_label = QLabel("Save path:")
         self.path_input = QLineEdit(self)
-        file_path = os.path.splitext(self.parent().process['File Name'])[0] + '.gif'
+        file_path = os.path.splitext(self.parent().process["File Name"])[0] + ".gif"
         self.path_input.setText(file_path)
-        self.path_input.setToolTip("Path to save the exported GIF. Click the '...' button to browse and select a location.")
+        self.path_input.setToolTip(
+            "Path to save the exported GIF. Click the '...' button to browse and select a location."
+        )
         self.browse_button = QPushButton("...")
         self.browse_button.clicked.connect(self.browse_file)
         path_layout.addWidget(path_label)
@@ -1836,30 +2093,39 @@ class ExportGIFDialog(QDialog):
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
 
     def browse_file(self):
         options = QFileDialog.Options()
         # options |= QFileDialog.DontConfirmOverwrite
         # options |= QFileDialog.DontUseNativeDialog
-        file_path, _ = QFileDialog.getSaveFileName(self, "Select Save Location", self.path_input.text(), "GIF Files (*.gif)", options=options)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Select Save Location",
+            self.path_input.text(),
+            "GIF Files (*.gif)",
+            options=options,
+        )
         if file_path:
-            if not file_path.lower().endswith('.gif'):
-                file_path += '.gif'
+            if not file_path.lower().endswith(".gif"):
+                file_path += ".gif"
             self.path_input.setText(file_path)
-        
+
     def handle_ok(self):
         if self.delay_input.validator():
             state = self.delay_input.validator().validate(self.delay_input.text(), 0)[0]
             if state != QValidator.Acceptable:
-                QMessageBox.warning(self, "Invalid Input", 
-                                  f"Please enter a valid frame time.\n"
-                                  f"Current value: '{self.delay_input.text()}'\n"
-                                  f"Valid range: 1-10000 ms")
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    f"Please enter a valid frame time.\n"
+                    f"Current value: '{self.delay_input.text()}'\n"
+                    f"Valid range: 1-10000 ms",
+                )
                 self.delay_input.setFocus()
                 return
-        
+
         self.delay_time = int(self.delay_input.text())
         if self.label_input.text():
             self.custom_label = self.label_input.text()
@@ -1872,20 +2138,18 @@ class ExportGIFDialog(QDialog):
         #         return
         self.accept()
 
-                
 
-
-#=============== Display metadata window ===========================
+# =============== Display metadata window ===========================
 class MetadataViewer(QMainWindow):
     def __init__(self, metadata, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Metadata Viewer')
+        self.setWindowTitle("Metadata Viewer")
         self.setGeometry(100, 100, 800, 600)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
-        
+
         self.metadata = metadata
         self.create_menubar()
 
@@ -1894,38 +2158,40 @@ class MetadataViewer(QMainWindow):
         self.data_tree_widget.setData(metadata)
         self.data_tree_widget.setColumnHidden(1, True)  # Hide the 'Type' column
         layout.addWidget(self.data_tree_widget)
-        
-    def create_menubar(self):        
+
+    def create_menubar(self):
         menubar = self.menuBar()  # Create a menu bar
 
         # File menu and actions
-        file_menu = menubar.addMenu('File')
-        save_action = QAction('Export', self)
+        file_menu = menubar.addMenu("File")
+        save_action = QAction("Export", self)
         save_action.triggered.connect(self.export)
         file_menu.addAction(save_action)
-        close_action = QAction('Close', self)
+        close_action = QAction("Close", self)
         close_action.triggered.connect(self.close)
         file_menu.addAction(close_action)
 
-            
     def export(self):
         options = QFileDialog.Options()
-        self.file_path, self.selected_type = QFileDialog.getSaveFileName(self.parent(), 
-                                                   "Export Metadata", 
-                                                   "", 
-                                                   "JSON Files (*.json);;Pickle Dictionary Files (*.pkl)", 
-                                                   options=options)
+        self.file_path, self.selected_type = QFileDialog.getSaveFileName(
+            self.parent(),
+            "Export Metadata",
+            "",
+            "JSON Files (*.json);;Pickle Dictionary Files (*.pkl)",
+            options=options,
+        )
         if self.file_path:
             # Implement custom save logic here
-            if self.selected_type == 'JSON Files (*.json)':
-                with open(self.file_path,'w') as f:
+            if self.selected_type == "JSON Files (*.json)":
+                with open(self.file_path, "w") as f:
                     json.dump(self.metadata, f, indent=4)
-                    
-            if self.selected_type == 'Pickle Dictionary Files (*.pkl)':
-                with open(self.file_path, 'wb') as f:
+
+            if self.selected_type == "Pickle Dictionary Files (*.pkl)":
+                with open(self.file_path, "wb") as f:
                     pickle.dump(self.metadata, f)
 
-            print(f'Exported metadata to {self.file_path} as {self.selected_type}.')
+            print(f"Exported metadata to {self.file_path} as {self.selected_type}.")
+
 
 # ================= Spectrum plot settings dialog ===================
 class PlotSettingDialog(QDialog):
@@ -1956,7 +2222,7 @@ class PlotSettingDialog(QDialog):
         layout.addLayout(h_layout_xlabel)
 
         # Set current x label
-        current_xlabel = self.parent().plot.getPlotItem().getAxis('bottom').labelText
+        current_xlabel = self.parent().plot.getPlotItem().getAxis("bottom").labelText
         self.xlabel_input.setText(current_xlabel)
 
         # X axis range inputs
@@ -1983,11 +2249,11 @@ class PlotSettingDialog(QDialog):
         layout.addLayout(h_layout_ylabel)
 
         # Set current y label
-        current_ylabel = self.parent().plot.getPlotItem().getAxis('left').labelText
+        current_ylabel = self.parent().plot.getPlotItem().getAxis("left").labelText
         self.ylabel_input.setText(current_ylabel)
 
         # Y axis range inputs
-        
+
         h_layout_ymin = QHBoxLayout()
         ymin_label = QLabel("Ymin:")
         self.ymin_input = QLineEdit()
@@ -2001,19 +2267,16 @@ class PlotSettingDialog(QDialog):
         h_layout_ymax.addWidget(ymax_label)
         h_layout_ymax.addWidget(self.ymax_input)
         layout.addLayout(h_layout_ymax)
-        
-        
 
         # Set current range
         viewbox = self.parent().plot.getViewBox()
         view_range = viewbox.viewRange()
         xmin, xmax = view_range[0]
         ymin, ymax = view_range[1]
-        self.xmin_input.setText(f'{xmin:.2f}')
-        self.xmax_input.setText(f'{xmax:.2f}')
-        self.ymin_input.setText(f'{ymin:.2f}')
-        self.ymax_input.setText(f'{ymax:.2f}')
-        
+        self.xmin_input.setText(f"{xmin:.2f}")
+        self.xmax_input.setText(f"{xmax:.2f}")
+        self.ymin_input.setText(f"{ymin:.2f}")
+        self.ymax_input.setText(f"{ymax:.2f}")
 
         # Line color dropdown
         h_layout_color = QHBoxLayout()
@@ -2027,7 +2290,7 @@ class PlotSettingDialog(QDialog):
 
         # Set current color
         line = self.parent().plot_data_item
-        line_color = line.opts['pen'].color()
+        line_color = line.opts["pen"].color()
         self.color_combobox.setColor(line_color)
 
         # Line width input
@@ -2039,7 +2302,7 @@ class PlotSettingDialog(QDialog):
         layout.addLayout(h_layout_linewidth)
 
         # Set current line width
-        line_width = line.opts['pen'].width()
+        line_width = line.opts["pen"].width()
         self.linewidth_input.setText(str(line_width))
 
         # Background color dropdown
@@ -2054,7 +2317,6 @@ class PlotSettingDialog(QDialog):
         bg_color = self.parent().plot._background
         self.bgcolor_combobox.setColor(pg.mkColor(bg_color))
 
-
         # Axis color dropdown
         h_layout_axcolor = QHBoxLayout()
         axcolor_label = QLabel("Axis Color:")
@@ -2064,17 +2326,14 @@ class PlotSettingDialog(QDialog):
         layout.addLayout(h_layout_axcolor)
 
         # Set current axis color
-        ax_color = self.parent().plot.getPlotItem().getAxis('bottom').pen().color()
+        ax_color = self.parent().plot.getPlotItem().getAxis("bottom").pen().color()
         self.axcolor_combobox.setColor(ax_color)
 
-
         # Turn on/off grid
-        self.grid_on = self.parent().plot.getPlotItem().getAxis('bottom').grid
+        self.grid_on = self.parent().plot.getPlotItem().getAxis("bottom").grid
         self.grid_check = QCheckBox("Show Grid")
         self.grid_check.setChecked(self.grid_on)
         layout.addWidget(self.grid_check)
-
-            
 
         # Apply button
         buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Ok)
@@ -2082,13 +2341,10 @@ class PlotSettingDialog(QDialog):
         self.apply_button.clicked.connect(self.apply_settings)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.ok_button.clicked.connect(self.handle_ok)
-        
+
         layout.addWidget(buttons)
-        
 
         self.setLayout(layout)
-
-
 
     def apply_settings(self):
         plot = self.parent().plot
@@ -2101,8 +2357,8 @@ class PlotSettingDialog(QDialog):
         # Apply axis labels
         xlabel = self.xlabel_input.text()
         ylabel = self.ylabel_input.text()
-        plot.setLabel('bottom', xlabel)
-        plot.setLabel('left', ylabel)
+        plot.setLabel("bottom", xlabel)
+        plot.setLabel("left", ylabel)
 
         # Apply axes ranges
         try:
@@ -2112,13 +2368,11 @@ class PlotSettingDialog(QDialog):
             ymax = float(self.ymax_input.text())
 
         except ValueError:
-            QMessageBox.warning(self, 'Plot settings', 'Invalid min or max values!')
+            QMessageBox.warning(self, "Plot settings", "Invalid min or max values!")
             return
-            
-       
+
         viewbox = self.parent().plot.getViewBox()
         viewbox.setRange(xRange=(xmin, xmax), yRange=(ymin, ymax), padding=0)
-            
 
         # Apply color and width
         line_color = self.color_combobox.color()
@@ -2132,8 +2386,8 @@ class PlotSettingDialog(QDialog):
 
         # Apply axis color
         ax_color = self.axcolor_combobox.color()
-        x_axis = plot.getPlotItem().getAxis('bottom')
-        y_axis = plot.getPlotItem().getAxis('left')
+        x_axis = plot.getPlotItem().getAxis("bottom")
+        y_axis = plot.getPlotItem().getAxis("left")
         x_axis.setPen(ax_color)
         y_axis.setPen(ax_color)
         x_axis.setTextPen(ax_color)
@@ -2142,12 +2396,12 @@ class PlotSettingDialog(QDialog):
         # Apply grid
         self.grid_on = self.grid_check.isChecked()
         plot.showGrid(x=self.grid_on, y=self.grid_on)
-    
+
     def handle_ok(self):
         self.apply_settings()
         self.accept()
 
-    def position_window(self, pos='center'):
+    def position_window(self, pos="center"):
         # Set the window pop up position
         # Possible positions are:
         # 'center': screen center
@@ -2155,7 +2409,7 @@ class PlotSettingDialog(QDialog):
         # 'center right': right side with the left edge on the screen
         # 'next to parent': the left edge next to its parent window
         # tuple (x, y): specific position of screen fraction (0-1)
-        
+
         # Get screen resolution
         screen_geometry = QApplication.primaryScreen().availableGeometry()
         width = screen_geometry.width()
@@ -2163,40 +2417,38 @@ class PlotSettingDialog(QDialog):
         screen_top = screen_geometry.top()
         screen_left = screen_geometry.left()
         frame_size = self.frameGeometry()
-        
-        if pos == 'center':
+
+        if pos == "center":
             x = screen_left + (width - frame_size.width()) // 2
             y = screen_top + (height - frame_size.height()) // 2
 
-        elif pos == 'center left':
+        elif pos == "center left":
             x = screen_left + (width // 2 - frame_size.width())
             y = screen_top + (height - frame_size.height()) // 2
 
-        elif pos == 'center right':
+        elif pos == "center right":
             x = screen_left + (width // 2)
             y = screen_top + (height - frame_size.height()) // 2
 
-        elif pos == 'next to parent':
+        elif pos == "next to parent":
             if self.parent() is not None:
                 parent = self.parent()
                 parent_geometry = parent.frameGeometry()
                 x = parent_geometry.x() + parent_geometry.width()
                 y = parent_geometry.y()
-        
+
         else:
             # Handle tuple case
             if isinstance(pos, tuple) and len(pos) == 2:
                 x = int(width * pos[0])
-                y = int(height * pos[1])   
+                y = int(height * pos[1])
 
         # Clamp coordinates to screen bounds (including top screen offset)
-        
+
         x = max(screen_left, min(x, screen_left + width - frame_size.width()))
-        y = max(screen_top, min(y, screen_top + height - frame_size.height()))   
-                
+        y = max(screen_top, min(y, screen_top + height - frame_size.height()))
+
         self.move(x, y)
-    
-        
 
 
 # #==============Radial Integration Dialog===================================
@@ -2265,25 +2517,34 @@ class PlotSettingDialog(QDialog):
 #         self.x_data = calibrated_x
 #         self.y_data = radial_y
 
-        # # Plot the radial profile
-        # preview_name = self.parent().windowTitle() + f'_radial_profile from {self.center}'
-        # x_label = f'Radial Distance ({unit})'
-        # y_label = 'Integrated Intensity (Counts)'
-        # plot = PlotCanvasSpectrum(calibrated_x, radial_y, parent=self.parent())
-        # plot.create_plot(xlabel=x_label, ylabel=y_label, title=preview_name)
-        # plot.canvas.canvas_name = preview_name
-        # UI_TemCompanion.preview_dict[preview_name] = plot
-        # UI_TemCompanion.preview_dict[preview_name].show()
+# # Plot the radial profile
+# preview_name = self.parent().windowTitle() + f'_radial_profile from {self.center}'
+# x_label = f'Radial Distance ({unit})'
+# y_label = 'Integrated Intensity (Counts)'
+# plot = PlotCanvasSpectrum(calibrated_x, radial_y, parent=self.parent())
+# plot.create_plot(xlabel=x_label, ylabel=y_label, title=preview_name)
+# plot.canvas.canvas_name = preview_name
+# UI_TemCompanion.preview_dict[preview_name] = plot
+# UI_TemCompanion.preview_dict[preview_name].show()
 
-        # print(f'Performed radial integration on {self.parent().windowTitle()} from the center: {self.center}.')
+# print(f'Performed radial integration on {self.parent().windowTitle()} from the center: {self.center}.')
 
 
-
-#==============GPA setting dialog===================================
+# ==============GPA setting dialog===================================
 class gpaSettings(QDialog):
-    def __init__(self, masksize, edgesmooth, step, sigma, algorithm, vmin=-0.1, vmax=0.1, parent=None):
+    def __init__(
+        self,
+        masksize,
+        edgesmooth,
+        step,
+        sigma,
+        algorithm,
+        vmin=-0.1,
+        vmax=0.1,
+        parent=None,
+    ):
         super().__init__(parent)
-        self.setWindowTitle('GPA Settings')
+        self.setWindowTitle("GPA Settings")
         self.masksize = masksize
         self.edgesmooth = edgesmooth
         self.stepsize = step
@@ -2291,60 +2552,70 @@ class gpaSettings(QDialog):
         self.vmin = vmin
         self.vmax = vmax
         self.gpa = algorithm
-        
+
         # Create validators
         masksize_validator = QIntValidator(1, 100, self)
         edgesmooth_validator = QDoubleValidator(0.0, 1.0, 3, self)
         edgesmooth_validator.setNotation(QDoubleValidator.StandardNotation)
         windowsize_validator = QIntValidator(1, 100, self)
         # step and sigma validators will be created with dynamic ranges based on windowsize
-        
+
         layout = QVBoxLayout()
         self.standard_radio = QRadioButton("Standard GPA")
         self.standard_radio.toggled.connect(self.enable_settings)
-        
+
         self.adaptive_radio = QRadioButton("Adaptive GPA (SLOW)")
-        
+
         layout.addWidget(self.standard_radio)
         layout.addWidget(self.adaptive_radio)
-        
+
         masksize_layout = QHBoxLayout()
         masksize_label = QLabel("Mask radius (px):")
         self.masksize_input = QLineEdit()
         self.masksize_input.setText(str(self.masksize))
         self.masksize_input.setValidator(masksize_validator)
-        self.masksize_input.setToolTip("The extent around the k vectors used to calculate strains. Smaller mask gives smoothier stain maps but loses spatial resolution and vice versa.")
+        self.masksize_input.setToolTip(
+            "The extent around the k vectors used to calculate strains. Smaller mask gives smoothier stain maps but loses spatial resolution and vice versa."
+        )
         self.masksize_input.setFixedSize(50, 20)
         self.masksize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         masksize_layout.addWidget(masksize_label)
         masksize_layout.addWidget(self.masksize_input)
         layout.addLayout(masksize_layout)
-        
+
         edgesmooth_layout = QHBoxLayout()
         edgesmooth_label = QLabel("Edge smooth (0-1):")
         self.edgesmooth_input = QLineEdit()
         self.edgesmooth_input.setText(str(self.edgesmooth))
         self.edgesmooth_input.setValidator(edgesmooth_validator)
-        self.edgesmooth_input.setToolTip("The ratio of the outside edge that is smoothed with a cosine function. This is to reduce the edge effect.")
+        self.edgesmooth_input.setToolTip(
+            "The ratio of the outside edge that is smoothed with a cosine function. This is to reduce the edge effect."
+        )
         self.edgesmooth_input.setFixedSize(50, 20)
-        self.edgesmooth_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.edgesmooth_input.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Preferred
+        )
         edgesmooth_layout.addWidget(edgesmooth_label)
         edgesmooth_layout.addWidget(self.edgesmooth_input)
         layout.addLayout(edgesmooth_layout)
-        
+
         layout.addWidget(self.adaptive_radio)
         windowsize_layout = QHBoxLayout()
         windowsize_lable = QLabel("Window size (px):")
         self.windowsize_input = QLineEdit()
         self.windowsize_input.setFixedSize(50, 20)
-        self.windowsize_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.windowsize_input.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Preferred
+        )
         self.windowsize_input.setText(str(self.masksize))
         self.windowsize_input.setValidator(windowsize_validator)
-        self.windowsize_input.setToolTip('Window size used for the WFR. The algorithm searches the max value of windowed Fourier transform, "ridge", around the selected k vectors.')
+        self.windowsize_input.setToolTip(
+            'Window size used for the WFR. The algorithm searches the max value of windowed Fourier transform, "ridge", around the selected k vectors.'
+        )
         windowsize_layout.addWidget(windowsize_lable)
         windowsize_layout.addWidget(self.windowsize_input)
         layout.addLayout(windowsize_layout)
-        
+
         step_layout = QHBoxLayout()
         step_lable = QLabel("Step size (px):")
         self.step_input = QLineEdit()
@@ -2352,25 +2623,28 @@ class gpaSettings(QDialog):
         self.step_input.setText(str(self.stepsize))
         self.step_input.setFixedSize(50, 20)
         self.step_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        self.step_input.setToolTip('Step for the ridge search in WFR algorithm. Smaller step size will significantly increase the processing time.')
+        self.step_input.setToolTip(
+            "Step for the ridge search in WFR algorithm. Smaller step size will significantly increase the processing time."
+        )
         # Validator will be checked dynamically in handle_ok based on windowsize
         step_layout.addWidget(step_lable)
         step_layout.addWidget(self.step_input)
         layout.addLayout(step_layout)
-        
+
         sigma_layout = QHBoxLayout()
         sigma_lable = QLabel("Sigma:")
         self.sigma_input = QLineEdit()
         self.sigma_input.setText(str(self.sigma))
         self.sigma_input.setFixedSize(50, 20)
         self.sigma_input.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        self.sigma_input.setToolTip('The sigma for the Gaussian window used for the Windowed Fourier Transform.')
+        self.sigma_input.setToolTip(
+            "The sigma for the Gaussian window used for the Windowed Fourier Transform."
+        )
         # Validator will be checked dynamically in handle_ok based on windowsize
         sigma_layout.addWidget(sigma_lable)
         sigma_layout.addWidget(self.sigma_input)
         layout.addLayout(sigma_layout)
-        
-        
+
         range_layout = QVBoxLayout()
         range_label = QLabel("Limit display range:")
         setrang_layout = QHBoxLayout()
@@ -2391,23 +2665,23 @@ class gpaSettings(QDialog):
         range_layout.addWidget(range_label)
         range_layout.addLayout(setrang_layout)
         layout.addLayout(range_layout)
-        
+
         # Apply button
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
         self.cancel_button.clicked.connect(self.reject)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.ok_button.clicked.connect(self.handle_ok)
-        
+
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-        
-        if self.gpa == 'standard':
+
+        if self.gpa == "standard":
             self.standard_radio.setChecked(True)
         else:
             self.adaptive_radio.setChecked(True)
-    
+
     def enable_settings(self):
         standardgroup = [self.masksize_input, self.edgesmooth_input]
         adaptivegroup = [self.windowsize_input, self.step_input, self.sigma_input]
@@ -2421,181 +2695,208 @@ class gpaSettings(QDialog):
                 line.setEnabled(False)
             for line in adaptivegroup:
                 line.setEnabled(True)
-            
-        
+
     def handle_ok(self):
-        
         try:
             self.vmin = float(self.min_input.text())
             self.vmax = float(self.max_input.text())
-        except:
-            QMessageBox.warning(self, 'GPA Settings', 'Invalid display range!')
+        except Exception:
+            QMessageBox.warning(self, "GPA Settings", "Invalid display range!")
             return
         if self.vmin > self.vmax:
-            QMessageBox.warning(self, 'GPA Settings', 'Invalid display range!')
+            QMessageBox.warning(self, "GPA Settings", "Invalid display range!")
             return
-        
+
         if self.standard_radio.isChecked():
-            self.gpa = 'standard'
-            
+            self.gpa = "standard"
+
             # Validate masksize
             if self.masksize_input.validator():
-                state = self.masksize_input.validator().validate(self.masksize_input.text(), 0)[0]
+                state = self.masksize_input.validator().validate(
+                    self.masksize_input.text(), 0
+                )[0]
                 if state != QValidator.Acceptable:
-                    QMessageBox.warning(self, "Invalid Input", 
-                                      f"Please enter a valid mask size.\n"
-                                      f"Current value: '{self.masksize_input.text()}'\n"
-                                      f"Valid range: 1-100")
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Input",
+                        f"Please enter a valid mask size.\n"
+                        f"Current value: '{self.masksize_input.text()}'\n"
+                        f"Valid range: 1-100",
+                    )
                     self.masksize_input.setFocus()
                     return
-            
+
             # Validate edgesmooth
             if self.edgesmooth_input.validator():
-                state = self.edgesmooth_input.validator().validate(self.edgesmooth_input.text(), 0)[0]
+                state = self.edgesmooth_input.validator().validate(
+                    self.edgesmooth_input.text(), 0
+                )[0]
                 if state != QValidator.Acceptable:
-                    QMessageBox.warning(self, "Invalid Input", 
-                                      f"Please enter a valid edge smooth value.\n"
-                                      f"Current value: '{self.edgesmooth_input.text()}'\n"
-                                      f"Valid range: 0.0-1.0")
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Input",
+                        f"Please enter a valid edge smooth value.\n"
+                        f"Current value: '{self.edgesmooth_input.text()}'\n"
+                        f"Valid range: 0.0-1.0",
+                    )
                     self.edgesmooth_input.setFocus()
                     return
-            
+
             try:
                 self.masksize = abs(int(self.masksize_input.text()))
-            except:
-                QMessageBox.warning(self, 'GPA Settings', 'Mask size must be integer!')
+            except Exception:
+                QMessageBox.warning(self, "GPA Settings", "Mask size must be integer!")
                 return
             try:
                 self.edgesmooth = float(self.edgesmooth_input.text())
-            except:
-                QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
-                return  
-            if self.edgesmooth < 0 or self.edgesmooth > 1:
-                QMessageBox.warning(self, 'GPA Settings', 'Smooth factor must be between 0-1!')
+            except Exception:
+                QMessageBox.warning(
+                    self, "GPA Settings", "Smooth factor must be between 0-1!"
+                )
                 return
-        
+            if self.edgesmooth < 0 or self.edgesmooth > 1:
+                QMessageBox.warning(
+                    self, "GPA Settings", "Smooth factor must be between 0-1!"
+                )
+                return
+
         if self.adaptive_radio.isChecked():
-            self.gpa = 'adaptive'
-            
+            self.gpa = "adaptive"
+
             # Validate windowsize
             if self.windowsize_input.validator():
-                state = self.windowsize_input.validator().validate(self.windowsize_input.text(), 0)[0]
+                state = self.windowsize_input.validator().validate(
+                    self.windowsize_input.text(), 0
+                )[0]
                 if state != QValidator.Acceptable:
-                    QMessageBox.warning(self, "Invalid Input", 
-                                      f"Please enter a valid window size.\n"
-                                      f"Current value: '{self.windowsize_input.text()}'\n"
-                                      f"Valid range: 1-100")
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Input",
+                        f"Please enter a valid window size.\n"
+                        f"Current value: '{self.windowsize_input.text()}'\n"
+                        f"Valid range: 1-100",
+                    )
                     self.windowsize_input.setFocus()
                     return
-            
+
             try:
                 windowsize = abs(int(self.windowsize_input.text()))
-            except:
-                QMessageBox.warning(self, 'GPA Settings', 'Window size must be integer!')
+            except Exception:
+                QMessageBox.warning(
+                    self, "GPA Settings", "Window size must be integer!"
+                )
                 return
-            
+
             # Validate step size (2 to windowsize)
             try:
                 stepsize = int(self.step_input.text())
-            except:
-                QMessageBox.warning(self, 'GPA Settings', 'Step size must be integer!')
+            except Exception:
+                QMessageBox.warning(self, "GPA Settings", "Step size must be integer!")
                 return
-            
+
             if stepsize < 2 or stepsize > windowsize:
-                QMessageBox.warning(self, "Invalid Input", 
-                                  f"Please enter a valid step size.\n"
-                                  f"Current value: '{stepsize}'\n"
-                                  f"Valid range: 2-{windowsize} (based on window size)")
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    f"Please enter a valid step size.\n"
+                    f"Current value: '{stepsize}'\n"
+                    f"Valid range: 2-{windowsize} (based on window size)",
+                )
                 self.step_input.setFocus()
                 return
-            
+
             # Validate sigma (1 to windowsize)
             try:
                 sigma_val = abs(float(self.sigma_input.text()))
-            except:
-                QMessageBox.warning(self, 'GPA Settings', 'Sigma must be a number!')
+            except Exception:
+                QMessageBox.warning(self, "GPA Settings", "Sigma must be a number!")
                 return
-            
+
             if sigma_val < 1 or sigma_val > windowsize:
-                QMessageBox.warning(self, "Invalid Input", 
-                                  f"Please enter a valid sigma value.\n"
-                                  f"Current value: '{sigma_val}'\n"
-                                  f"Valid range: 1-{windowsize} (based on window size)")
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    f"Please enter a valid sigma value.\n"
+                    f"Current value: '{sigma_val}'\n"
+                    f"Valid range: 1-{windowsize} (based on window size)",
+                )
                 self.sigma_input.setFocus()
                 return
-            
+
             self.masksize = windowsize
             self.stepsize = stepsize
             self.sigma = sigma_val
-        
+
         self.accept()
-        
-         
-#=======================Simple math dialog====================================
+
+
+# =======================Simple math dialog====================================
 class SimpleMathDialog(QDialog):
-    def __init__(self, img_list,parent=None):
+    def __init__(self, img_list, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Simple Math')
+        self.setWindowTitle("Simple Math")
         layout = QVBoxLayout()
         layout1 = QHBoxLayout()
-        im1_label = QLabel('Signal 1:')
+        im1_label = QLabel("Signal 1:")
         self.im1_select = QComboBox()
         # img_list = [canvas.canvas.canvas_name for canvas in UI_TemCompanion.preview_dict.values()]
         self.im1_select.addItems(img_list)
         layout1.addWidget(im1_label)
         layout1.addWidget(self.im1_select)
         layout.addLayout(layout1)
-        
+
         layout2 = QHBoxLayout()
-        operator_lable = QLabel('Operator:')
+        operator_lable = QLabel("Operator:")
         self.operator = QComboBox()
-        operator_list = ['Add', 'Subtract', 'Multiply', 'Divide', 'Inverse']  
+        operator_list = ["Add", "Subtract", "Multiply", "Divide", "Inverse"]
         self.operator.addItems(operator_list)
         layout2.addWidget(operator_lable)
         layout2.addWidget(self.operator)
         layout.addLayout(layout2)
-        
+
         layout3 = QHBoxLayout()
-        im2_label = QLabel('Signal 2:')
+        im2_label = QLabel("Signal 2:")
         self.im2_select = QComboBox()
         self.im2_select.addItems(img_list)
         layout3.addWidget(im2_label)
         layout3.addWidget(self.im2_select)
         layout.addLayout(layout3)
-        
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
-        
+
     def handle_ok(self):
         self.signal1 = self.im1_select.currentText()
         self.signal2 = self.im2_select.currentText()
         self.operation = self.operator.currentText()
-        
+
         self.accept()
-        
-        
-#======================DPC Dialog=============================================
+
+
+# ======================DPC Dialog=============================================
 class DPCDialog(QDialog):
-    def __init__(self,img_list, parent=None):
+    def __init__(self, img_list, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Reconstruct DPC')
+        self.setWindowTitle("Reconstruct DPC")
         self.img_list = img_list
         layout = QVBoxLayout()
-        self.from4_img = QRadioButton('Reconstruct from quadrant signals A, B, C, and D') 
+        self.from4_img = QRadioButton(
+            "Reconstruct from quadrant signals A, B, C, and D"
+        )
         self.from4_img.setChecked(True)
         self.from4_img.toggled.connect(self.set_combobox_enable)
         layout.addWidget(self.from4_img)
-        imA_label = QLabel('Image A:')
+        imA_label = QLabel("Image A:")
         self.imA = QComboBox()
-        imB_label = QLabel('Image B:')
+        imB_label = QLabel("Image B:")
         self.imB = QComboBox()
-        imC_label = QLabel('Image C:')
+        imC_label = QLabel("Image C:")
         self.imC = QComboBox()
-        imD_label = QLabel('Image D:')
+        imD_label = QLabel("Image D:")
         self.imD = QComboBox()
         self.from4group = [self.imA, self.imB, self.imC, self.imD]
         for combobox in self.from4group:
@@ -2616,14 +2917,14 @@ class DPCDialog(QDialog):
         layout.addLayout(layout2)
         layout.addLayout(layout3)
         layout.addLayout(layout4)
-        
-        self.from2_img = QRadioButton('Reconstruct from DPCx and DPCy')
+
+        self.from2_img = QRadioButton("Reconstruct from DPCx and DPCy")
         layout.addWidget(self.from2_img)
-        imX_label = QLabel('DPCx:')
+        imX_label = QLabel("DPCx:")
         self.imX = QComboBox()
         self.imX.addItems(self.img_list)
-        imY_label = QLabel('DPCy:')
-        self.imY = QComboBox() 
+        imY_label = QLabel("DPCy:")
+        self.imY = QComboBox()
         self.imY.addItems(self.img_list)
         self.from2group = [self.imX, self.imY]
         layout5 = QHBoxLayout()
@@ -2634,33 +2935,41 @@ class DPCDialog(QDialog):
         layout6.addWidget(self.imY)
         layout.addLayout(layout5)
         layout.addLayout(layout6)
-        
+
         layout7 = QHBoxLayout()
         rot_label = QLabel("Scan rotation (degrees):")
         self.rot = QLineEdit()
-        self.rot.setText('0')
-        self.rot.setToolTip('The angle offset between the quadrant detectors and the scan direction.')
+        self.rot.setText("0")
+        self.rot.setToolTip(
+            "The angle offset between the quadrant detectors and the scan direction."
+        )
         # Validator for rotation angle 0-360
         rot_validator = QDoubleValidator(0.0, 360.0, 2, self)
         rot_validator.setNotation(QDoubleValidator.StandardNotation)
         self.rot.setValidator(rot_validator)
-        self.guess_rot_curl = QPushButton('Guess with\n min curl', self)
-        self.guess_rot_curl.setToolTip('The DPC signals must be a conservative vector field, so the DPCx and DPCy given by\n the right rotation angle should ideally have zero curls, i.e., dDPCy/dx - dDPCx/dy = 0.')
+        self.guess_rot_curl = QPushButton("Guess with\n min curl", self)
+        self.guess_rot_curl.setToolTip(
+            "The DPC signals must be a conservative vector field, so the DPCx and DPCy given by\n the right rotation angle should ideally have zero curls, i.e., dDPCy/dx - dDPCx/dy = 0."
+        )
         self.guess_rot_curl.clicked.connect(self.guess_rotation_min_curl)
-        self.guess_rot_contrast = QPushButton('Guess with\n max contrast', self)
-        self.guess_rot_contrast.setToolTip('Generally the right rotation angle gives the maximum contrast. However, there\n exist two such angles and one gives the inverse contrast. Pick the one that gives\n the correct phase contrast, e.g., atoms are bright.')
+        self.guess_rot_contrast = QPushButton("Guess with\n max contrast", self)
+        self.guess_rot_contrast.setToolTip(
+            "Generally the right rotation angle gives the maximum contrast. However, there\n exist two such angles and one gives the inverse contrast. Pick the one that gives\n the correct phase contrast, e.g., atoms are bright."
+        )
         self.guess_rot_contrast.clicked.connect(self.guess_rotation_max_contrast)
         layout7.addWidget(rot_label)
         layout7.addWidget(self.rot)
         layout7.addWidget(self.guess_rot_curl)
         layout7.addWidget(self.guess_rot_contrast)
         layout.addLayout(layout7)
-        
+
         layout8 = QHBoxLayout()
-        hp_label = QLabel('High pass cutoff for iDPC:')
+        hp_label = QLabel("High pass cutoff for iDPC:")
         self.hp_cutoff = QLineEdit()
-        self.hp_cutoff.setText('0.02')
-        self.hp_cutoff.setToolTip('The cutoff for the high pass filter for iDPC, in fraction of reciprocal space. \nGenerally it must be a small number, e.g., 0.02, to filter out the non-uniform \nbackground while maintaining the crystalline information.')
+        self.hp_cutoff.setText("0.02")
+        self.hp_cutoff.setToolTip(
+            "The cutoff for the high pass filter for iDPC, in fraction of reciprocal space. \nGenerally it must be a small number, e.g., 0.02, to filter out the non-uniform \nbackground while maintaining the crystalline information."
+        )
         # Validator for high pass cutoff 0.00-1.00
         hp_validator = QDoubleValidator(0.0, 1.0, 3, self)
         hp_validator.setNotation(QDoubleValidator.StandardNotation)
@@ -2668,25 +2977,24 @@ class DPCDialog(QDialog):
         layout8.addWidget(hp_label)
         layout8.addWidget(self.hp_cutoff)
         layout.addLayout(layout8)
-        
+
         buttons = QHBoxLayout()
-        iDPC = QPushButton('Reconstruct iDPC', self)
+        iDPC = QPushButton("Reconstruct iDPC", self)
         iDPC.clicked.connect(self.reconstruct_iDPC)
-        dDPC = QPushButton('Reconstruct dDPC', self)
+        dDPC = QPushButton("Reconstruct dDPC", self)
         dDPC.clicked.connect(self.reconstruct_dDPC)
-        cancel_button = QPushButton('Close', self)
+        cancel_button = QPushButton("Close", self)
         cancel_button.clicked.connect(self.reject)
         cancel_button.setDefault(True)
         buttons.addWidget(iDPC)
         buttons.addWidget(dDPC)
         buttons.addWidget(cancel_button)
-        
+
         layout.addLayout(buttons)
-        
-        
+
         self.setLayout(layout)
         self.set_combobox_enable()
-        
+
     def set_combobox_enable(self):
         from4 = self.from4_img.isChecked()
         for box in self.from4group:
@@ -2694,7 +3002,7 @@ class DPCDialog(QDialog):
         from2 = self.from2_img.isChecked()
         for box in self.from2group:
             box.setEnabled(from2)
-            
+
     def prepare_images(self):
         if self.from4_img.isChecked():
             imA = self.imA.currentText()
@@ -2705,25 +3013,37 @@ class DPCDialog(QDialog):
             B = copy.deepcopy(find_img_by_title(self.img_list, imB).canvas.data)
             C = copy.deepcopy(find_img_by_title(self.img_list, imC).canvas.data)
             D = copy.deepcopy(find_img_by_title(self.img_list, imD).canvas.data)
-            if A['data'].shape == B['data'].shape and B['data'].shape == C['data'].shape and C['data'].shape == D['data'].shape:
-                DPCx = A['data'] - C['data']
-                DPCy = B['data'] - D['data']
+            if (
+                A["data"].shape == B["data"].shape
+                and B["data"].shape == C["data"].shape
+                and C["data"].shape == D["data"].shape
+            ):
+                DPCx = A["data"] - C["data"]
+                DPCy = B["data"] - D["data"]
             else:
-                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                QMessageBox.warning(
+                    self,
+                    "Error in DPC reconstruction!",
+                    "Sizes of the input images do not match!",
+                )
                 return None, None, None
         else:
             imX = self.imX.currentText()
             imY = self.imY.currentText()
             A = copy.deepcopy(find_img_by_title(self.img_list, imX).canvas.data)
             B = copy.deepcopy(find_img_by_title(self.img_list, imY).canvas.data)
-            if A['data'].shape == B['data'].shape:
-                DPCx = A['data']
-                DPCy = B['data']
+            if A["data"].shape == B["data"].shape:
+                DPCx = A["data"]
+                DPCy = B["data"]
             else:
-                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                QMessageBox.warning(
+                    self,
+                    "Error in DPC reconstruction!",
+                    "Sizes of the input images do not match!",
+                )
                 return None, None, None
         return A, DPCx, DPCy
-    
+
     def prepare_current_images(self):
         if self.from4_img.isChecked():
             imA = self.imA.currentText()
@@ -2734,42 +3054,54 @@ class DPCDialog(QDialog):
             B = find_img_by_title(self.img_list, imB).get_img_dict_from_canvas()
             C = find_img_by_title(self.img_list, imC).get_img_dict_from_canvas()
             D = find_img_by_title(self.img_list, imD).get_img_dict_from_canvas()
-            if A['data'].shape == B['data'].shape and B['data'].shape == C['data'].shape and C['data'].shape == D['data'].shape:
-                DPCx = A['data'] - C['data']
-                DPCy = B['data'] - D['data']
+            if (
+                A["data"].shape == B["data"].shape
+                and B["data"].shape == C["data"].shape
+                and C["data"].shape == D["data"].shape
+            ):
+                DPCx = A["data"] - C["data"]
+                DPCy = B["data"] - D["data"]
             else:
-                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                QMessageBox.warning(
+                    self,
+                    "Error in DPC reconstruction!",
+                    "Sizes of the input images do not match!",
+                )
                 return None, None, None
         else:
             imX = self.imX.currentText()
             imY = self.imY.currentText()
             A = find_img_by_title(self.img_list, imX).get_img_dict_from_canvas()
             B = find_img_by_title(self.img_list, imY).get_img_dict_from_canvas()
-            if A['data'].shape == B['data'].shape:
-                DPCx = A['data']
-                DPCy = B['data']
+            if A["data"].shape == B["data"].shape:
+                DPCx = A["data"]
+                DPCy = B["data"]
             else:
-                QMessageBox.warning(self,'Error in DPC reconstruction!', 'Sizes of the input images do not match!')
+                QMessageBox.warning(
+                    self,
+                    "Error in DPC reconstruction!",
+                    "Sizes of the input images do not match!",
+                )
                 return None, None, None
         return A, DPCx, DPCy
-        
+
     def guess_rotation_max_contrast(self):
         _, DPCx, DPCy = self.prepare_current_images()
         if DPCx is None:
             return
         ang1, ang2 = find_rotation_ang_max_contrast(DPCx, DPCy)
-        text = f'Two possible rotation angles are {ang1} deg and {ang2} deg. Choose the one that gives the correct contrast!'
+        text = f"Two possible rotation angles are {ang1} deg and {ang2} deg. Choose the one that gives the correct contrast!"
         print(text)
-        QMessageBox.information(self, 'Rotation angle', text)
-        
+        QMessageBox.information(self, "Rotation angle", text)
+
     def guess_rotation_min_curl(self):
         _, DPCx, DPCy = self.prepare_current_images()
         if DPCx is None:
             return
         ang = find_rotation_ang_min_curl(DPCx, DPCy)
-        text = f'The possible rotation angle that gives the minimum curl is {ang} deg.'
+        text = f"The possible rotation angle that gives the minimum curl is {ang} deg."
         print(text)
-        QMessageBox.information(self, 'Rotation angle', text)
+        QMessageBox.information(self, "Rotation angle", text)
 
     def reconstruct_iDPC(self):
         A, DPCx, DPCy = self.prepare_images()
@@ -2778,26 +3110,35 @@ class DPCDialog(QDialog):
         # Validate rotation angle
         rot_val = float(self.rot.text())
         if rot_val < 0 or rot_val > 360:
-            QMessageBox.warning(self, "Invalid Input", f"Rotation angle out of range.\nCurrent value: '{rot_val}'\nValid range: 0-360")
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                f"Rotation angle out of range.\nCurrent value: '{rot_val}'\nValid range: 0-360",
+            )
             self.rot.setFocus()
             return
         # Validate high pass cutoff
         hp_val = float(self.hp_cutoff.text())
         if hp_val < 0.0 or hp_val > 1.0:
-            QMessageBox.warning(self, "Invalid Input", f"High pass cutoff out of range.\nCurrent value: '{hp_val}'\nValid range: 0.00-1.00")
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                f"High pass cutoff out of range.\nCurrent value: '{hp_val}'\nValid range: 0.00-1.00",
+            )
             self.hp_cutoff.setFocus()
             return
         iDPC_img = copy.deepcopy(A)
-        iDPC_img['data'] = reconstruct_iDPC(DPCx, DPCy, rotation=rot_val, cutoff=hp_val)
-        preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_iDPC'
+        iDPC_img["data"] = reconstruct_iDPC(DPCx, DPCy, rotation=rot_val, cutoff=hp_val)
+        preview_name = self.parent().canvas.canvas_name.split(":")[0] + "_iDPC"
         if self.from4_img.isChecked():
-            metadata = f'Reconstructed iDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
+            metadata = f"Reconstructed iDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}."
         else:
-            metadata = f'Reconstructed iDPC from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
-        self.parent().plot_new_image(iDPC_img, preview_name, metadata=metadata, position='center')
+            metadata = f"Reconstructed iDPC from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}."
+        self.parent().plot_new_image(
+            iDPC_img, preview_name, metadata=metadata, position="center"
+        )
         print(metadata)
-        
-    
+
     def reconstruct_dDPC(self):
         A, DPCx, DPCy = self.prepare_images()
         if DPCx is None:
@@ -2805,35 +3146,45 @@ class DPCDialog(QDialog):
         # Validate rotation angle
         rot_val = float(self.rot.text())
         if rot_val < 0 or rot_val > 360:
-            QMessageBox.warning(self, "Invalid Input", f"Rotation angle out of range.\nCurrent value: '{rot_val}'\nValid range: 0-360")
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                f"Rotation angle out of range.\nCurrent value: '{rot_val}'\nValid range: 0-360",
+            )
             self.rot.setFocus()
             return
         # Validate high pass cutoff
         hp_val = float(self.hp_cutoff.text())
         if hp_val < 0.0 or hp_val > 1.0:
-            QMessageBox.warning(self, "Invalid Input", f"High pass cutoff out of range.\nCurrent value: '{hp_val}'\nValid range: 0.00-1.00")
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                f"High pass cutoff out of range.\nCurrent value: '{hp_val}'\nValid range: 0.00-1.00",
+            )
             self.hp_cutoff.setFocus()
             return
         dDPC_img = copy.deepcopy(A)
-        dDPC_img['data'] = reconstruct_dDPC(DPCx, DPCy, rotation=rot_val, cutoff=hp_val)
-        preview_name = self.parent().canvas.canvas_name.split(':')[0] + '_dDPC'
+        dDPC_img["data"] = reconstruct_dDPC(DPCx, DPCy, rotation=rot_val, cutoff=hp_val)
+        preview_name = self.parent().canvas.canvas_name.split(":")[0] + "_dDPC"
         if self.from4_img.isChecked():
-            metadata = f'Reconstructed dDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
+            metadata = f"Reconstructed dDPC from {self.imA.currentText()}, {self.imB.currentText()}, {self.imC.currentText()}, and {self.imD.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}."
         else:
-            metadata = f'Reconstructed dDPC from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}.'
-        self.parent().plot_new_image(dDPC_img, preview_name, metadata=metadata, position='center')
+            metadata = f"Reconstructed dDPC from {self.imX.currentText()} and {self.imY.currentText()} by a rotation angle of {self.rot.text()} and high pass filter cutoff of {self.hp_cutoff.text()}."
+        self.parent().plot_new_image(
+            dDPC_img, preview_name, metadata=metadata, position="center"
+        )
         print(metadata)
-        
-        
-#======================== list reorder dialog =========================
+
+
+# ======================== list reorder dialog =========================
 class ListReorderDialog(QDialog):
     def __init__(self, items):
         super().__init__()
 
         self.ordered_items_idx = []
         self.item_to_index = {item: idx for idx, item in enumerate(items)}
-        
-        self.setWindowTitle('Reorder image stack')
+
+        self.setWindowTitle("Reorder image stack")
         self.setGeometry(100, 100, 300, 400)
 
         # Layout
@@ -2857,27 +3208,25 @@ class ListReorderDialog(QDialog):
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
-        
 
         # Set the layout for the dialog
         self.setLayout(layout)
-    
+
     def contextMenuEvent(self, event):
         # Check if there is an item at the current mouse position
         item = self.listWidget.itemAt(self.listWidget.mapFromGlobal(event.globalPos()))
         if item:
             # Create context menu
             menu = QMenu(self)
-            delete_action = QAction('Delete', self)
+            delete_action = QAction("Delete", self)
             delete_action.triggered.connect(lambda: self.deleteItem(item))
             menu.addAction(delete_action)
-            
-            move_to_top_action = QAction('Move to Top', self)
+
+            move_to_top_action = QAction("Move to Top", self)
             move_to_top_action.triggered.connect(lambda: self.moveToTop(item))
             menu.addAction(move_to_top_action)
 
-            move_to_bottom_action = QAction('Move to Bottom', self)
+            move_to_bottom_action = QAction("Move to Bottom", self)
             move_to_bottom_action.triggered.connect(lambda: self.moveToBottom(item))
             menu.addAction(move_to_bottom_action)
 
@@ -2887,32 +3236,30 @@ class ListReorderDialog(QDialog):
     def deleteItem(self, item):
         # Remove the item from the list widget
         self.listWidget.takeItem(self.listWidget.row(item))
-        
+
     def moveToTop(self, item):
         # Get the row of the current item and remove it
         row = self.listWidget.row(item)
         self.listWidget.takeItem(row)
         # Insert it at the top
         self.listWidget.insertItem(0, item)
-    
+
     def moveToBottom(self, item):
         # Get the row of the current item and remove it
         row = self.listWidget.row(item)
         self.listWidget.takeItem(row)
         # Insert it at the bottom
-        self.listWidget.addItem(item) 
-
-
+        self.listWidget.addItem(item)
 
     def handle_ok(self):
         for index in range(self.listWidget.count()):
             item_text = self.listWidget.item(index).text()
             original_index = self.item_to_index[item_text]
             self.ordered_items_idx.append(original_index)
-            self.accept()    
+            self.accept()
 
 
-#=================Angle measurement ROI==========================
+# =================Angle measurement ROI==========================
 class AngleROI(pg.PolyLineROI):
     def __init__(self, positions, **args):
         super().__init__(positions, closed=False, **args)
@@ -2929,49 +3276,55 @@ class AngleROI(pg.PolyLineROI):
         p2 = self.handle2.pos()
         p3 = self.handle3.pos()
         # self.angle = self.calculate_angle(p1, p2, p3)
-        self.angle = calculate_angle_from_3_points((p1.x(), p1.y()), (p2.x(), p2.y()), (p3.x(), p3.y()))
+        self.angle = calculate_angle_from_3_points(
+            (p1.x(), p1.y()), (p2.x(), p2.y()), (p3.x(), p3.y())
+        )
         # self.text_item.setText(f'{self.angle:.2f}°')
         # mid_point = (p1 + p3) / 2
         # self.text_item.setPos(mid_point)
 
     def segmentClicked(self, segment, ev=None, pos=None):
-        pass # Disable segment click
+        pass  # Disable segment click
 
 
-#===============Resize 4DSTEM data dialog========================
+# ===============Resize 4DSTEM data dialog========================
 class Resize4DSTEMDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Input scan size')
+        self.setWindowTitle("Input scan size")
         layout = QVBoxLayout()
-        
+
         layout1 = QHBoxLayout()
-        x_label = QLabel('Input scan X size:')
+        x_label = QLabel("Input scan X size:")
         self.x_input = QLineEdit()
-        self.x_input.setPlaceholderText('e.g., 256')
-        self.x_input.setToolTip('The new size in the X dimension. Must be a positive integer.')
+        self.x_input.setPlaceholderText("e.g., 256")
+        self.x_input.setToolTip(
+            "The new size in the X dimension. Must be a positive integer."
+        )
         x_validator = QIntValidator(1, 10000, self)
         self.x_input.setValidator(x_validator)
         layout1.addWidget(x_label)
         layout1.addWidget(self.x_input)
         layout.addLayout(layout1)
-        
+
         layout2 = QHBoxLayout()
-        y_label = QLabel('Input scan Y size:')
+        y_label = QLabel("Input scan Y size:")
         self.y_input = QLineEdit()
-        self.y_input.setPlaceholderText('e.g., 256')
-        self.y_input.setToolTip('The new size in the Y dimension. Must be a positive integer.')
+        self.y_input.setPlaceholderText("e.g., 256")
+        self.y_input.setToolTip(
+            "The new size in the Y dimension. Must be a positive integer."
+        )
         y_validator = QIntValidator(1, 10000, self)
         self.y_input.setValidator(y_validator)
         layout2.addWidget(y_label)
         layout2.addWidget(self.y_input)
         layout.addLayout(layout2)
-        
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.handle_ok)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self.setLayout(layout)
 
     def handle_ok(self):
@@ -2979,11 +3332,17 @@ class Resize4DSTEMDialog(QDialog):
             self.new_x = int(self.x_input.text())
             self.new_y = int(self.y_input.text())
         except ValueError:
-            QMessageBox.warning(self, 'Invalid Input', 'Please enter valid positive integers for scan sizes.')
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                "Please enter valid positive integers for scan sizes.",
+            )
             return
-        
+
         if self.new_x <= 0 or self.new_y <= 0:
-            QMessageBox.warning(self, 'Invalid Input', 'Scan sizes must be positive integers.')
+            QMessageBox.warning(
+                self, "Invalid Input", "Scan sizes must be positive integers."
+            )
             return
-        
+
         self.accept()

@@ -1,5 +1,5 @@
 # TemCompanion
-TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). Various filter functions, including Wiener, averaging background subtraction (ABS), non-linear filter, Butterworth low-pass, and Gaussian filter, are made available for filtering high-resolution TEM images. 
+TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). Various filter functions, including Wiener, averaging background subtraction (ABS), non-linear filter, Butterworth low-pass, and Gaussian filter, are made available for filtering high-resolution TEM images.
 
 TemCompanion was written by Dr. Tao Ma. For questions, suggestions, bug reports, feature requests, etc, please send a message to matao1984@gmail.com.
 
@@ -39,7 +39,7 @@ Currently, TemCompanion is programmed to support:
 - Image series
     - TemCompanion will search the given folder for the supported files with the same extention as the selected file. A dialog will then pop up that allows to reorder and delete files to be loaded. Then all files will be loaded as a 3D image stack.
 
-- New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
+- New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html).
 
 ### 3.2 List of available functions
 Currently available functions on image data include:
@@ -81,12 +81,12 @@ Currently available functions on 4D-STEM data:
 
 
 ### 3.3 Output formats
-When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ. 
+When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ.
 
 All image data and operations are handled as python dictionaries, which can be saved with ``pickle`` as *.pkl files. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc.
 
 
-Other image formats including png and jpg, both gray scale and color, are lossy conversion, which means the original data are manipulated (e.g., data are normalized and rescaled to 8-bit gray scale). These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be burnt on if the "Scale bar" option is checked.  
+Other image formats including png and jpg, both gray scale and color, are lossy conversion, which means the original data are manipulated (e.g., data are normalized and rescaled to 8-bit gray scale). These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be burnt on if the "Scale bar" option is checked.
 
 
 ## 4. About the emd format
@@ -113,8 +113,8 @@ author = {Tao Ma}
 ## 6. Change history
 
 ### v2.0.0
-- Added support for 4D-STEM data 
-- Supported formats: 
+- Added support for 4D-STEM data
+- Supported formats:
     - EMPAD (*.xml + *.raw)
     - USID (*.hdf5)
     - Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
@@ -129,9 +129,9 @@ author = {Tao Ma}
 
 
 ### v1.3.4
-- Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary. 
+- Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary.
 - Added dialog for exporting gif animation with customizable frame time and label.
-- Some minor bug fixes 
+- Some minor bug fixes
 
 
 ### v1.3.3
@@ -145,7 +145,7 @@ author = {Tao Ma}
 - Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
 - Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
 - Also update DPC reconstruction to take non square images
-- Added a default_config.json file for default parameters. 
+- Added a default_config.json file for default parameters.
 - Multiprocess support in batch conversion that significantly speeds up the conversion.
 - Added value validation for most of input parameters to prevent crashes.
 - Added angle measurement tool.
@@ -223,7 +223,7 @@ author = {Tao Ma}
 - A mini colorbar can be added to the top right corner
 - Minor bug fixes...
 
-  
+
 ### v1.2
 - New feature: Measure diffraction pattern
 - New feature: Simple math of add, subtract, multiply, divide, inverse on two images or stacks
@@ -237,7 +237,7 @@ author = {Tao Ma}
 - Improved mode switching between measure, line profile, etc.
 - Manual input vmin vmax together with the slider bar
 - Fixed some tif images cannot be imported with missing modules
-  
+
 ### v1.0
 - Significant update with redesigned UI. Now it is separated from the old EMD-converter.
 - Batch converter function calls the old Emd-converter and runs batch conversion.
@@ -279,7 +279,7 @@ author = {Tao Ma}
 
 
 ### v0.2
-- New feature: Extract line profile from an image. 
+- New feature: Extract line profile from an image.
   - The line width can be defined.
   - Customize the plot apperance, e.g., color, xlim, ylim.
   - Measure the line profile both horizontally and vertically with mouse drag
@@ -300,14 +300,14 @@ author = {Tao Ma}
 
 - <del> Improve FFT peak measurement accuracy
 
-- <del> Extract line profile 
+- <del> Extract line profile
 
 - <del> Image registration
 
 - <del> Live FFT with interactive area selection
 
 - <del> Mask in FFT and iFFT
-  
+
 - <del> Executable App bundle for Windows and MacOS
 
 - <del> Better color maps for EDS maps

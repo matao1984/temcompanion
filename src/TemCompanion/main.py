@@ -4,7 +4,7 @@
 # 2024-12-15 v.01
 # First version!
 # 2024-12-29 v0.2
-# New feature: Extract line profile from an image. 
+# New feature: Extract line profile from an image.
 #  - The line width can be defined.
 #  - Customize the plot apperance, e.g., color, xlim, ylim.
 #  - Measure the line profile both horizontally and vertically with mouse drag
@@ -61,7 +61,7 @@
 # 2025-02-24 v1.2.1
 # Support drag and drop file(s) into the main UI or the batch converter
 # Figure keeps the aspect ratio upon resizing (for the most of the cases)
-# A mini colorbar can be added to the top right corner 
+# A mini colorbar can be added to the top right corner
 
 # 2025-03-06 v1.2.2
 # Add right click menu
@@ -71,7 +71,7 @@
 # Fixed letter /mu in micrometer scale bar cannot display correctly.
 
 # 2025-03-11 v1.2.3
-# Fixed an incorrect definition of high pass filter in DPC reconstruction that 
+# Fixed an incorrect definition of high pass filter in DPC reconstruction that
 # caused the UI to crash on non-square images.
 # Fixed dDPC output was set to 'int16' instead of 'float32'.
 # Add support for *.mrc file (image stack only). If the metadata txt file exists, it will be loaded as well.
@@ -123,7 +123,7 @@
 # Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass
 # Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
 # Also update DPC reconstruction to take non square images
-# Added a default_config.json file for default parameters for image display and filter parameters. 
+# Added a default_config.json file for default parameters for image display and filter parameters.
 # Multiprocess support in batch conversion that significantly speeds up the conversion.
 # Added value validation for most of input parameters to prevent crashes.
 # Added angle measurement tool.
@@ -145,11 +145,11 @@
 # Added scale size option in the scalebar settings
 
 # 2026-02-28 v1.3.4
-# Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary. 
-# Added dialog for exporting gif animation with customizable frame time and label. 
+# Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary.
+# Added dialog for exporting gif animation with customizable frame time and label.
 
 # 2026-04-01 v2.0.0
-# Added support for 4D-STEM data 
+# Added support for 4D-STEM data
 # Available functions for 4D-STEM data include:
 # - View and navigate the 4D data in both real space and reciprocal space
 # - Crop and flip data in both spaces
@@ -158,43 +158,52 @@
 # - Average diffraction patterns from selected regions in real space
 # - CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow,  QVBoxLayout, 
-                             QWidget, QPushButton, QMessageBox, QFileDialog, 
-                             QHBoxLayout, QLabel, QCheckBox, QTextBrowser, QDockWidget,
-                             QDialog
-                             )
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QPushButton,
+    QMessageBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QCheckBox,
+    QTextBrowser,
+    QDockWidget,
+    QDialog,
+)
 from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer, QUrl
 from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent, QDesktopServices
 
 
 import sys
 import os
-import pickle
 import markdown
 
 
-#===================Import internal modules==========================================
+# ===================Import internal modules==========================================
 
 from .functions import load_file, load_4dstem, getFileNameType
 from .batch_convert import BatchConverter
 from .canvas import PlotCanvas
 from .stem4d import PlotCanvas4D
-from .UI_elements import Resize4DSTEMDialog, Open4DSTEMFileDialog
-
-        
-#=====================Main Window UI ===============================================
+from .UI_elements import Resize4DSTEMDialog
 
 
-class UI_TemCompanion(QMainWindow):    
-    #Preview dict as class variable
+# =====================Main Window UI ===============================================
+
+
+class UI_TemCompanion(QMainWindow):
+    # Preview dict as class variable
     preview_dict = {}
 
     def __init__(self, config):
         super().__init__()
         # Environment variables
-        self.ver = config.pop('version')
-        self.rdate = config.pop('release_date')
-        
+        self.ver = config.pop("version")
+        self.rdate = config.pop("release_date")
+
         # Remember last used file filter in open dialog
         self._filters = (
             "Velox emd Files (*.emd);;"
@@ -218,22 +227,26 @@ class UI_TemCompanion(QMainWindow):
 
         # Session-only settings (reset on restart)
         # Initialize defaults from config
-        self.wkdir = config.pop('working_directory')
-        self.colormap = config.pop('colormap')
-        self.filter_parameters = config.pop('filter_parameters')
-        default_open_filter = config.pop('default_open', "Velox emd Files (*.emd)")
-        default_open_4dstem_filter = config.pop('default_open_4dstem', "EMPAD Files (*.xml)")
-        default_batch_filter = config.pop('default_batch_open', "Velox emd Files (*.emd)")
-        default_save_filter = config.pop('default_save', "16-bit TIFF Files (*.tiff)")
+        self.wkdir = config.pop("working_directory")
+        self.colormap = config.pop("colormap")
+        self.filter_parameters = config.pop("filter_parameters")
+        default_open_filter = config.pop("default_open", "Velox emd Files (*.emd)")
+        default_open_4dstem_filter = config.pop(
+            "default_open_4dstem", "EMPAD Files (*.xml)"
+        )
+        default_batch_filter = config.pop(
+            "default_batch_open", "Velox emd Files (*.emd)"
+        )
+        default_save_filter = config.pop("default_save", "16-bit TIFF Files (*.tiff)")
 
         self.settings = {
-            'lastOpenFilter': default_open_filter,
-            'last4DSTEMOpenFilter': default_open_4dstem_filter,
-            'lastBatchOpenFilter': default_batch_filter,
-            'lastSaveFilter': default_save_filter,
+            "lastOpenFilter": default_open_filter,
+            "last4DSTEMOpenFilter": default_open_4dstem_filter,
+            "lastBatchOpenFilter": default_batch_filter,
+            "lastSaveFilter": default_save_filter,
         }
-        self.last_open_filter = self.settings['lastOpenFilter']
-        self.last_open_4dstem_filter = self.settings['last4DSTEMOpenFilter']
+        self.last_open_filter = self.settings["lastOpenFilter"]
+        self.last_open_4dstem_filter = self.settings["last4DSTEMOpenFilter"]
 
         self.attribute = config  # Remaining config items are default image settings
 
@@ -244,7 +257,7 @@ class UI_TemCompanion(QMainWindow):
         # Create the custom stream and connect it to the QTextEdit
         self.stream = EmittingStream()
         self.stream.text_written.connect(self.append_text)
-   
+
         # Redirect sys.stdout and sys.stderr to the custom stream
         sys.stdout = self.stream
         sys.stderr = self.stream
@@ -254,48 +267,51 @@ class UI_TemCompanion(QMainWindow):
         self.stderr_tee = TeeStream(self.stream, sys.__stderr__)
         sys.stdout = self.stdout_tee
         sys.stderr = self.stderr_tee
-        
+
         # Drag and drop file function
         self.setAcceptDrops(True)
-        
+
         self.print_info()
-        
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
             event.ignore()
-    
+
     def dropEvent(self, event: QDropEvent):
         file = event.mimeData().urls()[0].toLocalFile()
         if file:
             self.file = file
             ext = getFileNameType(file)[1].lower()
-            if ext == 'emd':
-                self.file_type = 'Velox emd Files (*.emd)'
-            elif ext in ['dm3', 'dm4']:
-                self.file_type = 'DigitalMicrograph Files (*.dm3 *.dm4)'
-            elif ext == 'ser':
-                self.file_type = 'TIA ser Files (*.ser)'
-            elif ext in ['tif', 'tiff']:
-                self.file_type = 'Tiff Files (*.tif *.tiff)'
-            elif ext == 'mrc':
-                self.file_type = 'MRC Files (*.mrc)'
-            elif ext in ['jpg', 'jpeg', 'png', 'bmp']:
-                self.file_type = 'Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)'
-            elif ext == 'pkl':
-                self.file_type = 'Pickle Dictionary Files (*.pkl)'
+            if ext == "emd":
+                self.file_type = "Velox emd Files (*.emd)"
+            elif ext in ["dm3", "dm4"]:
+                self.file_type = "DigitalMicrograph Files (*.dm3 *.dm4)"
+            elif ext == "ser":
+                self.file_type = "TIA ser Files (*.ser)"
+            elif ext in ["tif", "tiff"]:
+                self.file_type = "Tiff Files (*.tif *.tiff)"
+            elif ext == "mrc":
+                self.file_type = "MRC Files (*.mrc)"
+            elif ext in ["jpg", "jpeg", "png", "bmp"]:
+                self.file_type = "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)"
+            elif ext == "pkl":
+                self.file_type = "Pickle Dictionary Files (*.pkl)"
             else:
-                QMessageBox.warning(self, 'Open File', 'Unsupported file formats!')
+                QMessageBox.warning(self, "Open File", "Unsupported file formats!")
                 return
             self.preview()
             event.acceptProposedAction()
+
     def append_text(self, text):
         # Append text to the QTextEdit
-        self.outputBox.moveCursor(self.outputBox.textCursor().End)  # Move cursor to the end
+        self.outputBox.moveCursor(
+            self.outputBox.textCursor().End
+        )  # Move cursor to the end
         self.outputBox.insertPlainText(text)  # Insert the text
-        
-    #=============== Redefine the close window behavior============================
+
+    # =============== Redefine the close window behavior============================
     def closeEvent(self, event):
         # Close all window
         if self.preview_dict:
@@ -303,27 +319,21 @@ class UI_TemCompanion(QMainWindow):
             for plot in plots:
                 try:
                     self.preview_dict[plot].close()
-                except:
+                except Exception:
                     pass
 
         if self.converter is not None and self.converter.isVisible():
             self.converter.close()
-        
-
-        
-    
-
 
     def setupUi(self):
-        # Window size 
+        # Window size
         self.size_with_dock = 450, 450
         self.size_without_dock = 450, 100
         self.setObjectName("TemCompanion")
         self.setWindowTitle(f"TemCompanion Ver {self.ver}")
         self.resize(*self.size_with_dock)
-        
-        
-        # Central widget + layout 
+
+        # Central widget + layout
         central = QWidget(self)
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
@@ -342,37 +352,31 @@ QPushButton:hover {
 background-color: #D0D0D0;
 }
 """
-        
+
         self.openfileButton = QPushButton(self)
         self.openfileButton.setFixedSize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
-        self.openfileButton.setText('Open \nImages')
+        self.openfileButton.setText("Open \nImages")
         self.openfileButton.setStyleSheet(common_style)
 
         self.open4DSTEMButton = QPushButton(self)
         self.open4DSTEMButton.setFixedSize(80, 60)
         self.open4DSTEMButton.setObjectName("Open4DSTEM")
-        self.open4DSTEMButton.setText('Open \n4D-STEM')
+        self.open4DSTEMButton.setText("Open \n4D-STEM")
         self.open4DSTEMButton.setStyleSheet(common_style)
 
-        
-        
-        
         self.convertButton = QPushButton(self)
         self.convertButton.setFixedSize(80, 60)
         self.convertButton.setObjectName("BatchConvert")
         self.convertButton.setText("Batch \nConvert")
         self.convertButton.setStyleSheet(common_style)
-        
-        
-        
-        
+
         self.aboutButton = QPushButton(self)
         self.aboutButton.setFixedSize(80, 60)
         self.aboutButton.setObjectName("aboutButton")
         self.aboutButton.setText("About")
         self.aboutButton.setStyleSheet(common_style)
-        
+
         self.guideButton = QPushButton(self)
         self.guideButton.setFixedSize(80, 60)
         self.guideButton.setObjectName("guideButton")
@@ -399,11 +403,10 @@ border: 2px solid #FF8C00;
         self.donateButton.setObjectName("donateButton")
         self.donateButton.setText("Buy me\n a COFFEE!")
         self.donateButton.setToolTip(
-    "☕ Support TemCompanion's development!\n"
-    "Even a small donation helps keep this project alive.\n"
-    "Click to buy me a lunch! 💛"
-)
-
+            "☕ Support TemCompanion's development!\n"
+            "Even a small donation helps keep this project alive.\n"
+            "Click to buy me a lunch! 💛"
+        )
 
         buttonlayout.addWidget(self.openfileButton)
         buttonlayout.addWidget(self.open4DSTEMButton)
@@ -416,36 +419,37 @@ border: 2px solid #FF8C00;
 
         # Add a horizontal layout for author label and output dock toggle
         author_layout = QHBoxLayout()
-        
+
         self.authorlabel = QLabel(self)
         self.authorlabel.setObjectName("authorlabel")
-        self.authorlabel.setText(f'TemCompanion by Dr. Tao Ma   {self.rdate}')
+        self.authorlabel.setText(f"TemCompanion by Dr. Tao Ma   {self.rdate}")
         author_layout.addWidget(self.authorlabel)
-        
+
         # Add stretch to push the checkbox to the right
         author_layout.addStretch(1)
-        
+
         # Add the output dock toggle checkbox
         self.output_toggle = QCheckBox("Show Output", self)
         self.output_toggle.setChecked(True)
         author_layout.addWidget(self.output_toggle)
-        
+
         layout.addLayout(author_layout)
 
         layout.addStretch(1)
 
         central.setLayout(layout)
         self.setCentralWidget(central)
-        
+
         # self.outputBox = QTextEdit(self, readOnly=True)
         # #self.outputBox.setGeometry(35, 90, 350, 210)
         # self.outputBox.resize(350, 240)
-        # layout.addWidget(self.outputBox)   
-        
+        # layout.addWidget(self.outputBox)
 
         self.outputBox = QTextBrowser(self)
-        self.outputBox.setOpenExternalLinks(True)  # open http(s) links in default browser
-        self.outputBox.setOpenLinks(True)          # allow internal anchors (if any)
+        self.outputBox.setOpenExternalLinks(
+            True
+        )  # open http(s) links in default browser
+        self.outputBox.setOpenLinks(True)  # allow internal anchors (if any)
         self.outputBox.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.outputBox.resize(350, 220)
         # layout.addWidget(self.outputBox)
@@ -455,14 +459,14 @@ border: 2px solid #FF8C00;
         self.outputDock.setObjectName("OutputDock")
         self.outputDock.setAllowedAreas(Qt.BottomDockWidgetArea)  # stick to bottom area
         self.outputDock.setFeatures(
-            QDockWidget.DockWidgetMovable |
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetClosable
+            QDockWidget.DockWidgetMovable
+            | QDockWidget.DockWidgetFloatable
+            | QDockWidget.DockWidgetClosable
         )
         self.outputDock.setWidget(self.outputBox)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.outputDock)
         self.resizeDocks([self.outputDock], [350], Qt.Vertical)
-        
+
         # Connect signal to handle dock detachment
         self.outputDock.topLevelChanged.connect(self._on_dock_toplevel_changed)
 
@@ -472,18 +476,18 @@ border: 2px solid #FF8C00;
         self.outputDock.visibilityChanged.connect(self._on_dock_visibility_changed)
         # toggle_action.toggled.connect(self.output_toggle.setChecked)
 
-
         # Connect all functions
         self.openfileButton.clicked.connect(self.openfile)
-        self.open4DSTEMButton.clicked.connect(self.open_4dstem)       
+        self.open4DSTEMButton.clicked.connect(self.open_4dstem)
         self.convertButton.clicked.connect(self.batch_convert)
         self.aboutButton.clicked.connect(self.show_about)
         self.guideButton.clicked.connect(self.show_user_guide)
-        # self.donateButton.clicked.connect(self.donate) 
-        self.donateButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://paypal.me/matao1984?country.x=US&locale.x=en_US")))
-
-        
-
+        # self.donateButton.clicked.connect(self.donate)
+        self.donateButton.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://paypal.me/matao1984?country.x=US&locale.x=en_US")
+            )
+        )
 
     def _on_dock_toplevel_changed(self, topLevel):
         """Handle dock widget detach/reattach to maintain main window size"""
@@ -500,20 +504,18 @@ border: 2px solid #FF8C00;
         # Block signals to prevent triggering toggle_dock
         self.output_toggle.blockSignals(True)
         self.output_toggle.setChecked(visible)
-        self.output_toggle.blockSignals(False)       
+        self.output_toggle.blockSignals(False)
         # Resize main window according to visibility
         if visible:
             QTimer.singleShot(10, self.restore_dock)
         else:
             QTimer.singleShot(10, lambda: self.resize(*self.size_without_dock))
 
-                
-
     def restore_dock(self):
         """Helper function to reattach the dock if needed"""
         self.resize(*self.size_with_dock)
         self.resizeDocks([self.outputDock], [350], Qt.Vertical)
-        
+
     def toggle_dock(self, checked):
         """Show or hide the output dock based on checkbox state"""
         if checked:
@@ -526,21 +528,19 @@ border: 2px solid #FF8C00;
             self.outputDock.setVisible(False)
             self.resize(*self.size_without_dock)
 
-     
-        
     def print_info(self):
-        html_text = '''
+        html_text = """
         <div style="font-family: Arial">
             <h3 style="color: #2196F3; text-align: center;">TemCompanion</h3>
 
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center;">
                 <p style="color: white; margin: 0; font-size: 13px;">
                     <b>💛 Enjoying TemCompanion?</b><br>
-                    <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US" 
+                    <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US"
                     style="color: #FFD700; text-decoration: none; font-weight: bold;">
                     ☕ Buy me a coffee
-                    </a> 
+                    </a>
                     to support ongoing development!
                 </p>
             </div>
@@ -554,12 +554,12 @@ border: 2px solid #FF8C00;
                 If TemCompanion helped your TEM image analysis in a publication, please cite:
             </p>
             <p style="font-size: 11px; margin-left: 20px">
-                Tao Ma, <i>TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis</i>, 
-                <b>SoftwareX</b>, 2025, <b>31</b>, 102212. 
+                Tao Ma, <i>TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis</i>,
+                <b>SoftwareX</b>, 2025, <b>31</b>, 102212.
                 <a href="https://doi.org/10.1016/j.softx.2025.102212">doi:10.1016/j.softx.2025.102212</a>
             </p>
             <p style="font-size: 12px;">
-                Address your questions and suggestions to 
+                Address your questions and suggestions to
                 <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a>
             </p>
             <p style="font-size: 12px;">
@@ -569,120 +569,110 @@ border: 2px solid #FF8C00;
                 Version: <b>{ver}</b> | Released: <b>{rdate}</b>
             </p>
         </div>
-        '''.format(ver=self.ver, rdate=self.rdate)
-        
+        """.format(ver=self.ver, rdate=self.rdate)
+
         self.outputBox.append(html_text)
         self.outputBox.append("")
 
-        
-#===================================================================
-# Open file button connected to OpenFile
+    # ===================================================================
+    # Open file button connected to OpenFile
 
     def openfile(self):
         # Use last selected filter as the default; update it after user picks
         self.file, self.file_type = QFileDialog.getOpenFileName(
-            self,
-            "Select a TEM image file:",
-            "",
-            self._filters,
-            self.last_open_filter
+            self, "Select a TEM image file:", "", self._filters, self.last_open_filter
         )
         if self.file:
             # Update session-only selected filter
             if self.file_type:
                 self.last_open_filter = self.file_type
-                self.settings['lastOpenFilter'] = self.last_open_filter
+                self.settings["lastOpenFilter"] = self.last_open_filter
             self.preview()
-           
-        else: 
-            self.file = None # Canceled, set back to None
 
+        else:
+            self.file = None  # Canceled, set back to None
 
-#======================================================================
+    # ======================================================================
     def open_4dstem(self):
         self.file, self.file_type = QFileDialog.getOpenFileName(
             self,
             "Select a 4D-STEM data file:",
             "",
             self._filters_4dstem,
-            self.last_open_4dstem_filter
-        )   
-        
+            self.last_open_4dstem_filter,
+        )
+
         if self.file:
             if self.file_type:
                 self.last_open_4dstem_filter = self.file_type
-                self.settings['last4DSTEMOpenFilter'] = self.last_open_4dstem_filter
+                self.settings["last4DSTEMOpenFilter"] = self.last_open_4dstem_filter
             self.preview_4dstem()
         else:
             self.file = None
 
-                
-
-
-#======================================================================
+    # ======================================================================
     def batch_convert(self):
         # Open a new window for batch conversion
         self.converter = BatchConverter(parent=self)
         self.converter.show()
-            
-        
-#=====================================================================        
+
+    # =====================================================================
     def show_about(self):
         msg = QMessageBox()
-        msg.setText("TemCompanion: a comprehensive package for TEM data processing and analysis."\
-                    "<br>"\
-                    "This app was designed by Dr. Tao Ma"\
-                    "<br>"\
-                    "Version: {}  Released: {}"\
-                    "<br>"\
-                    "<div style='padding: 10px; border-radius: 5px;'>"
-                    "<b>🌟 TemCompanion is FREE and open-source!</b><br>"
-                    "If this app saved you hours of work, consider "
-                    "<a href='https://paypal.me/matao1984?country.x=US&locale.x=en_US'>buying me a coffee</a> "
-                    "to support future updates and new features!"
-                    "</div>"
-                    "<br>"
-
-                    "If TemCompanion helped your TEM image analysis in a publication, please cite:"\
-                    "<br>"
-                    "Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, "\
-                    "SoftwareX, 2025, 31, 102212. "\
-                    "<a href=\"https://doi.org/10.1016/j.softx.2025.102212\">doi:10.1016/j.softx.2025.102212</a>"
-                    "<br>"\
-                    "Get more information and source code from <a href=\"https://github.com/matao1984/temcompanion\">here</a>."
-                    "<br>"\
-                    "Contact: <a href=\"mailto:matao1984@gmail.com\">matao1984@gmail.com</a>".format(self.ver, self.rdate))
+        msg.setText(
+            "TemCompanion: a comprehensive package for TEM data processing and analysis."
+            "<br>"
+            "This app was designed by Dr. Tao Ma"
+            "<br>"
+            "Version: {}  Released: {}"
+            "<br>"
+            "<div style='padding: 10px; border-radius: 5px;'>"
+            "<b>🌟 TemCompanion is FREE and open-source!</b><br>"
+            "If this app saved you hours of work, consider "
+            "<a href='https://paypal.me/matao1984?country.x=US&locale.x=en_US'>buying me a coffee</a> "
+            "to support future updates and new features!"
+            "</div>"
+            "<br>"
+            "If TemCompanion helped your TEM image analysis in a publication, please cite:"
+            "<br>"
+            "Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, "
+            "SoftwareX, 2025, 31, 102212. "
+            '<a href="https://doi.org/10.1016/j.softx.2025.102212">doi:10.1016/j.softx.2025.102212</a>'
+            "<br>"
+            'Get more information and source code from <a href="https://github.com/matao1984/temcompanion">here</a>.'
+            "<br>"
+            'Contact: <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a>'.format(
+                self.ver, self.rdate
+            )
+        )
         msg.setWindowTitle(f"{self.ver}: About")
 
         msg.exec()
-        
 
-#=====================================================================        
+    # =====================================================================
     def show_user_guide(self):
         """Display the User Guide in a dialog with markdown rendering"""
         dialog = QDialog(self)
         dialog.setWindowTitle(f"{self.ver}: User Guide")
         dialog.resize(950, 750)
-        
+
         layout = QVBoxLayout()
         browser = QTextBrowser()
         browser.setOpenExternalLinks(True)  # Enable clickable links
-        
+
         # Find the User Guide markdown file
         # Try to locate it relative to this file
         guide_path = os.path.join(self.wkdir, "docs", "User Guide.md")
 
         if os.path.exists(guide_path):
             try:
-                with open(guide_path, 'r', encoding='utf-8') as f:
+                with open(guide_path, "r", encoding="utf-8") as f:
                     md_text = f.read()
-                    
+
                 # Try to convert markdown to HTML for better rendering
                 try:
-                    
                     html = markdown.markdown(
-                        md_text, 
-                        extensions=['extra', 'codehilite', 'tables', 'toc']
+                        md_text, extensions=["extra", "codehilite", "tables", "toc"]
                     )
                     # Add some basic CSS styling
                     styled_html = f"""
@@ -718,44 +708,40 @@ border: 2px solid #FF8C00;
                 "<p>Please visit <a href='https://github.com/matao1984/temcompanion'>TemCompanion GitHub</a> for documentation.</p>"
                 "<p>Or contact: <a href='mailto:matao1984@gmail.com'>matao1984@gmail.com</a></p>"
             )
-        
+
         layout.addWidget(browser)
         dialog.setLayout(layout)
         dialog.exec_()
-        
-#=====================================================================
-        
+
+    # =====================================================================
+
     def donate(self):
         msg = QMessageBox()
-        msg.setText("If you like this app, show your appreciation and <a href=\"https://paypal.me/matao1984?country.x=US&locale.x=en_US\">buy me a coffee!</a>"\
-                    "<br>"\
-                    "Your support is my motivation!")
+        msg.setText(
+            'If you like this app, show your appreciation and <a href="https://paypal.me/matao1984?country.x=US&locale.x=en_US">buy me a coffee!</a>'
+            "<br>"
+            "Your support is my motivation!"
+        )
         msg.setWindowTitle(self.ver + ": Buy me a COFFEE!")
 
         msg.exec()
 
-
-
-        
-# ====================== Open file for preview ===============================
+    # ====================== Open file for preview ===============================
     def preview(self):
-        
         try:
             f = load_file(self.file, self.file_type)
-            if f == None:
+            if f is None:
                 return
             f_name = getFileNameType(self.file)[0]
-            
-            
-        
+
             for i in range(len(f)):
                 img = f[i]
 
-                if 'title' in img['metadata']['General']:
-                    title = img['metadata']['General']['title']
+                if "title" in img["metadata"]["General"]:
+                    title = img["metadata"]["General"]["title"]
                 else:
-                    title = ''
-                 
+                    title = ""
+
                 try:
                     preview_name = f_name + ": " + title
                     preview_im = PlotCanvas(img, parent=self)
@@ -763,23 +749,23 @@ border: 2px solid #FF8C00;
                     preview_im.setWindowTitle(preview_name)
                     preview_im.canvas.canvas_name = preview_name
                     self.preview_dict[preview_name] = preview_im
-                    
-                    self.preview_dict[preview_name].show() 
-                    self.preview_dict[preview_name].position_window('center')
-                    
-                    print(f'Opened successfully: {f_name + ": " + title}.')
+
+                    self.preview_dict[preview_name].show()
+                    self.preview_dict[preview_name].position_window("center")
+
+                    print(f"Opened successfully: {f_name + ': ' + title}.")
                 except Exception as e:
-                    print(f'Opened unsuccessful: {f_name + ": " + title}. Error: {e}')
+                    print(f"Opened unsuccessful: {f_name + ': ' + title}. Error: {e}")
         except Exception as e:
-            print(f'Cannot open {self.file}, make sure it is not in use or corrupted! Error: {e}')
+            print(
+                f"Cannot open {self.file}, make sure it is not in use or corrupted! Error: {e}"
+            )
             return
 
-        
-        finally:    
+        finally:
             f = None
 
-
-#=============================== Open 4DSTEM dataset ======================================
+    # =============================== Open 4DSTEM dataset ======================================
     def preview_4dstem(self, lazy=False):
         f_name = getFileNameType(self.file)[0]
         try:
@@ -787,46 +773,65 @@ border: 2px solid #FF8C00;
             # Check if the data is 4D
             if f["data"].ndim != 4:
                 if f["data"].ndim == 3:
-                # Open a dialog to prompt to resize
+                    # Open a dialog to prompt to resize
                     original_shape = f["data"].shape
                     dialog = Resize4DSTEMDialog(parent=self)
                     if dialog.exec_() == QDialog.Accepted:
                         new_x = dialog.new_x
                         new_y = dialog.new_y
                         if new_x * new_y != original_shape[0]:
-                            QMessageBox.warning(self, "Resize Error", "Cannot resize to the specified dimensions. Please try again.")
+                            QMessageBox.warning(
+                                self,
+                                "Resize Error",
+                                "Cannot resize to the specified dimensions. Please try again.",
+                            )
                             return
-                        f["data"] = f["data"].reshape((new_y, new_x, original_shape[1], original_shape[2]))
+                        f["data"] = f["data"].reshape(
+                            (new_y, new_x, original_shape[1], original_shape[2])
+                        )
                         # Update the axes as [scan_y, scan_x, height, width]
                         new_axes = [None] * 4
-                        for axis in f['axes']:
-                            if axis['index_in_array'] == 0 and axis['size'] == original_shape[0]:
+                        for axis in f["axes"]:
+                            if (
+                                axis["index_in_array"] == 0
+                                and axis["size"] == original_shape[0]
+                            ):
                                 new_x_axis = axis.copy()
-                                new_x_axis['size'] = new_x
-                                new_x_axis['index_in_array'] = 1
-                                new_x_axis['name'] = 'scan_x'
+                                new_x_axis["size"] = new_x
+                                new_x_axis["index_in_array"] = 1
+                                new_x_axis["name"] = "scan_x"
                                 new_y_axis = axis.copy()
-                                new_y_axis['size'] = new_y
-                                new_y_axis['index_in_array'] = 0
-                                new_y_axis['name'] = 'scan_y'
+                                new_y_axis["size"] = new_y
+                                new_y_axis["index_in_array"] = 0
+                                new_y_axis["name"] = "scan_y"
                                 new_axes[1] = new_x_axis
                                 new_axes[0] = new_y_axis
-                                
-                            elif axis['index_in_array'] == 1 and axis['size'] == original_shape[1]:
+
+                            elif (
+                                axis["index_in_array"] == 1
+                                and axis["size"] == original_shape[1]
+                            ):
                                 # Height of diffraction pattern, keep unchanged
                                 new_axes[2] = axis.copy()
-                                new_axes[2]['index_in_array'] = 2
-                            elif axis['index_in_array'] == 2 and axis['size'] == original_shape[2]:
+                                new_axes[2]["index_in_array"] = 2
+                            elif (
+                                axis["index_in_array"] == 2
+                                and axis["size"] == original_shape[2]
+                            ):
                                 # Width of diffraction pattern, keep unchanged
                                 new_axes[3] = axis.copy()
-                                new_axes[3]['index_in_array'] = 3
+                                new_axes[3]["index_in_array"] = 3
 
-                        f['axes'] = new_axes
+                        f["axes"] = new_axes
 
                     else:
                         return
                 else:
-                    QMessageBox.warning(self, "Data Error", "The selected file does not contain 4D data.")
+                    QMessageBox.warning(
+                        self,
+                        "Data Error",
+                        "The selected file does not contain 4D data.",
+                    )
                     return
 
             preview_name = f_name + ": 4D-STEM"
@@ -841,17 +846,18 @@ border: 2px solid #FF8C00;
 
             preview_im.show()
 
-            print(f'Opened successfully: {f_name}.')
-            print(f'Real space size: {f["data"].shape[1]} x {f["data"].shape[0]}.')
-            print(f'Diffraction space size: {f["data"].shape[3]} x {f["data"].shape[2]}.')
+            print(f"Opened successfully: {f_name}.")
+            print(f"Real space size: {f['data'].shape[1]} x {f['data'].shape[0]}.")
+            print(
+                f"Diffraction space size: {f['data'].shape[3]} x {f['data'].shape[2]}."
+            )
         except Exception as e:
-                print(f'Opened unsuccessful: {f_name}. Error: {e}')
+            print(f"Opened unsuccessful: {f_name}. Error: {e}")
         finally:
             f = None
 
 
-
-#===================Redirect output to the main window===============================
+# ===================Redirect output to the main window===============================
 # Custom stream class to capture output
 class EmittingStream(QObject):
     text_written = pyqtSignal(str)  # Signal to emit text
@@ -862,8 +868,10 @@ class EmittingStream(QObject):
     def flush(self):
         pass  # Required for compatibility with sys.stdout
 
+
 class TeeStream:
     """Write to both the original stream and the EmittingStream."""
+
     def __init__(self, emitter: EmittingStream, orig):
         self.emitter = emitter
         self.orig = orig
@@ -882,22 +890,12 @@ class TeeStream:
         try:
             self.orig.flush()
         except Exception:
-            pass    
-        
-        
-         
+            pass
 
 
-
-                   
-#====Application entry==================================
+# ====Application entry==================================
 # Splash screen for windows app
 # import pyi_splash
-
-
-
-
-
 
 
 # Update the text on the splash screen
@@ -909,10 +907,11 @@ class TeeStream:
 # this function is called or the Python program is terminated.
 # pyi_splash.close()
 
-def start_gui(config):    
+
+def start_gui(config):
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
-    wkdir = config['working_directory']
+    wkdir = config["working_directory"]
     app.setWindowIcon(QIcon(os.path.join(wkdir, "icons/icon.ico")))
 
     temcom = UI_TemCompanion(config)
@@ -920,10 +919,3 @@ def start_gui(config):
     temcom.raise_()
     temcom.activateWindow()
     sys.exit(app.exec_())
-    
-
-
-
-    
-
-    

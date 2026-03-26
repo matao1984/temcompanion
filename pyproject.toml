@@ -14,10 +14,10 @@ dependencies = [
     'rosettasciio[all]>=0.12.0',
     'pyqt5>=5.15',
     'pyqtgraph>=0.14.0',
-    'scikit-image>=0.25', 
-    'scipy>=1.16', 
-    'numpy>=1.25,<2', 
-    'numba>=0.62', 
+    'scikit-image>=0.25',
+    'scipy>=1.16',
+    'numpy>=2,<2.4',
+    'numba>=0.62',
     'pillow>=12',
     'markdown>=3.3'
 ]
@@ -34,8 +34,11 @@ include-package-data = true
 [tool.setuptools.package-data]
 "TemCompanion" = [
     "icons/*.png",
-    "icons/*.ico", 
+    "icons/*.ico",
     "colormap.pkl",
     "default_config.json",
     "docs/*.md"
 ]
+
+[tool.ruff.lint]
+ignore = ["F841"]  # F841 = unused variable

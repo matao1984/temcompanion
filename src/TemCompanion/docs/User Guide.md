@@ -77,11 +77,11 @@ Written in pure python, TemCompanion can also be installed through python 3 envi
 The ``pip`` should prepare all the dependencies and install the tool automatically.
 
 ## 2. Usage
-The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the image data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported image files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through the menu bar, with some frequently used functions available on the toolbar. Each preview window can be individually processed, saved, and converted to the common image formats. 
+The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the image data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported image files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through the menu bar, with some frequently used functions available on the toolbar. Each preview window can be individually processed, saved, and converted to the common image formats.
 
-From version 2.0.0 TemCompanion supports 4D-STEM data. The 4D dataset can be loaded by clicking "Open 4D-STEM" button. Note that drag-and-drop function treats data as image type signals and does not work for the 4D datasets. 
+From version 2.0.0 TemCompanion supports 4D-STEM data. The 4D dataset can be loaded by clicking "Open 4D-STEM" button. Note that drag-and-drop function treats data as image type signals and does not work for the 4D datasets.
 
-Also available is a batch converter, which can be called by clicking the "Batch Convert" button. A separate window will pop up which works as the old ``EMD Converter`` does. The batch converter also supports drag-and-drop actions and the loaded data and be a mix of different supported formats. 
+Also available is a batch converter, which can be called by clicking the "Batch Convert" button. A separate window will pop up which works as the old ``EMD Converter`` does. The batch converter also supports drag-and-drop actions and the loaded data and be a mix of different supported formats.
 
 ## 3. Formats
 ### 3.1 Input formats
@@ -104,12 +104,12 @@ Supported 4D-STEM data type includes:
   - Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
   - py4DSTEM (*.h5, *. hdf5) (Experimental)
 
-- New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
+- New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html).
 
 
 ### 3.2 Output formats
 - TIFF format
-When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ. 
+When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ.
 
 
 - 8-bit grayscale images (TIFF, PNG, JPG)
@@ -179,13 +179,13 @@ Measure the angle from 3 points on the image. The angle measurement ROI can be d
 
 - Measure diffraction/FFT:
 
-This function allows the quick measurement of diffraction/FFT spots by dragging the circle ROI. The peak position will be fitted with a center-of-mass (CoM) function within the circle. Then its calibrated distance to the center will be calculated and converted back to the real space distance. The diameter of the circle can be changed by dragging the resize handle. 
+This function allows the quick measurement of diffraction/FFT spots by dragging the circle ROI. The peak position will be fitted with a center-of-mass (CoM) function within the circle. Then its calibrated distance to the center will be calculated and converted back to the real space distance. The diameter of the circle can be changed by dragging the resize handle.
 
 To measure the diffraction patterns correctly, the center of the diffraction patterns needs to be defined. This can be done by clicking the "Define Center" or "Define Center with Two Points" button. The former allows to drag the circle ROI on the center spot of the diffraction pattern and then fit a CoM to define the center. The latter accepts two symmetric spots selected by the circle ROIs. The mid point of the two spots will be defined as the center.
 
 - Line profile:
 
-Draw a line ROI on the image, and the intensity profile along the line will be extracted and plotted. The line position and length can be changed by dragging the end points. The start point and the end point are in yellow and blue, respectively. The width of the line can be changed by dragging the side handle, or clicking the "+" or "-" keys. 
+Draw a line ROI on the image, and the intensity profile along the line will be extracted and plotted. The line position and length can be changed by dragging the end points. The start point and the end point are in yellow and blue, respectively. The width of the line can be changed by dragging the side handle, or clicking the "+" or "-" keys.
 
 - Radial integration:
 
@@ -203,7 +203,7 @@ __Standard GPA__
 
   - _Mask radius_: Mask size used to extract the iFFT from the selected g vectors. The masks should be big enough to avoid unrealistic results. However, too big masks can also lead to unrealistic details in the strain maps.
 
-  - _Edge smooth_: Defines the portion of the outside edge area that will be smoothed using a cosine function to avoid edge effect in iFFT 
+  - _Edge smooth_: Defines the portion of the outside edge area that will be smoothed using a cosine function to avoid edge effect in iFFT
 
 __Adaptive GPA__
 
@@ -219,7 +219,7 @@ Reference:
 
 [1] M.J. Hÿtch, E. Snoeck, R. Kilaas. Ultramicroscopy, 74 (3) (1998), 131-146, [10.1016/S0304-3991(98)00035-7](hppts://doi.org/10.1016/S0304-3991(98)00035-7)
 
-[2] T.A. de Jong, T. Benschop, X. Chen, E.E. Krasovskii, M.J.A. de Dood, R.M. Tromp, et al. 
+[2] T.A. de Jong, T. Benschop, X. Chen, E.E. Krasovskii, M.J.A. de Dood, R.M. Tromp, et al.
 Nat Commun, 13 (1) (2022), 70, [10.1038/s41467-021-27646-1](https://doi.org/10.1038/s41467-021-27646-1)
 
 [3] K. Qian, Opt Lasers Eng, 45 (2) (2007), 304-317, [10.1016/j.optlaseng.2005.10.012](https://doi.org/10.1016/j.optlaseng.2005.10.012)
@@ -228,7 +228,7 @@ Nat Commun, 13 (1) (2022), 70, [10.1038/s41467-021-27646-1](https://doi.org/10.1
 
 - Reconstruct DPC
 
-The differential phase contrast (DPC) STEM technique, utilizing a segmented detector, provides a quick and accurate method for retrieving the phase shift of the exit electron wave caused by a thin specimen. TemCompanion can reconstruct iDPC and dDPC images from either 4 quadrant images or 2 images of DPCx (A - C) and DPCy (B - D) using the method described by I. Lazić [1]. In practice, the DPC signals often have an offset from the image coordinates. This rotation angle is necessary to align the DPC components with the image coordinates for correct reconstruction. This parameter is usually pre-calibrated by the TEM maker. If the rotation angle is unknown, TemCompanion offers two functions to estimate it: minimizing curl or maximizing contrast. The minimum curl method identifies the rotation angle by minimizing the curl of the DPC vector field, under the assumption that the field is conservative and the curl is always zero. The maximum contrast method computes iDPC images over a range of rotation angles (0–360 °) and selects the angle that provides maximum contrast. Note that image contrast inverts if the DPC components are off by 180 °, so the maximum contrast function provides two possible rotation angle estimates. In addition, applying a high-pass filter on the reconstructed iDPC images is usually necessary to supress the unrealisic background variation. By default the high-pass cutoff is set to 0.02, meaning the 2% of the center portion in the Fourier space will be filtered out in the reconstructed iDPC images. 
+The differential phase contrast (DPC) STEM technique, utilizing a segmented detector, provides a quick and accurate method for retrieving the phase shift of the exit electron wave caused by a thin specimen. TemCompanion can reconstruct iDPC and dDPC images from either 4 quadrant images or 2 images of DPCx (A - C) and DPCy (B - D) using the method described by I. Lazić [1]. In practice, the DPC signals often have an offset from the image coordinates. This rotation angle is necessary to align the DPC components with the image coordinates for correct reconstruction. This parameter is usually pre-calibrated by the TEM maker. If the rotation angle is unknown, TemCompanion offers two functions to estimate it: minimizing curl or maximizing contrast. The minimum curl method identifies the rotation angle by minimizing the curl of the DPC vector field, under the assumption that the field is conservative and the curl is always zero. The maximum contrast method computes iDPC images over a range of rotation angles (0–360 °) and selects the angle that provides maximum contrast. Note that image contrast inverts if the DPC components are off by 180 °, so the maximum contrast function provides two possible rotation angle estimates. In addition, applying a high-pass filter on the reconstructed iDPC images is usually necessary to supress the unrealisic background variation. By default the high-pass cutoff is set to 0.02, meaning the 2% of the center portion in the Fourier space will be filtered out in the reconstructed iDPC images.
 
 Reconstruct DPC function also accepts image stacks. In this case, the reconstruction is performed for each frame. An advanced use case is to combine it with the stack alignment and integration function. This allows for the creation of fast-scanned, drift-corrected iDPC and dDPC images, which is currently not available in Velox.
 
@@ -313,7 +313,7 @@ Reorder the frames of the image stack by dragging the frames in a separate dialo
 
 A reliable stack alignment method using the phase cross-correlation algorithm with sub-pixel precision. This is commonly adopted for aligning (S)TEM images. For periodic images, e.g., HR(S)TEM images with lattice, a Hann window should be applied to the images prior to compute the phase cross-correlation to suppress the periodic features. Users can also decide whether to crop the aligned frames to the common area with an option of cropping them to the biggest square.
 
-The images can be normalized before running the alignment. This can be set by checking the "Normalize intensities before alignment" option. 
+The images can be normalized before running the alignment. This can be set by checking the "Normalize intensities before alignment" option.
 
 The "Use phase correlation" option determines the normalization factor for the correlation calculation. If enabled, the correlation will be normalized by the magnitude of $FFT(ref) {\cdot}FFT(moving)^*$. Otherwise, no normalization is performed. Using phase correlation can help to reduce the impact of non-uniform contrast changes.
 
@@ -364,7 +364,7 @@ This menu contains "Set Scale", "Measure", "Measure Angle", and "Line Profile" f
 
 - Detector:
 
-  - Point: A draggable point ROI on the virtual image that specifies which scan position the diffraction window displays. 
+  - Point: A draggable point ROI on the virtual image that specifies which scan position the diffraction window displays.
   - Rectangle: A draggable and resizable rectangle that averages the diffraction patterns in the selection and display the averaged pattern in the diffraction window.
 
   Note that the position of the detector ROI can be adjusted by the arrow keys. Both the detector ROI can be deleted by selecting the "Delete ROI" in the context menu by right-clicking on the detector ROI.
@@ -383,16 +383,16 @@ Most of the functions are the same as those in the virtual image window, expect 
 
 - Point: A draggable point ROI on the diffraction pattern from which the virtual image is calculated. As the point detector is dragged, the virtual image is updated lively.
 - Circle: A draggable and resizable circular detector on the diffraction pattern from which a virtual bright/dark-field image is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. It is possible to add more circle detectors from the context menu by right-clicking on the circle.
-- Annular: A draggable and resizable annular detector on the diffraction pattern from which an annular detector image, e.g., ADF, is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. 
-- CoM: A draggable and resizable circular detector on the diffraction pattern from which the center of mass is calculated. If the CoM is selected, a complex image formed by $CoM_x + iCoM_y$ will be displayed in the virtual image window in the "phase-magnitude" mode, in which the color represents the angle of the CoM, and the brightness of the color represents the magnitude of the CoM. For iCoM or dCoM, the integrated or differentiated CoM image will be calculated. Due to the intensive computation, the virtual image is not updated until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. 
+- Annular: A draggable and resizable annular detector on the diffraction pattern from which an annular detector image, e.g., ADF, is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked.
+- CoM: A draggable and resizable circular detector on the diffraction pattern from which the center of mass is calculated. If the CoM is selected, a complex image formed by $CoM_x + iCoM_y$ will be displayed in the virtual image window in the "phase-magnitude" mode, in which the color represents the angle of the CoM, and the brightness of the color represents the magnitude of the CoM. For iCoM or dCoM, the integrated or differentiated CoM image will be calculated. Due to the intensive computation, the virtual image is not updated until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked.
 - DPC: Same as CoM, expect that the calculation is performed from an annular detector.
 
 
 ## 5. Batch Convert
 
-The Batch Convert module can be used to convert multiple images into "tiff + png", "tiff", "png", and "jpg" formats. The tiff format contains 16-bit signed integers with the pixel calibration embedded, and can be imported into other image processing software like ImageJ and Gatan DigitalMicrograph, which can read the pixel calibration. This is the most convenient way to convert emd files into GMS I have found so far. 
+The Batch Convert module can be used to convert multiple images into "tiff + png", "tiff", "png", and "jpg" formats. The tiff format contains 16-bit signed integers with the pixel calibration embedded, and can be imported into other image processing software like ImageJ and Gatan DigitalMicrograph, which can read the pixel calibration. This is the most convenient way to convert emd files into GMS I have found so far.
 
-All other formats are lossy conversion, which convert the original data into unsigned 8-bit int. These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be added if the "Scale bar" option is checked. 
+All other formats are lossy conversion, which convert the original data into unsigned 8-bit int. These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be added if the "Scale bar" option is checked.
 
 The image metadata can also be exported along with the conversion, if the "Export metadata" option is checked. The exported metadata is saved in json format that is very human-readable and can be open by most of the text editors.
 
@@ -538,7 +538,7 @@ author = {Tao Ma}
 - Update the filters.gaussian_lowpass function to take a hp_cutoff_ratio so it can work as low-pass, high-pass, or band-pass.
 - Modify the DPC reconstruction functions to use this filter for high pass. The original gaussian_high_pass has been dropped.
 - Also update DPC reconstruction to take non square images
-- Added a default_config.json file for default parameters. 
+- Added a default_config.json file for default parameters.
 - Multiprocess support in batch conversion that significantly speeds up the conversion.
 - Added value validation for most of input parameters to prevent crashes.
 - Added angle measurement tool.
@@ -616,7 +616,7 @@ author = {Tao Ma}
 - A mini colorbar can be added to the top right corner
 - Minor bug fixes...
 
-  
+
 ### v1.2
 - New feature: Measure diffraction pattern
 - New feature: Simple math of add, subtract, multiply, divide, inverse on two images or stacks
@@ -630,7 +630,7 @@ author = {Tao Ma}
 - Improved mode switching between measure, line profile, etc.
 - Manual input vmin vmax together with the slider bar
 - Fixed some tif images cannot be imported with missing modules
-  
+
 ### v1.0
 - Significant update with redesigned UI. Now it is separated from the old EMD-converter.
 - Batch converter function calls the old Emd-converter and runs batch conversion.
@@ -672,7 +672,7 @@ author = {Tao Ma}
 
 
 ### v0.2
-- New feature: Extract line profile from an image. 
+- New feature: Extract line profile from an image.
   - The line width can be defined.
   - Customize the plot apperance, e.g., color, xlim, ylim.
   - Measure the line profile both horizontally and vertically with mouse drag

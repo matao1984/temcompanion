@@ -3346,3 +3346,32 @@ class Resize4DSTEMDialog(QDialog):
             return
 
         self.accept()
+
+
+# ===========================Remove NaN values dialog========================
+class RemoveNaNDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Remove bad pixels")
+        layout = QVBoxLayout()
+
+        self.to_average_radio = QRadioButton("Replace with local average")
+        self.to_average_radio.setChecked(True)
+        layout.addWidget(self.to_average_radio)
+
+        self.to_zero_radio = QRadioButton("Replace with zeros")
+        layout.addWidget(self.to_zero_radio)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+    def handle_ok(self):
+        if self.to_zero_radio.isChecked():
+            self.method = "zero"
+        else:
+            self.method = "average"
+        self.accept()

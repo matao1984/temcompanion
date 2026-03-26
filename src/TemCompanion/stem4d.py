@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QAction, QToolBar, QFileDialog
+from PyQt5.QtWidgets import QAction, QToolBar, QFileDialog, QDialog
 from PyQt5.QtCore import Qt, QRectF, QSize, QPointF, pyqtSignal
 from PyQt5.QtGui import QIcon
 
@@ -13,6 +13,7 @@ from .canvas import PlotCanvas, Worker
 from .GPA import create_mask
 from .DPC import reconstruct_iDPC, reconstruct_dDPC
 from .functions import getDirectory, getFileNameType, save_as_tif16, save_with_pil
+from .UI_elements import RemoveNaNDialog
 
 
 class DiffractionCanvas(PlotCanvas):
@@ -92,6 +93,9 @@ class DiffractionCanvas(PlotCanvas):
         flipud_action = QAction("Flip vertical", self)
         flipud_action.triggered.connect(self.flip_vertical)
         edit_menu.addAction(flipud_action)
+        remove_nan_action = QAction("Remove bad pixels", self)
+        remove_nan_action.triggered.connect(self.remove_nan)
+        edit_menu.addAction(remove_nan_action)
 
         # Analyze menu and actions
         analyze_menu = menubar.addMenu("&Analyze")
@@ -363,6 +367,9 @@ class DiffractionCanvas(PlotCanvas):
                     # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
                     exporter.export(self.file_path)
 
+    def remove_nan(self):
+        self.master_handle.remove_nan()  # Call the method to remove NaN values from the diffraction image
+
     def point_detector(self):
         self.clean_up(
             selector=True, buttons=True
@@ -550,6 +557,10 @@ class VirtualImageCanvas(PlotCanvas):
         flipud_action = QAction("Flip vertical", self)
         flipud_action.triggered.connect(self.flip_vertical)
         edit_menu.addAction(flipud_action)
+
+        remove_nan_action = QAction("Remove bad pixels", self)
+        remove_nan_action.triggered.connect(self.remove_nan)
+        edit_menu.addAction(remove_nan_action)
 
         # Analyze menu and actions
         analyze_menu = menubar.addMenu("&Analyze")
@@ -786,6 +797,9 @@ class VirtualImageCanvas(PlotCanvas):
                     # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
                     exporter.export(self.file_path)
 
+    def remove_nan(self):
+        self.master_handle.remove_nan()  # Call the method to remove NaN values from the virtual image
+
     def point_detector(self):
         self.clean_up(
             selector=True
@@ -881,6 +895,33 @@ class PlotCanvas4D:
         self.R_canvas.position_window("center left")
         self.Q_canvas.show()
         self.Q_canvas.position_window("center right")
+
+    def remove_nan(self):
+        # Remove NaN values from the 4D image data and update both canvases
+        dialog = RemoveNaNDialog(self.R_canvas)
+        if dialog.exec_() == QDialog.Accepted:
+            method = dialog.method
+            # Find bad frames on the virtual image. NaN diffraction patterns will lead to NaN values in the virtual image.
+            virtual_img = self.R_canvas.canvas.current_img
+            nan_mask = np.isnan(virtual_img)
+            nan_indices = np.argwhere(nan_mask)
+            for idx in nan_indices:
+                y, x = idx
+                # Define a local neighborhood around the NaN pixel
+                y_min = max(0, y - 1)
+                y_max = min(self.R_size[0], y + 1)
+                x_min = max(0, x - 1)
+                x_max = min(self.R_size[1], x + 1)
+                # Find these neighboring patterns and average
+                neighbor_patterns = self.img_data[y_min:y_max, x_min:x_max, :, :]
+                neighbor_patterns = neighbor_patterns[~np.isnan(neighbor_patterns)]
+                if neighbor_patterns.size > 0:
+                    if method == "average":
+                        self.img_data[y, x, :, :] = np.mean(neighbor_patterns, axis=0)
+                    elif method == "zero":
+                        self.img_data[y, x, :, :] = 0
+            self.update_point_detector_diffraction()  # Update diffraction canvas with new data
+            self.update_point_detector_virtualimg()  # Update virtual image canvas with new data
 
     def remove_roi_Q(self, roi):
         if roi in self.Q_canvas.canvas.selector:

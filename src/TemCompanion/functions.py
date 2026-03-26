@@ -718,22 +718,6 @@ def load_4dstem(file, file_type, lazy=False):
     # EMPAD file
     if file_type == "EMPAD Files (*.xml)":
         f = empad_reader(file, lazy=lazy)[0]
-        # # There is a problem parsing the shape, need to swap the axes 0 and 1
-        # shape = f['data'].shape
-        # f['data'] = f['data'].reshape((shape[1], shape[0], shape[2], shape[3]))
-        # # Also swap the corresponding axes in the axes metadata
-        # axes = f['axes']
-        # axes[0], axes[1] = axes[1], axes[0]
-        # axes[0]['index_in_array'] = 0
-        # axes[1]['index_in_array'] = 1
-        # # Try to parse the scan size from the xml
-        # scan_values = get_empad_xml_scan_values(file)
-        # pixel_size = parse_empad_scan_size(scan_values)
-        # if pixel_size is not None:
-        #     axes[0]['scale'] = pixel_size
-        #     axes[0]['units'] = 'nm'
-        #     axes[1]['scale'] = pixel_size
-        #     axes[1]['units'] = 'nm'
 
     elif file_type == "Pickle Dictionary Files (*.pkl)":
         with open(file, "rb") as file:
@@ -759,8 +743,8 @@ def load_4dstem(file, file_type, lazy=False):
 
     if f_valid:
         # Some data contains NaN. Replace with zero
-        data = f_valid["data"]
-        np.nan_to_num(data, copy=False)
+        # data = f_valid["data"]
+        # np.nan_to_num(data, copy=False)
         try:
             f_valid["original_metadata"] = f["original_metadata"]
             # ['original_metadata'] is optional

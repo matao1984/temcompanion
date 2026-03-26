@@ -532,7 +532,7 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 
 <!-- CHANGELOG_SNIPPET_START -->
 
-## [2.0.0] - 2026-03-26
+## [2.0.0]
 - Added support for 4D-STEM data.
 - Supported formats:
   - EMPAD (*.xml + *.raw)
@@ -673,13 +673,13 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 - Added scalebar customization (on/off, color, location, etc.).
 - Added copy image directly to clipboard for pasting into PowerPoint and similar apps.
 
-### v0.4
+## [v0.4]
 - New feature: Live FFT with resizable window
 - Added axes viewer to view image size, scale, etc.
 - Hold shift key to crop a square
 - Import image formats like tif, png, jpg, etc, both rgb and grayscale
 
-### v0.3
+## [v0.3]
 - New feature: "Stack" menu for image stacks
   - Crop stack
   - Rotate stack
@@ -691,8 +691,7 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 - Added two low-pass filters: Butterworth and Gaussian
 - Remove filter menu on FFT images
 
-
-### v0.2
+## [v0.2]
 - New feature: Extract line profile from an image.
   - The line width can be defined.
   - Customize the plot apperance, e.g., color, xlim, ylim.
@@ -704,7 +703,7 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 - Added export metadata to json and pkl
 - Added angle measurement for distance measurement
 
-### v0.1
+## [v0.1]
 - First version!
 
 <!-- CHANGELOG_SNIPPET_END -->

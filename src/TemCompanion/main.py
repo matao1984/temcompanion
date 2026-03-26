@@ -179,7 +179,7 @@ from .functions import load_file, load_4dstem, getFileNameType
 from .batch_convert import BatchConverter
 from .canvas import PlotCanvas
 from .stem4d import PlotCanvas4D
-from .UI_elements import Resize4DSTEMDialog
+from .UI_elements import Resize4DSTEMDialog, Open4DSTEMFileDialog
 
         
 #=====================Main Window UI ===============================================
@@ -606,7 +606,8 @@ border: 2px solid #FF8C00;
             "",
             self._filters_4dstem,
             self.last_open_4dstem_filter
-        )
+        )   
+        
         if self.file:
             if self.file_type:
                 self.last_open_4dstem_filter = self.file_type
@@ -779,10 +780,10 @@ border: 2px solid #FF8C00;
 
 
 #=============================== Open 4DSTEM dataset ======================================
-    def preview_4dstem(self):
+    def preview_4dstem(self, lazy=False):
         f_name = getFileNameType(self.file)[0]
         try:
-            f = load_4dstem(self.file, self.file_type)
+            f = load_4dstem(self.file, self.file_type, lazy=lazy)
             # Check if the data is 4D
             if f["data"].ndim != 4:
                 if f["data"].ndim == 3:
@@ -796,22 +797,30 @@ border: 2px solid #FF8C00;
                             QMessageBox.warning(self, "Resize Error", "Cannot resize to the specified dimensions. Please try again.")
                             return
                         f["data"] = f["data"].reshape((new_y, new_x, original_shape[1], original_shape[2]))
-                        # Update the axes as [scan_x, scan_y, height, width]
+                        # Update the axes as [scan_y, scan_x, height, width]
                         new_axes = [None] * 4
                         for axis in f['axes']:
                             if axis['index_in_array'] == 0 and axis['size'] == original_shape[0]:
                                 new_x_axis = axis.copy()
                                 new_x_axis['size'] = new_x
+                                new_x_axis['index_in_array'] = 1
+                                new_x_axis['name'] = 'scan_x'
                                 new_y_axis = axis.copy()
                                 new_y_axis['size'] = new_y
-                                new_axes[0] = new_x_axis
-                                new_axes[1] = new_y_axis
+                                new_y_axis['index_in_array'] = 0
+                                new_y_axis['name'] = 'scan_y'
+                                new_axes[1] = new_x_axis
+                                new_axes[0] = new_y_axis
+                                
                             elif axis['index_in_array'] == 1 and axis['size'] == original_shape[1]:
                                 # Height of diffraction pattern, keep unchanged
                                 new_axes[2] = axis.copy()
+                                new_axes[2]['index_in_array'] = 2
                             elif axis['index_in_array'] == 2 and axis['size'] == original_shape[2]:
                                 # Width of diffraction pattern, keep unchanged
                                 new_axes[3] = axis.copy()
+                                new_axes[3]['index_in_array'] = 3
+
                         f['axes'] = new_axes
 
                     else:
@@ -833,8 +842,8 @@ border: 2px solid #FF8C00;
             preview_im.show()
 
             print(f'Opened successfully: {f_name}.')
-            print(f'Real space size: {f["data"].shape[0]} x {f["data"].shape[1]}.')
-            print(f'Diffraction space size: {f["data"].shape[2]} x {f["data"].shape[3]}.')
+            print(f'Real space size: {f["data"].shape[1]} x {f["data"].shape[0]}.')
+            print(f'Diffraction space size: {f["data"].shape[3]} x {f["data"].shape[2]}.')
         except Exception as e:
                 print(f'Opened unsuccessful: {f_name}. Error: {e}')
         finally:

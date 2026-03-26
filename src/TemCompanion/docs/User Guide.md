@@ -13,7 +13,8 @@
   - [4.2 Analyze functions](#42-analyze-functions)
   - [4.3 Fast Fourier transforms](#43-fast-fourier-transforms)
   - [4.4 Filter](#44-filter)
-  - [4.4 Stack Operations](#45-stack-operations)
+  - [4.5 Stack Operations](#45-stack-operations)
+  - [4.6 Supported 4D-STEM functions](#46-supported-4d-stem-functions)
 - [5. Batch Convert](#5-batch-convert)
 - [6. Default settings](#6-default-settings)
 - [7. Citation](#7-citation)
@@ -49,6 +50,15 @@
 * Run geometric phase analysis on HR(S)TEM images.
 * Reconstruct iDPC and dDPC images from quadrant detector images or stacks (either raw A, B, C, D images or A-C, B-D images). The rotation angle can be guessed by either minimum curl or maximum contrast algorithms.
 
+__New: 4D-STEM support__
+
+* View and navigate the 4D data in both real space and reciprocal space
+* Crop and flip data in both spaces
+* Calibrate both real space and reciprocal space
+* Generate virtual image from point, circle, or annular detectors with interactive and resizable ROIs
+* Average diffraction patterns from selected regions in real space
+* CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
+
 TemCompanion was written by Dr. Tao Ma. The source code is published at [TemCompanion's github](https://github.com/matao1984/temcompanion). For questions, suggestions, bug reports, feature requests, etc, please send a message to [matao1984@gmail.com](mailto:matao1984@gmail.com). Also, please check the [TemCompanion's github](https://github.com/matao1984/temcompanion) for latest updates and nightly builds.
 
 
@@ -67,7 +77,9 @@ Written in pure python, TemCompanion can also be installed through python 3 envi
 The ``pip`` should prepare all the dependencies and install the tool automatically.
 
 ## 2. Usage
-The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through the menu bar, with some frequently used functions available on the toolbar. Each preview window can be individually processed, saved, and converted to the common image formats. 
+The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the image data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported image files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through the menu bar, with some frequently used functions available on the toolbar. Each preview window can be individually processed, saved, and converted to the common image formats. 
+
+From version 2.0.0 TemCompanion supports 4D-STEM data. The 4D dataset can be loaded by clicking "Open 4D-STEM" button. Note that drag-and-drop function treats data as image type signals and does not work for the 4D datasets. 
 
 Also available is a batch converter, which can be called by clicking the "Batch Convert" button. A separate window will pop up which works as the old ``EMD Converter`` does. The batch converter also supports drag-and-drop actions and the loaded data and be a mix of different supported formats. 
 
@@ -86,6 +98,12 @@ Currently, TemCompanion is programmed to support:
 - Image series
     - TemCompanion will search the given folder for the supported files with the same extention as the selected file. All the image files with the same extention and match the size of the selected image will be loaded into a 3D image stack.
 
+Supported 4D-STEM data type includes:
+  - EMPAD (*.xml + *.raw)
+  - USID (*.hdf5)
+  - Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
+  - py4DSTEM (*.h5, *. hdf5) (Experimental)
+
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
 
@@ -101,7 +119,10 @@ The image data will be rescaled to 8-bit integers and saved as grayscale images.
 If a color map is applied, the image should be saved in RGB format. This conversion is done by Matplotlib. The output image should look exactly the same as in the preview window. Note that some non squre images would appear with a padded white edge, which will be saved as well. It is difficult to program in the way that it fits all different aspect ratios of the input images. But by resizing the preview window it can sometimes readjust to remove the white borders.
 
 - Pickle format
-All image data and operations are handled internally as python dictionaries, which can be saved with ``pickle`` as *.pkl files. When selecting this format, the entire python dictionaries including all the data arrays, axes information, and metadata will be saved. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc.
+All image data and operations are handled internally as python dictionaries, which can be saved with ``pickle`` as *.pkl files. When selecting this format, the entire python dictionaries including all the data arrays, axes information, and metadata will be saved. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc. This format is also available for saving 4D-STEM datasets.
+
+- Universal Spectroscopy and Imaging Data (USID)
+[USID](https://pycroscopy.github.io/USID/about.html) is an open, community-driven, self-describing, and standardized schema for representing imaging and spectroscopy data of any size, dimensionality, precision, instrument of origin, or modality. TemCompanion can save 4D-STEM dataset in this format as *.hdf5 files, which include the 4D data array, all axes, and metadata.
 
 Note that the saving function only saves the displayed image. If working on an image stack, use the "Export as tiff stack" or "Save as series" in the stack functions to save all the frames.
 
@@ -318,11 +339,54 @@ Export the current image stack as a one-file tiff stack. This file can be import
 
 - Export as GIF animation:
 
-Export the current image stack as gif animation. The duration of each frame is set to 200 ms. This is a good way to show the stack as movies in e.g. PowerPoint slides.
+Export the current image stack as gif animation. The duration of each frame can be set in the dialog. An optional label can be added to the animation, either static or dynamic with a pythonic expression with `{fn}` that denotes the frame number (starting from 1). For example, if this is a thickness stack and the thickness of each frame is 2 nm, `z = {fn*2} nm` out puts a label of "z = x nm" on each frame where x = frame number x 2. This is a good way to show the stack as movies in e.g. PowerPoint slides.
 
 - Save as series:
 
 Save every frame of the entire stack into a folder. The supported image formats are described in 3.2.
+
+### 4.6 Supported 4D-STEM functions
+The 4D-STEM data is displayed in two linked preview windows: a virtual image window and a diffraction window. The functions implemented are slightly different.
+
+#### 4.6.1 Virtual image window
+- File:
+
+This menu contains "Save as", "Copy Image to Clipoard", "New Image from Display", "Image Settings", "Close", and "Close All", which work in the same way as in the image windows. The "New Image from Display" will create a copy of the current image and open it as an image signal, which has all the processing and analysis functions available.
+
+- Process:
+
+  - Crop: Crop the data in real-space (scan positions) by an rectangle ROI. Also supports manual input.
+  - Flip Horizontal/Vertical: Flip the real-space (scan positions) accordingly.
+
+- Analysis:
+
+This menu contains "Set Scale", "Measure", "Measure Angle", and "Line Profile" for the current virtual image. The "Set Scale" will set the real-space pixel calibration (scan size) for the dataset.
+
+- Detector:
+
+  - Point: A draggable point ROI on the virtual image that specifies which scan position the diffraction window displays. 
+  - Rectangle: A draggable and resizable rectangle that averages the diffraction patterns in the selection and display the averaged pattern in the diffraction window.
+
+  Note that the position of the detector ROI can be adjusted by the arrow keys. Both the detector ROI can be deleted by selecting the "Delete ROI" in the context menu by right-clicking on the detector ROI.
+
+- FFT:
+
+This menu contains "FFT", "Windowed FFT", and "Live FFT" that calculate the Fourier transforms from the current virtual image.
+
+- Info:
+
+This menu displays the image information as well as the metadata.
+
+#### 4.6.2 Diffraction window
+
+Most of the functions are the same as those in the virtual image window, expect in the "Detector" menu:
+
+- Point: A draggable point ROI on the diffraction pattern from which the virtual image is calculated. As the point detector is dragged, the virtual image is updated lively.
+- Circle: A draggable and resizable circular detector on the diffraction pattern from which a virtual bright/dark-field image is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. It is possible to add more circle detectors from the context menu by right-clicking on the circle.
+- Annular: A draggable and resizable annular detector on the diffraction pattern from which an annular detector image, e.g., ADF, is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. 
+- CoM: A draggable and resizable circular detector on the diffraction pattern from which the center of mass is calculated. If the CoM is selected, a complex image formed by $CoM_x + iCoM_y$ will be displayed in the virtual image window in the "phase-magnitude" mode, in which the color represents the angle of the CoM, and the brightness of the color represents the magnitude of the CoM. For iCoM or dCoM, the integrated or differentiated CoM image will be calculated. Due to the intensive computation, the virtual image is not updated until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. 
+- DPC: Same as CoM, expect that the calculation is performed from an annular detector.
+
 
 ## 5. Batch Convert
 

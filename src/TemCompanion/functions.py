@@ -18,11 +18,75 @@ from PIL import Image, ImageDraw, ImageFont
 import copy
 import json
 import pickle
+import xml.etree.ElementTree as ET
 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox, QMenu, QAction
 
 # Internal modules
 from . import filters
+
+
+def get_empad_xml_scan_values(xml_path):
+    """Parse key scan and field-of-view values from an EMPAD XML file.
+
+    Returns a dictionary with:
+      - scan_resolution_x (int, from scan_parameters mode="acquire")
+      - scan_size (float, from scan_parameters mode="acquire")
+      - scan_resolution_y (int, from scan_parameters mode="acquire")
+      - scale_factor (float)
+      - x (float)
+      - y (float)
+    """
+
+    def _read_value(parent, tag, cast):
+        node = parent.find(tag) if parent is not None else None
+        if node is None or node.text is None:
+            return None
+        try:
+            return cast(node.text.strip())
+        except (TypeError, ValueError):
+            return None
+
+    root = ET.parse(xml_path).getroot()
+
+    # Only read scan values from the acquire mode block.
+    scan_node = root.find("./scan_parameters[@mode='acquire']")
+    fov_node = root.find("./iom_measurements/full_scan_field_of_view")
+
+    return {
+        "scan_resolution_x": _read_value(scan_node, "scan_resolution_x", int),
+        "scan_size": _read_value(scan_node, "scan_size", float),
+        "scan_resolution_y": _read_value(scan_node, "scan_resolution_y", int),
+        "scale_factor": _read_value(fov_node, "scale_factor", float),
+        "x": _read_value(fov_node, "x", float),
+        "y": _read_value(fov_node, "y", float),
+    }
+
+def parse_empad_scan_size(scan_values):
+    """Calculate scan size in nm from EMPAD XML scan values.
+
+    Expects a dictionary with:
+      - scan_resolution_x (int)
+      - scan_size (float)
+      - scan_resolution_y (int)
+      - scale_factor (float)
+      - x (float)
+      - y (float)
+      Returns the scan size in nm"""
+    if scan_values is None or any(value is None for value in scan_values.values()):
+        return None
+
+    scan_resolution_x = scan_values.get("scan_resolution_x")
+    scan_resolution_y = scan_values.get("scan_resolution_y")
+    scan_size = scan_values.get("scan_size")
+    scale_factor = scan_values.get("scale_factor")
+    full_fov = scan_values.get("x") / scale_factor * scan_size # fov_x and fov_y are always the same
+
+    scan_size = max(scan_resolution_x, scan_resolution_y)
+
+    pixel_size = full_fov / scan_size * 1e9 # Convert to nm
+    return pixel_size
+    
 
 def find_system_font():
     if os.name == 'nt': # Windows
@@ -513,20 +577,38 @@ def load_file(file, file_type):
     return f_valid
 
 
-def load_4dstem(file, file_type):
+def load_4dstem(file, file_type, lazy=False):
     # Placeholder function for loading 4D-STEM data
     # The actual implementation will depend on the specific format of the 4D-STEM data and may require additional libraries
     print(f"Loading 4D-STEM data from {file} with type {file_type}...")
     # EMPAD file
     if file_type == 'EMPAD Files (*.xml)':
-        f = empad_reader(file)[0]
+        f = empad_reader(file, lazy=lazy)[0]
+        # # There is a problem parsing the shape, need to swap the axes 0 and 1
+        # shape = f['data'].shape
+        # f['data'] = f['data'].reshape((shape[1], shape[0], shape[2], shape[3]))
+        # # Also swap the corresponding axes in the axes metadata
+        # axes = f['axes']
+        # axes[0], axes[1] = axes[1], axes[0]
+        # axes[0]['index_in_array'] = 0
+        # axes[1]['index_in_array'] = 1
+        # # Try to parse the scan size from the xml
+        # scan_values = get_empad_xml_scan_values(file)
+        # pixel_size = parse_empad_scan_size(scan_values)
+        # if pixel_size is not None:
+        #     axes[0]['scale'] = pixel_size
+        #     axes[0]['units'] = 'nm'
+        #     axes[1]['scale'] = pixel_size
+        #     axes[1]['units'] = 'nm'
+
+        
 
     elif file_type == 'Pickle Dictionary Files (*.pkl)':
         with open(file, 'rb') as file:
             f = pickle.load(file)
 
     elif file_type == 'USID (*.h5 *.hdf5)':
-        f = usid_reader(file)[0]
+        f = usid_reader(file, lazy=lazy)[0]
 
     elif file_type == 'py4DSTEM (*.h5 *.hdf5)':
         f = load_py4dstem(file)
@@ -545,6 +627,9 @@ def load_4dstem(file, file_type):
             break
     
     if f_valid:
+        # Some data contains NaN. Replace with zero
+        data = f_valid['data']
+        np.nan_to_num(data, copy=False)
         try:
             f_valid['original_metadata'] = f['original_metadata']
             # ['original_metadata'] is optional

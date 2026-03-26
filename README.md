@@ -42,7 +42,7 @@ Currently, TemCompanion is programmed to support:
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html). 
 
 ### 3.2 List of available functions
-Currently available functions include:
+Currently available functions on image data include:
 * Preview any image type signals. If the input file contains multiple image frames, a slider bar is added on the image to navigate.
 * Rotate image: positive angles would rotate the image counterclockwise and vice versa. The image will expand upon rotation.
 * Crop image: crop to any size with a GUI rectangle selection.
@@ -69,6 +69,16 @@ Currently available functions include:
 * Run geometric phase analysis on HR(S)TEM images.
 * Reconstruct iDPC and dDPC images from quadrant detector images or stacks (either raw A, B, C, D images or A-C, B-D images). The rotation angle can be guessed by either minimum curl or maximum contrast algorithms.
 
+Currently available functions on 4D-STEM data:
+* View and navigate the 4D data in both real space and reciprocal space
+* Crop and flip data in both spaces
+* Calibrate both real space and reciprocal space
+* Generate virtual image from point, circle, or annular detectors with interactive and resizable ROIs
+* Average diffraction patterns from selected regions in real space
+* CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
+
+
+
 
 ### 3.3 Output formats
 When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ. 
@@ -80,7 +90,7 @@ Other image formats including png and jpg, both gray scale and color, are lossy 
 
 
 ## 4. About the emd format
-Velox saves all types of data, including simple images, image stacks, SI data, DPC, etc, into a single emd format. While these files share the same format, the data structures are quite different. TemCompanion has been tested for simple images, image stacks, DPC images, and EDS mapping data. For EDS mapping data, it will only read the image type signals, e.g., STEM images and quantification maps, and ignore the spectra data. For DPC data, it will read all the quadrant signals, computed signals (e.g., A-C, B-D, iDPC, dDPC, etc.), but currently will not work on the composite DPC images, which combines the DPCx and DPCy signals into complex data. Since this type of images is rarely used, there is currently no plan to include it in TemCompanion, unless there's enough interest in the future.
+Velox saves all types of data, including simple images, image stacks, SI data, DPC, etc, into a single emd format. While these files share the same format, the data structures are quite different. TemCompanion has been tested for simple images, image stacks, DPC images, and EDS mapping data. For EDS mapping data, it will only read the image type signals, e.g., STEM images and quantification maps, and ignore the spectra data. For DPC data, it will read all the quadrant signals, computed signals (e.g., A-C, B-D, iDPC, dDPC, etc.). Now it also reads the complex DPC images and display it in a phase-magnitude color map. Users can also choose to display magnitude, real and imaginary part only, available in image settings.
 
 ## 5. Citation
 If TemCompanion helped your TEM image analysis in a publication, please cite:
@@ -101,6 +111,28 @@ author = {Tao Ma}
 ```
 
 ## 6. Change history
+
+### v2.0.0
+- Added support for 4D-STEM data 
+- Supported formats: 
+    - EMPAD (*.xml + *.raw)
+    - USID (*.hdf5)
+    - Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
+    - py4DSTEM (*.h5, *. hdf5) (Experimental)
+- Available functions for 4D-STEM data include:
+    - View and navigate the 4D data in both real space and reciprocal space
+    - Crop and flip data in both spaces
+    - Calibrate both real space and reciprocal space
+    - Generate virtual image from point, circle, or annular detectors with interactive and resizable ROIs
+    - Average diffraction patterns from selected regions in real space
+    - CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
+
+
+### v1.3.4
+- Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary. 
+- Added dialog for exporting gif animation with customizable frame time and label.
+- Some minor bug fixes 
+
 
 ### v1.3.3
 - Fixed a bug in live FFT handling unit conversion

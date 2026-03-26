@@ -203,10 +203,10 @@ class PlotCanvas(QMainWindow):
     def parse_scale_units(self, scale, units):
         # Use 'nm' as default units for all images
         # '1/nm' as default for reciprocal space images
-        try:
+        if isinstance(units, str):
             units = ''.join(units.lower().split(' '))
-        except Exception as e:
-            print(f"Error reading units: {e} Set to pixel scale")
+        else:
+            print(f"Error reading units: {units} Set to pixel scale")
             return 1, 'px', 1, 'px-length'
 
         # Handle some special unit cases
@@ -3670,7 +3670,6 @@ class PlotCanvasSpectrum(QMainWindow):
 #===================QThread for background processing================================
 class Worker(QThread):
     result = pyqtSignal(object)
-    finished = pyqtSignal()
     def __init__(self, func, *args, **kwargs):
         super().__init__()
         self.func = func
@@ -3680,5 +3679,4 @@ class Worker(QThread):
     def run(self):
         # Perform long-running task defined by func
         result = self.func(*self.args, **self.kwargs)
-        self.finished.emit()
         self.result.emit(result)

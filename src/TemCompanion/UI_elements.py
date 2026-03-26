@@ -27,6 +27,38 @@ from .DPC import reconstruct_iDPC, reconstruct_dDPC, find_rotation_ang_max_contr
 from .filters import img_to_polar
 
 
+def Open4DSTEMFileDialog(parent, title, filters, selected_filter='', directory=''):
+    """Open a 4D-STEM file dialog with an optional Lazy-load checkbox.
+
+    Returns
+    -------
+    tuple
+        (file_path, selected_name_filter, lazy_enabled)
+    """
+    dialog = QFileDialog(parent, title, directory)
+    dialog.setFileMode(QFileDialog.ExistingFile)
+    dialog.setNameFilter(filters)
+    if selected_filter:
+        dialog.selectNameFilter(selected_filter)
+
+    # Non-native dialog is required to inject custom widgets on all platforms.
+    dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+
+    lazy_checkbox = QCheckBox('Do not load data into memory (for large files)')
+    lazy_checkbox.setChecked(False)
+
+    layout = dialog.layout()
+    row = layout.rowCount()
+    layout.addWidget(lazy_checkbox, row, 0, 1, layout.columnCount())
+
+    if dialog.exec_() == QDialog.Accepted:
+        files = dialog.selectedFiles()
+        file_path = files[0] if files else None
+        return file_path, dialog.selectedNameFilter(), lazy_checkbox.isChecked()
+
+    return None, selected_filter, False
+
+
 #=========== Scale bar class used with pyqtgraph ==============================================
 class CustomScaleBar(pg.ScaleBar):
     def __init__(self, parent, dx=1e-9, units='nm', power=1):
@@ -1778,7 +1810,7 @@ class ExportGIFDialog(QDialog):
         label_layout = QHBoxLayout()
         label = QLabel("Custom label:")
         self.label_input = QLineEdit(self)
-        self.label_input.setPlaceholderText("e.g., 'Frame {fn}'")
+        self.label_input.setPlaceholderText("e.g., Frame {fn}")
         self.label_input.setToolTip("Optional custom label for each frame. Use '{fn}' as a placeholder for the frame number. Leave blank for no labels.")
         label_layout.addWidget(label)
         label_layout.addWidget(self.label_input)
@@ -1809,8 +1841,8 @@ class ExportGIFDialog(QDialog):
 
     def browse_file(self):
         options = QFileDialog.Options()
-        options |= QFileDialog.DontConfirmOverwrite
-        options |= QFileDialog.DontUseNativeDialog
+        # options |= QFileDialog.DontConfirmOverwrite
+        # options |= QFileDialog.DontUseNativeDialog
         file_path, _ = QFileDialog.getSaveFileName(self, "Select Save Location", self.path_input.text(), "GIF Files (*.gif)", options=options)
         if file_path:
             if not file_path.lower().endswith('.gif'):
@@ -1834,10 +1866,10 @@ class ExportGIFDialog(QDialog):
         else:
             self.custom_label = None
         self.save_path = self.path_input.text()
-        if os.path.exists(self.save_path):
-            reply = QMessageBox.question(self, 'File Exists', f"The file '{self.save_path}' already exists. Do you want to overwrite it?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if reply == QMessageBox.No:
-                return
+        # if os.path.exists(self.save_path):
+        #     reply = QMessageBox.question(self, 'File Exists', f"The file '{self.save_path}' already exists. Do you want to overwrite it?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        #     if reply == QMessageBox.No:
+        #         return
         self.accept()
 
                 

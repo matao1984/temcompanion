@@ -19,7 +19,7 @@ class DiffractionCanvas(PlotCanvas):
     def __init__(self, img4d, master_handle, parent=None):
         self.img4d = img4d # Store the image dict with 4D data
         # Reformat the 4D image dict to fit the PlotCanvas class
-        self.R_size = img4d['data'].shape[1], img4d['data'].shape[0]
+        self.R_size = img4d['data'].shape[0], img4d['data'].shape[1]
         self.Q_size = img4d['data'].shape[2], img4d['data'].shape[3]
         q_img_data = img4d['data'][self.R_size[0]//2, self.R_size[1]//2, :, :]
         q_img = {
@@ -338,40 +338,40 @@ class DiffractionCanvas(PlotCanvas):
                     exporter.export(self.file_path)
 
     def point_detector(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         # Add a circle ROI to the diffraction canvas at the center of the Q space
         self.master_handle.point_detector_diffraction() # Call the method to add the point detector to the diffraction canvas
 
     def circle_detector(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.circle_detector_diffraction(function=self.master_handle.update_detector_diffraction) # Call the method to add the circle detector to the diffraction canvas
 
     def annular_detector(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.annular_detector_diffraction(function=self.master_handle.update_annular_detector_diffraction) # Call the method to add the annular detector to the diffraction canvas
 
     def dpc(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.dpc() # Call the method to perform DPC reconstruction from 4D-STEM data
     
     def idpc(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.idpc() # Call the method to perform iDPC reconstruction from 4D-STEM data
 
     def ddpc(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.ddpc() # Call the method to perform dDPC reconstruction from 4D-STEM data
     
     def com(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.com() # Call the method to perform CoM reconstruction from 4D-STEM data
     
     def icom(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.icom() # Call the method to perform iCoM reconstruction from 4D-STEM data
 
     def dcom(self):
-        self.clean_up(selector=True) # Clean up existing selectors before adding a new one
+        self.clean_up(selector=True, buttons=True) # Clean up existing selectors before adding a new one
         self.master_handle.dcom() # Call the method to perform dCoM reconstruction from 4D-STEM data
 
     def crop(self):
@@ -430,13 +430,13 @@ class VirtualImageCanvas(PlotCanvas):
     def __init__(self, img4d, master_handle, parent=None):
         self.img4d = img4d # Store the image dict with 4D data
         # Reformat the 4D image dict to fit the PlotCanvas class
-        self.R_size = img4d['data'].shape[1], img4d['data'].shape[0]
+        self.R_size = img4d['data'].shape[0], img4d['data'].shape[1]
         self.Q_size = img4d['data'].shape[2], img4d['data'].shape[3]
         v_img_data = img4d['data'][:, :, self.Q_size[0]//2, self.Q_size[1]//2]
         v_img = {
             'data': v_img_data,
             'metadata': img4d['metadata'],
-            'axes': [img4d['axes'][1], img4d['axes'][0]]
+            'axes': [img4d['axes'][0], img4d['axes'][1]]
         }
         if 'original_metadata' in img4d.keys():
             v_img['original_metadata'] = img4d['original_metadata']
@@ -810,7 +810,9 @@ class PlotCanvas4D:
             self.Q_canvas.canvas.selector.remove(roi)
             self.Q_canvas.canvas.active_selector = None
             self.Q_canvas.canvas.viewbox.removeItem(roi)
-            self.update_detector_diffraction() # Update the diffraction image to reflect the removal of the ROI
+
+        if len(self.Q_canvas.canvas.selector) == 0:
+            self.Q_canvas.clean_up(buttons=True) # Clean up any buttons related to the selector
 
     def remove_roi_R(self, roi):
         if roi in self.R_canvas.canvas.selector:
@@ -826,7 +828,7 @@ class PlotCanvas4D:
         x0 = self.Q_center[1] * self.Q_canvas.scale
         y0 = self.Q_center[0] * self.Q_canvas.scale
         selector = pg.CircleROI([x0, y0], radius=1*self.Q_canvas.scale,
-                                    pen=pg.mkPen('yellow', width=5),
+                                    pen=pg.mkPen('red', width=5),
                                     movable=True,
                                     rotatable=False,
                                     resizable=False,
@@ -859,7 +861,7 @@ class PlotCanvas4D:
         x0 = self.R_center[1] * self.R_canvas.scale
         y0 = self.R_center[0] * self.R_canvas.scale
         selector = pg.CircleROI([x0, y0], radius=1*self.R_canvas.scale,
-                                    pen=pg.mkPen('yellow', width=5),
+                                    pen=pg.mkPen('red', width=5),
                                     movable=True,
                                     rotatable=False,
                                     resizable=False,
@@ -905,8 +907,10 @@ class PlotCanvas4D:
         self.R_canvas.canvas.selector.append(selector)
         self.R_canvas._make_active_selector(selector)
         self.R_canvas.canvas.viewbox.addItem(selector)
+
         selector.sigRegionChangeFinished.connect(self.update_rectangle_detector_virtualimg)
         selector.sigRemoveRequested.connect(lambda roi: self.remove_roi_R(roi))
+
     def update_rectangle_detector_virtualimg(self):
         selector = self.R_canvas.canvas.selector[0]  # Assuming only one selector for rectangle detector
         pos = selector.pos()  # Get the top-left position of the rectangle ROI
@@ -941,7 +945,27 @@ class PlotCanvas4D:
         self.Q_canvas._make_active_selector(selector)
         self.Q_canvas.canvas.viewbox.addItem(selector)
         selector.addTranslateHandle([0.5, 0.5])
-        selector.sigRegionChangeFinished.connect(function)  # Connect the region change signal to the provided function to update the virtual image when the circle ROI is moved or resized
+
+        # # Change colors of the side handles
+        h = selector.getHandles()
+        for handle in h:
+            handle.pen = pg.mkPen('red', width=5)
+            handle.hoverPen = pg.mkPen('red', width=2)
+            handle.currentPen = handle.pen
+            handle.update()
+
+        # Add apply button to update
+        if self.Q_canvas.buttons['ok'] is None:  # Only add the button if it doesn't already exist
+            OK_icon = os.path.join(self.Q_canvas.wkdir, 'icons/OK.png')
+            self.Q_canvas.buttons['ok'] = QAction(QIcon(OK_icon), 'Apply Virtual Detector', parent=self.Q_canvas)
+            self.Q_canvas.buttons['ok'].setShortcut('Return')
+            self.Q_canvas.buttons['ok'].setStatusTip('Apply Virtual Detector (Enter)')
+            self.Q_canvas.buttons['ok'].triggered.connect(function)
+            self.Q_canvas.toolbar.addAction(self.Q_canvas.buttons['ok'])
+
+
+
+        # selector.sigRegionChangeFinished.connect(function)  # Connect the region change signal to the provided function to update the virtual image when the circle ROI is moved or resized
         selector.sigRemoveRequested.connect(lambda roi: self.remove_roi_Q(roi))
 
         # Add an "Add" action to the selector context menu
@@ -968,8 +992,14 @@ class PlotCanvas4D:
             centers.append((x_center, y_center))
             radii.append(radius)
         mask = create_mask(self.Q_size, centers, radii, edge_blur=0).astype(np.float64, copy=False)
-        virtualimg = self.get_virtual_image_with_mask(mask)
-        self.R_canvas.canvas.update_img(virtualimg)
+        # Calculate the virtual image in a separate thread
+        self.worker = Worker(self.get_virtual_image_with_mask, mask)
+        self.R_canvas.toggle_progress_bar('ON')
+        self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar('OFF'))
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.result.connect(self._on_com_result)
+        self.worker.start()
+        
 
     def annular_detector_diffraction(self, function):
         # Add a resizable annular ROI to the diffraction canvas at the center of the Q space
@@ -990,7 +1020,16 @@ class PlotCanvas4D:
         self.Q_canvas.canvas.selector.append(selector)
         self.Q_canvas._make_active_selector(selector)
         self.Q_canvas.canvas.viewbox.addItem(selector)
-        selector.sigAnnulusChangeFinished.connect(function)  # Connect the annulus change signal to the provided function to update the virtual image when the annular ROI is moved or resized
+
+        # Add apply button to update
+        OK_icon = os.path.join(self.Q_canvas.wkdir, 'icons/OK.png')
+        self.Q_canvas.buttons['ok'] = QAction(QIcon(OK_icon), 'Apply Virtual Detector', parent=self.Q_canvas)
+        self.Q_canvas.buttons['ok'].setShortcut('Return')
+        self.Q_canvas.buttons['ok'].setStatusTip('Apply Virtual Detector (Enter)')
+        self.Q_canvas.buttons['ok'].triggered.connect(function)
+        self.Q_canvas.toolbar.addAction(self.Q_canvas.buttons['ok'])
+
+        # selector.sigAnnulusChangeFinished.connect(function)  # Connect the annulus change signal to the provided function to update the virtual image when the annular ROI is moved or resized
         selector.sigRemoveRequested.connect(lambda roi: self.remove_roi_Q(roi))
 
 
@@ -1021,17 +1060,42 @@ class PlotCanvas4D:
         outer_radius_px = outer_radius / Q_scale
 
         mask = self.get_annular_mask(self.Q_size, (x_center, y_center), inner_radius_px, outer_radius_px).astype(np.float64, copy=False)
-        virtualimg = self.get_virtual_image_with_mask(mask)
-        self.R_canvas.canvas.update_img(virtualimg)
+        self.worker = Worker(self.get_virtual_image_with_mask, mask)
+        self.R_canvas.toggle_progress_bar('ON')
+        self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar('OFF'))
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.result.connect(self._on_com_result)
+        self.worker.start()
+
 
     def com(self):
         self.circle_detector_diffraction(lambda: self.update_com(signal='CoM'))
+        # Set the circle non-removable
+        roi = self.Q_canvas.canvas.selector[0]
+        roi.removable = False
+        if roi.menu is not None and hasattr(roi.menu, "remAct"):
+            roi.menu.removeAction(roi.menu.remAct)
+            roi.menu.remAct.deleteLater()
+            del roi.menu.remAct
+
 
     def icom(self):
         self.circle_detector_diffraction(lambda: self.update_com(signal='iCoM'))
+        roi = self.Q_canvas.canvas.selector[0]
+        roi.removable = False
+        if roi.menu is not None and hasattr(roi.menu, "remAct"):
+            roi.menu.removeAction(roi.menu.remAct)
+            roi.menu.remAct.deleteLater()
+            del roi.menu.remAct
 
     def dcom(self):
         self.circle_detector_diffraction(lambda: self.update_com(signal='dCoM'))
+        roi = self.Q_canvas.canvas.selector[0]
+        roi.removable = False
+        if roi.menu is not None and hasattr(roi.menu, "remAct"):
+            roi.menu.removeAction(roi.menu.remAct)
+            roi.menu.remAct.deleteLater()
+            del roi.menu.remAct
 
     def update_com(self, signal='CoM'):
         selector = self.Q_canvas.canvas.selector[0]  # Only the first selector for CoM
@@ -1240,6 +1304,17 @@ class AnnularROI(pg.CircleROI):
         movable = kwargs.get('movable', True)
         rotatable = kwargs.get('rotatable', False)
         resizable = kwargs.get('resizable', True)
+        # Add a translate handle to the inner circle for moving the entire annulus
+        self.addTranslateHandle([0.5, 0.5])
+
+        # Change handle colors of the inner circle
+        handles = self.getHandles()
+        handle_pen = pg.mkPen('red', width=5)
+        for handle in handles:
+            handle.pen = handle_pen
+            handle.hoverPen = pg.mkPen('red', width=2)
+            handle.currentPen = handle.pen
+            handle.update()
 
         # Outer ring is visual-only; parented so the annulus is one add/remove ROI item.
         self.outer_circle = pg.CircleROI([0, 0], radius=self.outer_radius,
@@ -1250,6 +1325,14 @@ class AnnularROI(pg.CircleROI):
         self.outer_circle.setParentItem(self)
         self.outer_circle.setZValue(-1)
         self._syncing = False
+        # Change handle colors of the outer circle
+        outer_handles = self.outer_circle.getHandles()
+        for handle in outer_handles:
+            handle.pen = handle_pen
+            handle.hoverPen = pg.mkPen('red', width=2)
+            handle.currentPen = handle.pen
+            handle.update()
+
 
         self.sigRegionChanged.connect(self.update_outer_circle)
         self.outer_circle.sigRegionChanged.connect(self.update_inner_from_outer)

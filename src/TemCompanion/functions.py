@@ -585,12 +585,6 @@ def load_file(file, file_type):
             ]:  # Regular RGB/RGBA array
                 img["data"] = rgb2gray(img["data"])
 
-            else:
-                print(
-                    "Unsupported image format! Only RGB images with R,G,B channels are supported for color images!"
-                )
-                return
-
     # Load pickle dictionary
     elif file_type == "Pickle Dictionary Files (*.pkl)":
         with open(file, "rb") as file:

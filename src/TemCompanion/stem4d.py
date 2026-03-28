@@ -907,19 +907,20 @@ class PlotCanvas4D:
             nan_indices = np.argwhere(nan_mask)
             for idx in nan_indices:
                 y, x = idx
-                # Define a local neighborhood around the NaN pixel
-                y_min = max(0, y - 1)
-                y_max = min(self.R_size[0], y + 1)
-                x_min = max(0, x - 1)
-                x_max = min(self.R_size[1], x + 1)
-                # Find these neighboring patterns and average
-                neighbor_patterns = self.img_data[y_min:y_max, x_min:x_max, :, :]
-                neighbor_patterns = neighbor_patterns[~np.isnan(neighbor_patterns)]
-                if neighbor_patterns.size > 0:
-                    if method == "average":
-                        self.img_data[y, x, :, :] = np.mean(neighbor_patterns, axis=0)
-                    elif method == "zero":
-                        self.img_data[y, x, :, :] = 0
+                if method == "zero":
+                    self.img_data[y, x, :, :] = 0
+                elif method == "average":
+                    # Define a local neighborhood around the NaN pixel
+                    y_min = max(0, y - 1)
+                    y_max = min(self.R_size[0], y + 2)
+                    x_min = max(0, x - 1)
+                    x_max = min(self.R_size[1], x + 2)
+                    # Find these neighboring patterns and average
+                    neighbor_patterns = self.img_data[y_min:y_max, x_min:x_max, :, :]
+                    self.img_data[y, x, :, :] = np.nanmean(
+                        neighbor_patterns, axis=(0, 1)
+                    )
+
             self.update_point_detector_diffraction()  # Update diffraction canvas with new data
             self.update_point_detector_virtualimg()  # Update virtual image canvas with new data
 

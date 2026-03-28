@@ -216,7 +216,7 @@ class MainFrameCanvas(QWidget):
         # data is the image dictionary
         super().__init__(parent)
         self.data = data
-        self.img_size = self.data["data"].shape
+        self.img_size = self.parent().img_size
 
         if len(self.img_size) == 2 and np.isrealobj(self.data["data"]):
             self.data_type = "Image"
@@ -306,6 +306,14 @@ class MainFrameCanvas(QWidget):
         self._resize_event(self.size())
 
         self.attribute = self.parent().attribute
+
+    @property
+    def img_size(self):
+        return self.parent().img_size
+
+    @img_size.setter
+    def img_size(self, value):
+        self.parent().img_size = value
 
     def complex_to_rgb(self, img):
         """
@@ -470,28 +478,6 @@ class MainFrameCanvas(QWidget):
             self.image_item = pg.ImageItem(
                 self.current_img, axisOrder="row-major", autoLevels=False, levels=(0, 1)
             )  # For RGB images, levels are typically [0, 255] or [0, 1]. Here we use [0, 1] since it's normalized.
-
-            # Create a wheel to show angle and magnitude
-            # wheel_size = self.img_size[0] // 10
-            # y, x = np.indices((wheel_size, wheel_size))
-            # center = wheel_size // 2, wheel_size // 2
-            # x = x - center[0]
-            # y = y - center[1]
-            # rho = np.hypot(y, x) # calculate sqrt(x**2 + y**2)
-            # phi = np.arctan2(y, x)
-            # wheel = rho * np.exp(1j * phi)
-
-            # self.complex_wheel = self.complex_to_rgb(wheel)
-            # # Add alpha channel to make the background transparent
-            # alpha = np.zeros((wheel_size, wheel_size, 1), dtype=np.uint8)
-            # alpha[rho > wheel_size // 2] = 0
-            # alpha[rho <= wheel_size // 2] = 255
-            # self.complex_wheel = np.dstack((self.complex_wheel, alpha))
-
-            # self.wheel_item = pg.ImageItem(self.complex_wheel, axisOrder='row-major', autoLevels=False, levels=(0, 1))
-            # self.wheel_item.setScale(scale)
-
-            # self.viewbox.addItem(self.wheel_item)
 
         self.image_item.setScale(scale)
         self.viewbox.addItem(self.image_item)

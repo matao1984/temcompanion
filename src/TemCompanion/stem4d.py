@@ -328,14 +328,14 @@ class DiffractionCanvas(PlotCanvas):
                     pickle.dump(img_to_save, f)
             elif self.selected_type == "USID (*.hdf5)":
                 img_dict = self.img4d
-                for key in ["data", "axes", "metadata", "original_metadata"]:
+                for key in ["data", "axes", "metadata"]:
                     if key in img_dict.keys():
                         img_to_save[key] = img_dict[key]
                 usid_writer(self.file_path, img_to_save)
             else:
                 # Save the current data only
                 current_img = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata", "original_metadata"]:
+                for key in ["data", "axes", "metadata"]:
                     if key in current_img.keys():
                         img_to_save[key] = current_img[key]
 
@@ -761,11 +761,15 @@ class VirtualImageCanvas(PlotCanvas):
                 for key in ["data", "axes", "metadata", "original_metadata"]:
                     if key in img_dict.keys():
                         img_to_save[key] = img_dict[key]
+                if os.path.exists(self.file_path):
+                    os.remove(
+                        self.file_path
+                    )  # Remove existing file to avoid appending to it
                 usid_writer(self.file_path, img_to_save)
             else:
                 # Save the current data only
                 current_img = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata", "original_metadata"]:
+                for key in ["data", "axes", "metadata"]:
                     if key in current_img.keys():
                         img_to_save[key] = current_img[key]
 
@@ -1379,7 +1383,7 @@ class PlotCanvas4D:
         # Update the img4d dictionary to reflect the cropped data
         self.R_size = self.img_data.shape[0], self.img_data.shape[1]
         self.R_center = self.R_size[0] // 2, self.R_size[1] // 2
-        self.R_canvas.canvas.img_size = self.R_size
+        self.R_canvas.img_size = self.R_size
         self.img4d["data"] = self.img_data
         self.img4d["axes"][0]["size"] = self.R_size[0]
         self.img4d["axes"][1]["size"] = self.R_size[1]
@@ -1416,7 +1420,7 @@ class PlotCanvas4D:
         # Update the img4d dictionary to reflect the cropped data
         self.Q_size = self.img_data.shape[2], self.img_data.shape[3]
         self.Q_center = self.Q_size[0] // 2, self.Q_size[1] // 2
-        self.Q_canvas.canvas.img_size = self.Q_size
+        self.Q_canvas.img_size = self.Q_size
         self.img4d["data"] = self.img_data
         self.img4d["axes"][2]["size"] = self.Q_size[1]
         self.img4d["axes"][3]["size"] = self.Q_size[0]

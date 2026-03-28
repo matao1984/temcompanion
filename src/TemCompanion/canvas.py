@@ -555,7 +555,7 @@ class PlotCanvas(QMainWindow):
 
             img_x = x / self.scale
             img_y = y / self.scale
-            img_size = self.canvas.img_size
+            img_size = self.img_size
 
             if 0 <= int(img_x) < img_size[-1] and 0 <= int(img_y) < img_size[-2]:
                 # Update all labels with offsets
@@ -929,7 +929,7 @@ class PlotCanvas(QMainWindow):
 
             elif self.selected_type == "USID (*.hdf5)":
                 img_dict = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata", "original_metadata"]:
+                for key in ["data", "axes", "metadata"]:
                     if key in img_dict.keys():
                         img_to_save[key] = img_dict[key]
                 usid_writer(self.file_path, img_to_save)
@@ -937,7 +937,7 @@ class PlotCanvas(QMainWindow):
             else:
                 # Save the current data only
                 current_img = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata", "original_metadata"]:
+                for key in ["data", "axes", "metadata"]:
                     if key in current_img.keys():
                         img_to_save[key] = current_img[key]
 

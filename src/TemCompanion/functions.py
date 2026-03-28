@@ -563,9 +563,6 @@ def load_file(file, file_type):
     elif file_type == "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)":
         f = im_reader(file)
         for img in f:
-            # Only for 2d images
-            for ax in img["axes"]:
-                ax["navigate"] = "False"
             # If RGB or RGBA image, convert to grayscale
             if img["data"].dtype.names is not None:  # Structured array (RGB/RGBA)
                 # Convert structured RGB array to regular 3D array
@@ -697,10 +694,14 @@ def load_file(file, file_type):
                 # ['original_metadata'] is optional
             except Exception:
                 pass
+            for axis in img_valid["axes"]:
+                if "navigate" not in axis.keys():
+                    # Need this navigate key to write some formats
+                    axis.setdefault("navigate", False)
+            if len(img_valid["axes"]) == 3:
+                # For image stacks, the first axis is navigable
+                img_valid["axes"][0]["navigate"] = True
             f_valid.append(img_valid)
-
-        # if img_valid:
-        #     f_valid.append(img_valid)
 
     return f_valid
 
@@ -744,6 +745,14 @@ def load_4dstem(file, file_type, lazy=False):
             # ['original_metadata'] is optional
         except Exception:
             pass
+        for axis in f_valid["axes"]:
+            if "navigate" not in axis.keys():
+                # Need this navigate key to write some formats
+                axis.setdefault("navigate", True)
+        # Set the last two axes to be non-navigable
+        f_valid["axes"][-1]["navigate"] = False
+        f_valid["axes"][-2]["navigate"] = False
+
         return f_valid
 
     else:

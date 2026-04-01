@@ -582,6 +582,8 @@ def load_file(file, file_type):
             file_type = "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)"
         elif ext == "pkl":
             file_type = "Pickle Dictionary Files (*.pkl)"
+        elif ext == "npy":
+            file_type = "Numpy Array Files (*.npy)"
         else:
             print("Unsupported file formats for image series!")
             return

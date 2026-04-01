@@ -17,13 +17,13 @@ END_MARKER = "<!-- CHANGELOG_SNIPPET_END -->"
 
 
 def extract_latest_versions(changelog_text: str, max_versions: int = 3) -> str:
-    parts = re.split(r"^## \[", changelog_text, flags=re.MULTILINE)
+    parts = re.split(r"^### ", changelog_text, flags=re.MULTILINE)
     if len(parts) <= 1:
         raise ValueError("No version sections found in CHANGELOG.md")
 
     entries: list[str] = []
     for raw in parts[1:]:
-        entry = "## [" + raw.strip()
+        entry = "### " + raw.strip()
         entries.append(entry)
         if len(entries) >= max_versions:
             break

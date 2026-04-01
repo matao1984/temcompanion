@@ -216,7 +216,7 @@ class MainFrameCanvas(QWidget):
         # data is the image dictionary
         super().__init__(parent)
         self.data = data
-        self.img_size = self.parent().img_size
+        # self.img_size = self.parent().img_size
 
         if len(self.img_size) == 2 and np.isrealobj(self.data["data"]):
             self.data_type = "Image"

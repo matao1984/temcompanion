@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TemCompanion"
-version = "2.0.0"
+version = "1.4.0"
 description = "A GUI program for TEM data processing and analysis"
 authors = [{name = "Tao Ma", email = "matao1984@gmail.com"}]
 license = {text = "MIT"}

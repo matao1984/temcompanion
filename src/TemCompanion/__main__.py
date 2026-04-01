@@ -3,13 +3,12 @@ import os
 import pickle
 import json
 from .main import start_gui
+from . import __version__, __release_date__
 from multiprocessing import freeze_support
 
 
 # Default configuration setup
 def setup_config():
-    version = "2.0.0"
-    release_date = "2026-04-01"
     if getattr(sys, "frozen", False):
         wkdir = os.path.join(sys._MEIPASS, "TemCompanion")
     elif __file__:
@@ -22,8 +21,8 @@ def setup_config():
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    config["version"] = version
-    config["release_date"] = release_date
+    config["version"] = __version__
+    config["release_date"] = __release_date__
     config["working_directory"] = wkdir
     config["colormap"] = colormap
 

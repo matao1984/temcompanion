@@ -300,6 +300,10 @@ class UI_TemCompanion(QMainWindow):
                 self.file_type = "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)"
             elif ext == "pkl":
                 self.file_type = "Pickle Dictionary Files (*.pkl)"
+            elif ext == "npy":
+                self.file_type = "Numpy Array Files (*.npy)"
+            elif ext in ["h5", "hdf5"]:
+                self.file_type = "USID (*.h5 *.hdf5)"
             else:
                 QMessageBox.warning(self, "Open File", "Unsupported file formats!")
                 return

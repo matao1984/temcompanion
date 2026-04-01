@@ -18,9 +18,9 @@ from PIL import Image, ImageDraw, ImageFont
 import copy
 import json
 import pickle
-import xml.etree.ElementTree as ET
 
 from PyQt5.QtWidgets import (
+    QApplication,
     QDialog,
     QVBoxLayout,
     QListWidget,
@@ -32,71 +32,6 @@ from PyQt5.QtWidgets import (
 
 # Internal modules
 from . import filters
-
-
-def get_empad_xml_scan_values(xml_path):
-    """Parse key scan and field-of-view values from an EMPAD XML file.
-
-    Returns a dictionary with:
-      - scan_resolution_x (int, from scan_parameters mode="acquire")
-      - scan_size (float, from scan_parameters mode="acquire")
-      - scan_resolution_y (int, from scan_parameters mode="acquire")
-      - scale_factor (float)
-      - x (float)
-      - y (float)
-    """
-
-    def _read_value(parent, tag, cast):
-        node = parent.find(tag) if parent is not None else None
-        if node is None or node.text is None:
-            return None
-        try:
-            return cast(node.text.strip())
-        except (TypeError, ValueError):
-            return None
-
-    root = ET.parse(xml_path).getroot()
-
-    # Only read scan values from the acquire mode block.
-    scan_node = root.find("./scan_parameters[@mode='acquire']")
-    fov_node = root.find("./iom_measurements/full_scan_field_of_view")
-
-    return {
-        "scan_resolution_x": _read_value(scan_node, "scan_resolution_x", int),
-        "scan_size": _read_value(scan_node, "scan_size", float),
-        "scan_resolution_y": _read_value(scan_node, "scan_resolution_y", int),
-        "scale_factor": _read_value(fov_node, "scale_factor", float),
-        "x": _read_value(fov_node, "x", float),
-        "y": _read_value(fov_node, "y", float),
-    }
-
-
-def parse_empad_scan_size(scan_values):
-    """Calculate scan size in nm from EMPAD XML scan values.
-
-    Expects a dictionary with:
-      - scan_resolution_x (int)
-      - scan_size (float)
-      - scan_resolution_y (int)
-      - scale_factor (float)
-      - x (float)
-      - y (float)
-      Returns the scan size in nm"""
-    if scan_values is None or any(value is None for value in scan_values.values()):
-        return None
-
-    scan_resolution_x = scan_values.get("scan_resolution_x")
-    scan_resolution_y = scan_values.get("scan_resolution_y")
-    scan_size = scan_values.get("scan_size")
-    scale_factor = scan_values.get("scale_factor")
-    full_fov = (
-        scan_values.get("x") / scale_factor * scan_size
-    )  # fov_x and fov_y are always the same
-
-    scan_size = max(scan_resolution_x, scan_resolution_y)
-
-    pixel_size = full_fov / scan_size * 1e9  # Convert to nm
-    return pixel_size
 
 
 def find_system_font():
@@ -722,7 +657,18 @@ def load_4dstem(file, file_type, lazy=False):
         f = usid_reader(file, lazy=lazy)[0]
 
     elif file_type == "py4DSTEM (*.h5 *.hdf5)":
-        f = load_py4dstem(file)
+        f_list = load_py4dstem(file)
+        if len(f_list) > 1:
+            dialog = Select4DDatasetDialog(f_list)
+            if dialog.exec_() == QDialog.Accepted:
+                f = dialog.selected
+            else:
+                return
+        elif len(f_list) == 1:
+            f = f_list[0]
+        else:
+            print("No valid 4D dataset found in this file!")
+            return
 
     elif file_type == "DigitalMicrograph Files (*.dm3 *.dm4)":
         f = dm_reader(file)[0]
@@ -763,9 +709,10 @@ def load_4dstem(file, file_type, lazy=False):
 # A very basic reader for py4DSTEM h5/hdf5 files
 def load_py4dstem(file_path):
     """
-    Read an HDF5 file whose schema is:
+    Read HDF5 file saved by py4DSTEM with the schema:
       <unknown_root>/datacube/data
-      <unknown_root>/metadatabundle
+      <unknown_root>/datacube/dim0, dim1, dim2, dim3
+      <unknown_root>/metadatabundle/calibration (optional)
 
     Returns:
       {
@@ -804,66 +751,163 @@ def load_py4dstem(file_path):
     def scalar(value):
         if isinstance(value, np.ndarray):
             if value.size == 1:
-                return decode_if_bytes(value.reshape(-1)[0].item())
+                return decode_if_bytes(
+                    value.reshape(-1)[0].item()
+                )  # Get the first element safely
             return value.tolist()
         if isinstance(value, np.generic):
             return decode_if_bytes(value.item())
         return decode_if_bytes(value)
 
+    def find_root_group(h5_file):
+        # Find the root group in the HDF5 file
+        for obj in h5_file.values():
+            if isinstance(obj, h5py.Group):
+                return obj
+        raise KeyError("Could not find a root group in this file!")
+
+    def find_4D_data_group(root):
+        # Find the 4D data group that contains the 'data' dataset
+        datagroups = []
+        for group in root.values():
+            if isinstance(group, h5py.Group):
+                if (
+                    "data" in group
+                    and isinstance(group["data"], h5py.Dataset)
+                    and group["data"].ndim == 4
+                ):
+                    datagroups.append(group)
+        return datagroups
+
+    def get_calibration(root):
+        # Try to get calibration of the 4D dataset if available, otherwise return default values
+        for group in root.values():
+            if isinstance(group, h5py.Group):
+                if "calibration" in group:
+                    calibration = to_python(group["calibration"])
+                    r_scale = scalar(calibration.get("R_pixel_size", 1))
+                    r_units = scalar(calibration.get("R_pixel_units", None))
+                    q_scale = scalar(calibration.get("Q_pixel_size", 1))
+                    q_units = scalar(calibration.get("Q_pixel_units", None))
+
+                    return {
+                        "R_pixel_size": r_scale,
+                        "R_pixel_units": r_units,
+                        "Q_pixel_size": q_scale,
+                        "Q_pixel_units": q_units,
+                    }
+        return {
+            "R_pixel_size": 1,
+            "R_pixel_units": None,
+            "Q_pixel_size": 1,
+            "Q_pixel_units": None,
+        }
+
+    def get_4D_data(group):
+        data = to_python(group["data"][()])
+        return data
+
     with h5py.File(file_path, "r") as f:
-        candidates = [
-            grp
-            for grp in f.values()
-            if isinstance(grp, h5py.Group)
-            and "datacube" in grp
-            and "metadatabundle" in grp
-        ]
+        file_name = os.path.basename(file_path)
+        root = find_root_group(f)
+        calibration = get_calibration(root)
+        r_scale = calibration["R_pixel_size"]
+        r_units = calibration["R_pixel_units"]
+        q_scale = calibration["Q_pixel_size"]
+        q_units = calibration["Q_pixel_units"]
+        data_groups = find_4D_data_group(root)
+        data_dictionaries = []
+        if data_groups:
+            for group in data_groups:
+                try:
+                    data = get_4D_data(group)
+                    axis_names = ["scan_y", "scan_x", "height", "width"]
+                    axis_scales = [r_scale, r_scale, q_scale, q_scale]
+                    axis_units = [r_units, r_units, q_units, q_units]
+                    navigation_flags = [True, True, False, False]
+                    axes = [
+                        {
+                            "index_in_array": i,
+                            "name": axis_names[i],
+                            "navigate": navigation_flags[i],
+                            "offset": 0,
+                            "scale": axis_scales[i],
+                            "size": int(data.shape[i]),
+                            "units": axis_units[i],
+                        }
+                        for i in range(4)
+                    ]
+                    metadata = {
+                        "General": {
+                            "title": os.path.basename(group.name),
+                            "original_filename": file_name,
+                        },
+                        "Signal": {"signal_type": "electron_diffraction"},
+                    }
 
-        if candidates:
-            root = candidates[0]
-        elif "datacube" in f and "metadatabundle" in f:
-            root = f
+                    data_dict = {"data": data, "metadata": metadata, "axes": axes}
+                    data_dictionaries.append(data_dict)
+
+                except Exception as e:
+                    print(f"Error processing group {group.name}: {e}")
+                    continue
+
+        return data_dictionaries
+
+
+class Select4DDatasetDialog(QDialog):
+    def __init__(self, datasets, parent=None):
+        super().__init__(parent)
+
+        self.datasets = datasets if datasets is not None else []
+        self.selected = None
+
+        self.setWindowTitle("Select 4D-STEM dataset")
+        self.setGeometry(100, 100, 200, 100)
+
+        layout = QVBoxLayout()
+
+        self.listWidget = QListWidget(self)
+
+        for idx, dataset in enumerate(self.datasets):
+            title = ""
+            try:
+                title = dataset["metadata"]["General"]["title"]
+            except Exception:
+                title = ""
+
+            if not title:
+                title = f"Dataset {idx}"
+
+            self.listWidget.addItem(QListWidgetItem(title))
+
+        if self.listWidget.count() > 0:
+            self.listWidget.setCurrentRow(0)
+
+        layout.addWidget(self.listWidget)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.handle_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+        app = QApplication.instance()
+        if app is not None:
+            screen = app.primaryScreen()
+            if screen is not None:
+                frame = self.frameGeometry()
+                frame.moveCenter(screen.availableGeometry().center())
+                self.move(frame.topLeft())
+
+    def handle_ok(self):
+        row = self.listWidget.currentRow()
+        if 0 <= row < len(self.datasets):
+            self.selected = self.datasets[row]
         else:
-            raise KeyError(
-                "Could not find a root group containing both 'datacube' and 'metadatabundle'."
-            )
-
-        if "data" not in root["datacube"]:
-            raise KeyError("Missing dataset 'datacube/data'.")
-
-        data = root["datacube"]["data"][()]
-        metadata = to_python(root["metadatabundle"])
-
-        if "calibration" not in metadata:
-            raise KeyError("Missing 'metadatabundle/calibration'.")
-
-        calibration = metadata["calibration"]
-        r_scale = scalar(calibration["R_pixel_size"])
-        r_units = scalar(calibration["R_pixel_units"])
-        q_scale = scalar(calibration["Q_pixel_size"])
-        q_units = scalar(calibration["Q_pixel_units"])
-
-        if data.ndim != 4:
-            raise ValueError(f"Expected 4D data, got shape {data.shape}")
-
-        axis_names = ["scan_y", "scan_x", "height", "width"]
-        axis_scales = [r_scale, r_scale, q_scale, q_scale]
-        axis_units = [r_units, r_units, q_units, q_units]
-
-        axes = [
-            {
-                "index_in_array": i,
-                "name": axis_names[i],
-                "navigate": False,
-                "offset": 0,
-                "scale": axis_scales[i],
-                "size": int(data.shape[i]),
-                "units": axis_units[i],
-            }
-            for i in range(4)
-        ]
-
-        return {"data": data, "metadata": metadata, "axes": axes}
+            self.selected = None
+        self.accept()
 
 
 class ImportStackDialog(QDialog):
@@ -900,6 +944,14 @@ class ImportStackDialog(QDialog):
 
         # Set the layout for the dialog
         self.setLayout(layout)
+
+        app = QApplication.instance()
+        if app is not None:
+            screen = app.primaryScreen()
+            if screen is not None:
+                frame = self.frameGeometry()
+                frame.moveCenter(screen.availableGeometry().center())
+                self.move(frame.topLeft())
 
     def contextMenuEvent(self, event):
         # Check if there is an item at the current mouse position
@@ -946,21 +998,6 @@ class ImportStackDialog(QDialog):
             original_index = self.item_to_index[item_text]
             self.ordered_items_idx.append(original_index)
             self.accept()
-
-
-# @njit(parallel=True)
-# def rgb2gray(im):
-#     # Convert numpy array "im" with RGB type to gray. A channel is ignored.
-#     im_y, im_x = im.shape[0], im.shape[1]
-#     gray = np.zeros((im_y, im_x), dtype='int16')
-#     for i in prange(im_y):
-#         for j in prange(im_x):
-#             r = im[i,j][0]
-#             g = im[i,j][1]
-#             b = im[i,j][2]
-#             intensity = r * 0.2125 + g * 0.7154 + b * 0.0721
-#             gray[i,j] = np.int16(intensity)
-#     return gray
 
 
 def convert_file(file, filetype, output_dir, f_type, save_metadata=False, **kwargs):

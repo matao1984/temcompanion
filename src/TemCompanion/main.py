@@ -770,6 +770,8 @@ border: 2px solid #FF8C00;
         f_name = getFileNameType(self.file)[0]
         try:
             f = load_4dstem(self.file, self.file_type, lazy=lazy)
+            if f is None:
+                return
             # Check if the data is 4D
             if f["data"].ndim != 4:
                 if f["data"].ndim == 3:

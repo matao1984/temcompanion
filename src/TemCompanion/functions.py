@@ -527,6 +527,41 @@ def load_file(file, file_type):
     elif file_type == "USID (*.h5 *.hdf5)":
         f = usid_reader(file)
 
+    # NPY
+    elif file_type == "Numpy Array Files (*.npy)":
+        data = np.load(file)
+        if data.ndim != 2 and data.ndim != 3:
+            print(
+                "Unsupported data dimensions in NPY file! Only 2D or 3D arrays are supported."
+            )
+            return
+        metadata = {
+            "General": {
+                "original_filename": os.path.basename(file),
+                "title": getFileNameType(file)[0],
+            },
+            "Signal": {"signal_type": "image"},
+        }
+        original_metadata = {}
+        axes = [None] * data.ndim
+        for i in range(data.ndim):
+            axes[i] = {
+                "size": data.shape[i],
+                "index_in_array": i,
+                "name": f"axis_{i}",
+                "scale": 1,
+                "offset": 0.0,
+                "units": None,
+                "navigate": False,
+            }
+        img_dict = {
+            "data": data,
+            "metadata": metadata,
+            "original_metadata": original_metadata,
+            "axes": axes,
+        }
+        f = [img_dict]
+
     # Load image series from a folder
     # Will load all the files whose type matches the selected one found in the folder and stack them together
     elif file_type == "Image Series (*.*)":
@@ -900,7 +935,12 @@ def load_py4dstem(file_path):
                         "Signal": {"signal_type": "electron_diffraction"},
                     }
 
-                    data_dict = {"data": data, "metadata": metadata, "axes": axes}
+                    data_dict = {
+                        "data": data,
+                        "metadata": metadata,
+                        "axes": axes,
+                        "original_metadata": {},
+                    }
                     data_dictionaries.append(data_dict)
 
                 except Exception as e:

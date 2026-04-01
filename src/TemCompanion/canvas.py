@@ -895,7 +895,8 @@ class PlotCanvas(QMainWindow):
             "Color PNG Files (*.png);;"
             "Color JPEG Files (*.jpg);;"
             "USID (*.hdf5);;"
-            "Pickle Dictionary Files (*.pkl)"
+            "Pickle Dictionary Files (*.pkl);;"
+            "Numpy Array Files (*.npy)"
         )
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(
             self.parent(),
@@ -920,7 +921,7 @@ class PlotCanvas(QMainWindow):
             print(f"Save figure to {self.file_path} with format {self.file_type}")
             img_to_save = {}
             if self.selected_type == "Pickle Dictionary Files (*.pkl)":
-                img_dict = self.get_img_dict_from_canvas()
+                img_dict = self.get_original_img_dict()
                 for key in ["data", "axes", "metadata", "original_metadata"]:
                     if key in img_dict.keys():
                         img_to_save[key] = img_dict[key]
@@ -928,11 +929,15 @@ class PlotCanvas(QMainWindow):
                     pickle.dump(img_to_save, f)
 
             elif self.selected_type == "USID (*.hdf5)":
-                img_dict = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata"]:
+                img_dict = self.get_original_img_dict()
+                for key in ["data", "axes", "metadata", "original_metadata"]:
                     if key in img_dict.keys():
                         img_to_save[key] = img_dict[key]
                 usid_writer(self.file_path, img_to_save)
+
+            elif self.selected_type == "Numpy Array Files (*.npy)":
+                img_dict = self.get_original_img_dict()
+                np.save(self.file_path, img_dict["data"])
 
             else:
                 # Save the current data only

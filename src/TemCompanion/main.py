@@ -214,6 +214,7 @@ class UI_TemCompanion(QMainWindow):
             "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;"
             "USID (*.h5 *.hdf5);;"
             "Pickle Dictionary Files (*.pkl);;"
+            "Numpy Array Files (*.npy);;"
             "Image Series (*.*)"
         )
 

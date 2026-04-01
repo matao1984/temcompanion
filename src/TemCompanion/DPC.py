@@ -64,7 +64,7 @@ def reconstruct_iDPC(DPCx, DPCy, rotation=0, cutoff=0.02):
 
 
 # Calculate the divergence
-def reconstruct_dDPC(DPCx, DPCy, rotation=0, cutoff=0.02, inverse=False):
+def reconstruct_dDPC(DPCx, DPCy, rotation=0, cutoff=None, inverse=False):
     if DPCx.ndim == 2:
         # Rotate the DPC vector images
         if rotation != 0:
@@ -73,7 +73,7 @@ def reconstruct_dDPC(DPCx, DPCy, rotation=0, cutoff=0.02, inverse=False):
         dDPCx = np.gradient(DPCx, axis=1)
         dDPCy = np.gradient(DPCy, axis=0)
         dDPC = dDPCx + dDPCy
-        if cutoff > 0 and cutoff < 1:
+        if cutoff is not None and cutoff > 0 and cutoff < 1:
             dDPC = gaussian_lowpass(dDPC, cutoff_ratio=1, hp_cutoff_ratio=cutoff)
         if inverse:
             dDPC = -dDPC

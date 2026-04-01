@@ -222,7 +222,8 @@ class UI_TemCompanion(QMainWindow):
             "DigitalMicrograph Files (*.dm3 *.dm4);;"
             "USID (*.h5 *.hdf5);;"
             "py4DSTEM (*.h5 *.hdf5);;"
-            "Pickle Dictionary Files (*.pkl)"
+            "Pickle Dictionary Files (*.pkl);;"
+            "Numpy Array Files (*.npy)"
         )
 
         # Session-only settings (reset on restart)

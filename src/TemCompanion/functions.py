@@ -673,6 +673,61 @@ def load_4dstem(file, file_type, lazy=False):
     elif file_type == "DigitalMicrograph Files (*.dm3 *.dm4)":
         f = dm_reader(file)[0]
 
+    elif file_type == "Numpy Array Files (*.npy)":
+        data = np.load(file)
+        if data.ndim != 4:
+            raise ValueError(
+                "Invalid 4D-STEM data! The numpy array must be 4-dimensional."
+            )
+        f = {
+            "data": data,
+            "axes": [
+                {
+                    "name": "scan_y",
+                    "size": data.shape[0],
+                    "index_in_array": 0,
+                    "scale": 1,
+                    "offset": 0.0,
+                    "units": None,
+                    "navigate": True,
+                },
+                {
+                    "name": "scan_x",
+                    "size": data.shape[1],
+                    "index_in_array": 1,
+                    "scale": 1,
+                    "offset": 0.0,
+                    "units": None,
+                    "navigate": True,
+                },
+                {
+                    "name": "height",
+                    "size": data.shape[2],
+                    "index_in_array": 2,
+                    "scale": 1,
+                    "offset": 0.0,
+                    "units": None,
+                    "navigate": False,
+                },
+                {
+                    "name": "width",
+                    "size": data.shape[3],
+                    "index_in_array": 3,
+                    "scale": 1,
+                    "offset": 0.0,
+                    "units": None,
+                    "navigate": False,
+                },
+            ],
+            "metadata": {
+                "General": {
+                    "original_filename": os.path.basename(file),
+                    "title": getFileNameType(file)[0],
+                }
+            },
+            "original_metadata": {},
+        }
+
     # Validate the content of f
     f_valid = {}
     for key in ["data", "axes", "metadata"]:

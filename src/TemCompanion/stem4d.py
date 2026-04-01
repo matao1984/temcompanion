@@ -295,7 +295,8 @@ class DiffractionCanvas(PlotCanvas):
             "Color PNG Files (*.png);;"
             "Color JPEG Files (*.jpg);;"
             "USID (*.hdf5);;"
-            "Pickle Dictionary Files (*.pkl)"
+            "Pickle Dictionary Files (*.pkl);;"
+            "Numpy Array Files (*.npy)"
         )
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(
             self.parent(),
@@ -319,7 +320,9 @@ class DiffractionCanvas(PlotCanvas):
             self.output_dir = getDirectory(self.file_path)
             print(f"Save figure to {self.file_path} with format {self.file_type}")
             img_to_save = {}
-            if self.selected_type == "Pickle Dictionary Files (*.pkl)":
+            if self.selected_type == "Numpy Array Files (*.npy)":
+                np.save(self.file_path, self.img4d["data"])
+            elif self.selected_type == "Pickle Dictionary Files (*.pkl)":
                 img_dict = self.img4d
                 for key in ["data", "axes", "metadata", "original_metadata"]:
                     if key in img_dict.keys():
@@ -725,7 +728,8 @@ class VirtualImageCanvas(PlotCanvas):
             "Color PNG Files (*.png);;"
             "Color JPEG Files (*.jpg);;"
             "USID (*.hdf5);;"
-            "Pickle Dictionary Files (*.pkl)"
+            "Pickle Dictionary Files (*.pkl);;"
+            "Numpy Array Files (*.npy)"
         )
         self.file_path, self.selected_type = QFileDialog.getSaveFileName(
             self.parent(),
@@ -749,7 +753,9 @@ class VirtualImageCanvas(PlotCanvas):
             self.output_dir = getDirectory(self.file_path)
             print(f"Save figure to {self.file_path} with format {self.file_type}")
             img_to_save = {}
-            if self.selected_type == "Pickle Dictionary Files (*.pkl)":
+            if self.selected_type == "Numpy Array Files (*.npy)":
+                np.save(self.file_path, self.img4d["data"])
+            elif self.selected_type == "Pickle Dictionary Files (*.pkl)":
                 img_dict = self.img4d
                 for key in ["data", "axes", "metadata", "original_metadata"]:
                     if key in img_dict.keys():

@@ -7,6 +7,7 @@ from rsciio.image import file_reader as im_reader
 from rsciio.mrc import file_reader as mrc_reader
 from rsciio.empad import file_reader as empad_reader
 from rsciio.usid import file_reader as usid_reader
+from rsciio.blockfile import file_reader as blo_reader
 from skimage.color import rgb2gray
 import h5py
 
@@ -709,6 +710,9 @@ def load_4dstem(file, file_type, lazy=False):
 
     elif file_type == "DigitalMicrograph Files (*.dm3 *.dm4)":
         f = dm_reader(file)[0]
+
+    elif file_type == "NanoMegas ASTAR Files (*.blo)":
+        f = blo_reader(file)[0]
 
     elif file_type == "Numpy Array Files (*.npy)":
         data = np.load(file)

@@ -223,6 +223,7 @@ class UI_TemCompanion(QMainWindow):
             "DigitalMicrograph Files (*.dm3 *.dm4);;"
             "USID (*.h5 *.hdf5);;"
             "py4DSTEM (*.h5 *.hdf5);;"
+            "NanoMegas ASTAR Files (*.blo);;"
             "Pickle Dictionary Files (*.pkl);;"
             "Numpy Array Files (*.npy)"
         )

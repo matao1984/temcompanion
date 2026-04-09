@@ -253,9 +253,8 @@ class PlotCanvas(QMainWindow):
             units = "1/µm"
 
         # Handle Angstrom cases after lowercasing the input string.
-        if units in ["a", "å", "ang", "angstrom"]:
-            units = "nm"
-            scale *= 0.1
+        elif units in ["a", "å", "ang", "angstrom"]:
+            units = "angstrom"
         elif units in [
             "1/a",
             "1/å",
@@ -266,8 +265,20 @@ class PlotCanvas(QMainWindow):
             "ang^-1",
             "angstrom^-1",
         ]:
-            units = "1/nm"
-            scale /= 0.1
+            units = "1/angstrom"
+
+        # Non-standard unit conversion matrix
+        non_standard_units = {
+            "angstrom": ("nm", 0.1),
+            "1/angstrom": ("1/nm", 10),
+            "cm": ("nm", 1e7),
+            "1/cm": ("1/nm", 1e-7),
+            "dm": ("nm", 1e8),
+            "1/dm": ("1/nm", 1e-8),
+        }
+        if units in non_standard_units.keys():
+            units, factor = non_standard_units[units]
+            scale *= factor
 
         # Standardize the units into SI format
         real_units_list = ["pm", "nm", "µm", "mm", "m", "km"]

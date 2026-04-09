@@ -116,6 +116,15 @@ author = {Tao Ma}
 
 <!-- CHANGELOG_SNIPPET_START -->
 
+### 1.4.1[dev]
+- Added support for NanoMegas ASTAR block files (*.blo)
+  - The centering and distortion calibration information in the file header is saved in the metadata, but not applied.
+  - The diffraction calibration is in cm/pixel. To get the correct scale in 1/nm, use scale = R / (Lλ) where:
+    - R is the original calibration in cm/pixel;
+    - L is the calibrated camera length in cm;
+    - λ is the electron wave length in nm.
+- Fixed reading DigitalMicrograph files saved in GMS 3.6.2.
+
 ### 1.4.0
 - Added support for 4D-STEM data.
 - Supported formats:

@@ -709,7 +709,22 @@ def load_4dstem(file, file_type, lazy=False):
             return
 
     elif file_type == "DigitalMicrograph Files (*.dm3 *.dm4)":
-        f = dm_reader(file)[0]
+        f_list = []
+        imgs = dm_reader(file)
+        for signal in imgs:
+            if signal["data"].ndim == 4 or signal["data"].ndim == 3:
+                f_list.append(signal)
+        if len(f_list) > 1:
+            dialog = Select4DDatasetDialog(f_list)
+            if dialog.exec_() == QDialog.Accepted:
+                f = dialog.selected
+            else:
+                return
+        elif len(f_list) == 1:
+            f = f_list[0]
+        else:
+            print("No valid 4D dataset found in this file!")
+            return
 
     elif file_type == "NanoMegas ASTAR Files (*.blo)":
         f = blo_reader(file)[0]
@@ -779,9 +794,6 @@ def load_4dstem(file, file_type, lazy=False):
             break
 
     if f_valid:
-        # Some data contains NaN. Replace with zero
-        # data = f_valid["data"]
-        # np.nan_to_num(data, copy=False)
         try:
             f_valid["original_metadata"] = f["original_metadata"]
             # ['original_metadata'] is optional

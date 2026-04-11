@@ -15,6 +15,7 @@ import h5py
 import math
 import os
 import numpy as np
+import dask.array as da
 from PIL import Image, ImageDraw, ImageFont
 import copy
 import json
@@ -727,7 +728,7 @@ def load_4dstem(file, file_type, lazy=False):
             return
 
     elif file_type == "NanoMegas ASTAR Files (*.blo)":
-        f = blo_reader(file)[0]
+        f = blo_reader(file, lazy=lazy)[0]
 
     elif file_type == "Numpy Array Files (*.npy)":
         data = np.load(file)
@@ -794,6 +795,9 @@ def load_4dstem(file, file_type, lazy=False):
             break
 
     if f_valid:
+        # If the data is np.memmap, convert to dask array for lazy loading
+        if isinstance(f_valid["data"], np.memmap) and lazy:
+            f_valid["data"] = da.from_array(f_valid["data"], chunks="auto")
         try:
             f_valid["original_metadata"] = f["original_metadata"]
             # ['original_metadata'] is optional

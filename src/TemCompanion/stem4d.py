@@ -23,6 +23,10 @@ class DiffractionCanvas(PlotCanvas):
         self.R_size = img4d["data"].shape[0], img4d["data"].shape[1]
         self.Q_size = img4d["data"].shape[2], img4d["data"].shape[3]
         q_img_data = img4d["data"][self.R_size[0] // 2, self.R_size[1] // 2, :, :]
+        if hasattr(q_img_data, "compute"):
+            q_img_data = (
+                q_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         q_img = {
             "data": q_img_data,
             "metadata": img4d["metadata"],
@@ -48,6 +52,7 @@ class DiffractionCanvas(PlotCanvas):
                 R_canvas_name
             ].close()  # Close the virtual image canvas if it's still open
             self.parent().preview_dict.pop(R_canvas_name, None)
+        self.master_handle.teardown()
         self.master_handle = None  # Remove reference to master handle to allow garbage collection of the virtual image canvas if it's still open
 
     def create_menubar(self):
@@ -496,6 +501,10 @@ class VirtualImageCanvas(PlotCanvas):
         self.R_size = img4d["data"].shape[0], img4d["data"].shape[1]
         self.Q_size = img4d["data"].shape[2], img4d["data"].shape[3]
         v_img_data = img4d["data"][:, :, self.Q_size[0] // 2, self.Q_size[1] // 2]
+        if hasattr(v_img_data, "compute"):
+            v_img_data = (
+                v_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         v_img = {
             "data": v_img_data,
             "metadata": img4d["metadata"],
@@ -515,6 +524,7 @@ class VirtualImageCanvas(PlotCanvas):
                 Q_canvas_name
             ].close()  # Close the diffraction canvas if it's still open
             self.parent().preview_dict.pop(Q_canvas_name, None)
+        self.master_handle.teardown()
         self.master_handle = None  # Remove reference to master handle to allow garbage collection of the diffraction canvas if it's still open
 
     def create_menubar(self):
@@ -896,6 +906,7 @@ class PlotCanvas4D:
             self.img4d, master_handle=self, parent=parent
         )
         self.Q_canvas = DiffractionCanvas(self.img4d, master_handle=self, parent=parent)
+        self.worker = None
 
         self.point_detector_diffraction()  # Initialize the point detector on the diffraction canvas
         self.point_detector_virtualimg()  # Initialize the point detector on the virtual image canvas
@@ -905,6 +916,38 @@ class PlotCanvas4D:
         self.R_canvas.position_window("center left")
         self.Q_canvas.show()
         self.Q_canvas.position_window("center right")
+
+    def _start_virtual_worker(self, func, *args, **kwargs):
+        self.worker = Worker(func, *args, **kwargs)
+        self.R_canvas.toggle_progress_bar("ON")
+        self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar("OFF"))
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.result.connect(self._on_com_result)
+        self.worker.finished.connect(lambda: setattr(self, "worker", None))
+        self.worker.start()
+
+    def teardown(self):
+        """Release large data references on close. The guard makes multiple
+        calls (one per canvas closeEvent) safe."""
+        if self.img4d is None:
+            return  # Already torn down
+        worker_running = False
+        if self.worker is not None:
+            try:
+                worker_running = self.worker.isRunning()
+            except RuntimeError:
+                # Qt already deleted the C++ Worker object; treat as finished.
+                self.worker = None
+        if worker_running:
+            # Worker holds img_data; free after it finishes.
+            self.worker.finished.connect(self._deferred_teardown)
+        else:
+            self._deferred_teardown()
+
+    def _deferred_teardown(self):
+        self.img4d = None
+        self.img_data = None
+        self.worker = None
 
     def remove_nan(self):
         # Remove NaN values from the 4D image data and update both canvases
@@ -988,6 +1031,10 @@ class PlotCanvas4D:
         qy = pos.y() / self.Q_canvas.scale
         # Update the virtual image based on the new position in Q space
         v_img_data = self.img_data[:, :, int(qy), int(qx)]
+        if hasattr(v_img_data, "compute"):
+            v_img_data = (
+                v_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         self.R_canvas.canvas.update_img(v_img_data)
 
     def point_detector_virtualimg(self):
@@ -1027,6 +1074,10 @@ class PlotCanvas4D:
         y = pos.y() / self.R_canvas.scale
         # Update the diffraction image based on the new position in R space
         q_img_data = self.img_data[int(y), int(x), :, :]
+        if hasattr(q_img_data, "compute"):
+            q_img_data = (
+                q_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         pvmin = self.Q_canvas.pvmin
         pvmax = self.Q_canvas.pvmax
         self.Q_canvas.canvas.update_img(q_img_data, pvmin=pvmin, pvmax=pvmax)
@@ -1072,6 +1123,10 @@ class PlotCanvas4D:
         q_img_data = np.mean(
             self.img_data[y_start:y_end, x_start:x_end, :, :], axis=(0, 1)
         )
+        if hasattr(q_img_data, "compute"):
+            q_img_data = (
+                q_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         pvmin = self.Q_canvas.pvmin
         pvmax = self.Q_canvas.pvmax
         self.Q_canvas.canvas.update_img(q_img_data, pvmin=pvmin, pvmax=pvmax)
@@ -1122,7 +1177,6 @@ class PlotCanvas4D:
             self.Q_canvas.buttons["ok"].triggered.connect(function)
             self.Q_canvas.toolbar.addAction(self.Q_canvas.buttons["ok"])
 
-        # selector.sigRegionChangeFinished.connect(function)  # Connect the region change signal to the provided function to update the virtual image when the circle ROI is moved or resized
         selector.sigRemoveRequested.connect(lambda roi: self.remove_roi_Q(roi))
 
         # Add an "Add" action to the selector context menu
@@ -1152,16 +1206,8 @@ class PlotCanvas4D:
             y_center = pos.y() / self.Q_canvas.scale
             centers.append((x_center, y_center))
             radii.append(radius)
-        mask = create_mask(self.Q_size, centers, radii, edge_blur=0).astype(
-            np.float64, copy=False
-        )
-        # Calculate the virtual image in a separate thread
-        self.worker = Worker(self.get_virtual_image_with_mask, mask)
-        self.R_canvas.toggle_progress_bar("ON")
-        self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar("OFF"))
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.result.connect(self._on_com_result)
-        self.worker.start()
+        mask = create_mask(self.Q_size, centers, radii, edge_blur=0)
+        self._start_virtual_worker(self.get_virtual_image_with_mask, mask)
 
     def annular_detector_diffraction(self, function):
         # Add a resizable annular ROI to the diffraction canvas at the center of the Q space
@@ -1196,23 +1242,25 @@ class PlotCanvas4D:
         self.Q_canvas.buttons["ok"].triggered.connect(function)
         self.Q_canvas.toolbar.addAction(self.Q_canvas.buttons["ok"])
 
-        # selector.sigAnnulusChangeFinished.connect(function)  # Connect the annulus change signal to the provided function to update the virtual image when the annular ROI is moved or resized
         selector.sigRemoveRequested.connect(lambda roi: self.remove_roi_Q(roi))
 
     def get_virtual_image_with_mask(self, mask):
         # This method can be called to get the virtual image based on a custom mask
         # Use contraction to avoid allocating a full 4D temporary (img_data * mask).
-        mask = np.asarray(mask)
         virtualimg = np.tensordot(self.img_data, mask, axes=([2, 3], [0, 1]))
+        if hasattr(virtualimg, "compute"):
+            virtualimg = (
+                virtualimg.compute()
+            )  # Compute the dask array if it's lazy-loaded
         return virtualimg
 
     def get_annular_mask(self, size, center, inner_radius, outer_radius):
         mask = np.zeros(size)
         y, x = np.ogrid[: size[0], : size[1]]
-        dist_from_center = np.sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2)
-        mask[
-            (dist_from_center >= inner_radius) & (dist_from_center <= outer_radius)
-        ] = 1
+        dist2 = (x - center[0]) ** 2 + (y - center[1]) ** 2
+        inner2 = inner_radius * inner_radius
+        outer2 = outer_radius * outer_radius
+        mask[(dist2 >= inner2) & (dist2 <= outer2)] = True
         return mask
 
     def update_annular_detector_diffraction(self):
@@ -1231,13 +1279,8 @@ class PlotCanvas4D:
 
         mask = self.get_annular_mask(
             self.Q_size, (x_center, y_center), inner_radius_px, outer_radius_px
-        ).astype(np.float64, copy=False)
-        self.worker = Worker(self.get_virtual_image_with_mask, mask)
-        self.R_canvas.toggle_progress_bar("ON")
-        self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar("OFF"))
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.result.connect(self._on_com_result)
-        self.worker.start()
+        )
+        self._start_virtual_worker(self.get_virtual_image_with_mask, mask)
 
     def com(self):
         self.circle_detector_diffraction(lambda: self.update_com(signal="CoM"))
@@ -1301,19 +1344,18 @@ class PlotCanvas4D:
     def calculate_com(self, data, center, radius, mode="CoM"):
         x_center, y_center = center
         Q_size = data.shape[2], data.shape[3]
-        # radius: single value for circle, tuple for annulus (inner_radius, outer_radius)
+        fp_dtype = data.dtype if np.issubdtype(data.dtype, np.floating) else np.float32
         if isinstance(radius, (int, float)):
             mask = create_mask(
                 Q_size, [(int(x_center), int(y_center))], [radius], edge_blur=0
-            ).astype(np.float64, copy=False)
-        elif isinstance(radius, (tuple, list)) and len(radius) == 2:
-            mask = self.get_annular_mask(Q_size, center, radius[0], radius[1]).astype(
-                np.float64, copy=False
             )
+        elif isinstance(radius, (tuple, list)) and len(radius) == 2:
+            mask = self.get_annular_mask(Q_size, center, radius[0], radius[1])
+            # get_annular_mask already returns bool
 
-        # Vectorized weighted reductions without allocating a 4D masked copy.
-        yy = np.arange(Q_size[0], dtype=np.float64)[:, None]  # axis=2
-        xx = np.arange(Q_size[1], dtype=np.float64)[None, :]  # axis=3
+        # Coord arrays match data dtype; bool*float = float so no upcast of data in tensordot.
+        yy = np.arange(Q_size[0], dtype=fp_dtype)[:, None]  # axis=2
+        xx = np.arange(Q_size[1], dtype=fp_dtype)[None, :]  # axis=3
         mass = np.tensordot(data, mask, axes=([2, 3], [0, 1]))
         com_y_num = np.tensordot(data, mask * yy, axes=([2, 3], [0, 1]))
         com_x_num = np.tensordot(data, mask * xx, axes=([2, 3], [0, 1]))
@@ -1326,6 +1368,14 @@ class PlotCanvas4D:
         # The com is to the image center, need to subtract the center coordinates
         self.com_y = com_y - y_center
         self.com_x = com_x - x_center
+        if hasattr(self.com_x, "compute"):
+            self.com_x = (
+                self.com_x.compute()
+            )  # Compute the dask array if it's lazy-loaded
+        if hasattr(self.com_y, "compute"):
+            self.com_y = (
+                self.com_y.compute()
+            )  # Compute the dask array if it's lazy-loaded
 
         if mode == "CoM":
             virtualimg = self.com_x + 1j * self.com_y
@@ -1333,6 +1383,10 @@ class PlotCanvas4D:
             virtualimg = reconstruct_iDPC(self.com_x, self.com_y)
         elif mode == "dCoM":
             virtualimg = reconstruct_dDPC(self.com_x, self.com_y)
+        if hasattr(virtualimg, "compute"):
+            virtualimg = (
+                virtualimg.compute()
+            )  # Compute the dask array if it's lazy-loaded
 
         return virtualimg
 
@@ -1359,19 +1413,14 @@ class PlotCanvas4D:
         inner_radius_px = inner_radius / Q_scale
         outer_radius_px = outer_radius / Q_scale
 
-        # Calculate CoM with a separate thread
-        self.worker = Worker(
+        # Calculate CoM with a separate thread (uses single-worker guard)
+        self._start_virtual_worker(
             self.calculate_com,
             self.img_data,
             (x_center, y_center),
             (inner_radius_px, outer_radius_px),
             mode=signal,
         )
-        self.R_canvas.toggle_progress_bar("ON")
-        self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar("OFF"))
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.result.connect(self._on_com_result)
-        self.worker.start()
 
     def crop_R(self):
         # This method can be called to crop the R image based on the current rectangle selector
@@ -1396,6 +1445,10 @@ class PlotCanvas4D:
 
         # Update the virtual image canvas with the cropped data
         v_img_data = self.img_data[:, :, self.Q_center[0], self.Q_center[1]]
+        if hasattr(v_img_data, "compute"):
+            v_img_data = (
+                v_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         self.R_canvas.canvas.update_img(v_img_data)
 
         # Update the process history
@@ -1433,6 +1486,10 @@ class PlotCanvas4D:
 
         # # Update the diffraction image canvas with the cropped data
         q_img_data = self.img_data[self.R_center[0], self.R_center[1], :, :]
+        if hasattr(q_img_data, "compute"):
+            q_img_data = (
+                q_img_data.compute()
+            )  # Compute the dask array if it's lazy-loaded
         pvmin = self.Q_canvas.pvmin
         pvmax = self.Q_canvas.pvmax
         self.Q_canvas.canvas.update_img(q_img_data, pvmin=pvmin, pvmax=pvmax)

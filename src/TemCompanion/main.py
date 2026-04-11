@@ -773,7 +773,7 @@ border: 2px solid #FF8C00;
             f = None
 
     # =============================== Open 4DSTEM dataset ======================================
-    def preview_4dstem(self, lazy=False):
+    def preview_4dstem(self, lazy=True):
         f_name = getFileNameType(self.file)[0]
         try:
             f = load_4dstem(self.file, self.file_type, lazy=lazy)

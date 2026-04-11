@@ -83,7 +83,7 @@ def calc_strains(P, ks):
     return exx, eyy, Exy, oxy
 
 
-def create_mask(img_size, center, radius, edge_blur=0.3):
+def create_mask(img_size, center, radius, edge_blur=0.3, dtype=float):
     """
     Generate a circle mask from a given point and radius
     img_size: tuple of original (FFT) image size
@@ -93,6 +93,17 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
     """
     # Create a grid of coordinates
     Y, X = np.ogrid[: img_size[0], : img_size[1]]
+
+    # Fast binary path used by virtual detector masks.
+    if dtype is bool and edge_blur == 0:
+        mask = np.zeros(img_size, dtype=bool)
+        for i in range(len(center)):
+            x_center, y_center = center[i]
+            r = radius[i]
+            dist2 = (X - x_center) ** 2 + (Y - y_center) ** 2
+            mask |= dist2 <= r * r
+        return mask
+
     mask = np.zeros(img_size, dtype=float)
 
     for i in range(len(center)):
@@ -122,7 +133,9 @@ def create_mask(img_size, center, radius, edge_blur=0.3):
 
             mask[transition_zone] = transition_mask[transition_zone]
 
-    return mask
+    if dtype is bool:
+        return mask > 0
+    return mask.astype(dtype, copy=False)
 
 
 def refine_center(img, g, r):

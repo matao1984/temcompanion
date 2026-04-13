@@ -696,7 +696,7 @@ def load_4dstem(file, file_type, lazy=False):
         f = usid_reader(file, lazy=lazy)[0]
 
     elif file_type == "py4DSTEM (*.h5 *.hdf5)":
-        f_list = load_py4dstem(file)
+        f_list = load_py4dstem(file, lazy=lazy)
         if len(f_list) > 1:
             dialog = Select4DDatasetDialog(f_list)
             if dialog.exec_() == QDialog.Accepted:
@@ -711,7 +711,7 @@ def load_4dstem(file, file_type, lazy=False):
 
     elif file_type == "DigitalMicrograph Files (*.dm3 *.dm4)":
         f_list = []
-        imgs = dm_reader(file)
+        imgs = dm_reader(file, lazy=lazy)
         for signal in imgs:
             if signal["data"].ndim == 4 or signal["data"].ndim == 3:
                 f_list.append(signal)
@@ -731,7 +731,10 @@ def load_4dstem(file, file_type, lazy=False):
         f = blo_reader(file, lazy=lazy)[0]
 
     elif file_type == "Numpy Array Files (*.npy)":
-        data = np.load(file)
+        if lazy:
+            data = np.lib.format.open_memmap(file, mode="r")
+        else:
+            data = np.load(file)
         if data.ndim != 4:
             raise ValueError(
                 "Invalid 4D-STEM data! The numpy array must be 4-dimensional."
@@ -797,7 +800,16 @@ def load_4dstem(file, file_type, lazy=False):
     if f_valid:
         # If the data is np.memmap, convert to dask array for lazy loading
         if isinstance(f_valid["data"], np.memmap) and lazy:
-            f_valid["data"] = da.from_array(f_valid["data"], chunks="auto")
+            if f_valid["data"].ndim == 4:
+                auto_chunks = {0: "auto", 1: "auto", 2: -1, 3: -1}
+            elif f_valid["data"].ndim == 3:
+                auto_chunks = {0: "auto", 1: -1, 2: -1}
+            f_valid["data"] = da.from_array(
+                f_valid["data"],
+                chunks=auto_chunks,
+                name=False,
+                asarray=False,
+            )
         try:
             f_valid["original_metadata"] = f["original_metadata"]
             # ['original_metadata'] is optional
@@ -819,7 +831,7 @@ def load_4dstem(file, file_type, lazy=False):
 
 
 # A very basic reader for py4DSTEM h5/hdf5 files
-def load_py4dstem(file_path):
+def load_py4dstem(file_path, lazy=False):
     """
     Read HDF5 file saved by py4DSTEM with the schema:
       <unknown_root>/datacube/data
@@ -839,11 +851,21 @@ def load_py4dstem(file_path):
             return value.decode("utf-8", errors="replace")
         return value
 
-    def to_python(obj):
+    def to_python(obj, lazy=lazy):
         if isinstance(obj, h5py.Dataset):
+            # Keep text/object datasets eager so byte decoding still works,
+            # and only wrap numeric datasets lazily as dask arrays.
+            if lazy and obj.dtype.kind not in {"S", "O", "U"}:
+                return da.from_array(
+                    obj,
+                    chunks={0: "auto", 1: "auto", 2: -1, 3: -1},
+                    name=False,
+                    asarray=False,
+                )
+
             value = obj[()]
             if isinstance(value, np.ndarray):
-                if value.dtype.kind in {"S", "O"}:
+                if value.dtype.kind in {"S", "O", "U"}:
                     return np.vectorize(decode_if_bytes)(value)
                 return value
             if isinstance(value, np.generic):
@@ -855,7 +877,7 @@ def load_py4dstem(file_path):
             if obj.attrs:
                 out["_attrs"] = {k: decode_if_bytes(v) for k, v in obj.attrs.items()}
             for k, v in obj.items():
-                out[k] = to_python(v)
+                out[k] = to_python(v, lazy=lazy)
             return out
 
         return obj
@@ -916,60 +938,61 @@ def load_py4dstem(file_path):
         }
 
     def get_4D_data(group):
-        data = to_python(group["data"][()])
+        data = to_python(group["data"], lazy=lazy)
         return data
 
-    with h5py.File(file_path, "r") as f:
-        file_name = os.path.basename(file_path)
-        root = find_root_group(f)
-        calibration = get_calibration(root)
-        r_scale = calibration["R_pixel_size"]
-        r_units = calibration["R_pixel_units"]
-        q_scale = calibration["Q_pixel_size"]
-        q_units = calibration["Q_pixel_units"]
-        data_groups = find_4D_data_group(root)
-        data_dictionaries = []
-        if data_groups:
-            for group in data_groups:
-                try:
-                    data = get_4D_data(group)
-                    axis_names = ["scan_y", "scan_x", "height", "width"]
-                    axis_scales = [r_scale, r_scale, q_scale, q_scale]
-                    axis_units = [r_units, r_units, q_units, q_units]
-                    navigation_flags = [True, True, False, False]
-                    axes = [
-                        {
-                            "index_in_array": i,
-                            "name": axis_names[i],
-                            "navigate": navigation_flags[i],
-                            "offset": 0,
-                            "scale": axis_scales[i],
-                            "size": int(data.shape[i]),
-                            "units": axis_units[i],
-                        }
-                        for i in range(4)
-                    ]
-                    metadata = {
-                        "General": {
-                            "title": os.path.basename(group.name),
-                            "original_filename": file_name,
-                        },
-                        "Signal": {"signal_type": "electron_diffraction"},
+    # Read hdf5 file here
+    f = h5py.File(file_path, "r")
+    file_name = os.path.basename(file_path)
+    root = find_root_group(f)
+    calibration = get_calibration(root)
+    r_scale = calibration["R_pixel_size"]
+    r_units = calibration["R_pixel_units"]
+    q_scale = calibration["Q_pixel_size"]
+    q_units = calibration["Q_pixel_units"]
+    data_groups = find_4D_data_group(root)
+    data_dictionaries = []
+    if data_groups:
+        for group in data_groups:
+            try:
+                data = get_4D_data(group)
+                axis_names = ["scan_y", "scan_x", "height", "width"]
+                axis_scales = [r_scale, r_scale, q_scale, q_scale]
+                axis_units = [r_units, r_units, q_units, q_units]
+                navigation_flags = [True, True, False, False]
+                axes = [
+                    {
+                        "index_in_array": i,
+                        "name": axis_names[i],
+                        "navigate": navigation_flags[i],
+                        "offset": 0,
+                        "scale": axis_scales[i],
+                        "size": int(data.shape[i]),
+                        "units": axis_units[i],
                     }
+                    for i in range(4)
+                ]
+                metadata = {
+                    "General": {
+                        "title": os.path.basename(group.name),
+                        "original_filename": file_name,
+                    },
+                    "Signal": {"signal_type": "electron_diffraction"},
+                }
 
-                    data_dict = {
-                        "data": data,
-                        "metadata": metadata,
-                        "axes": axes,
-                        "original_metadata": {},
-                    }
-                    data_dictionaries.append(data_dict)
+                data_dict = {
+                    "data": data,
+                    "metadata": metadata,
+                    "axes": axes,
+                    "original_metadata": {},
+                }
+                data_dictionaries.append(data_dict)
 
-                except Exception as e:
-                    print(f"Error processing group {group.name}: {e}")
-                    continue
+            except Exception as e:
+                print(f"Error processing group {group.name}: {e}")
+                continue
 
-        return data_dictionaries
+    return data_dictionaries
 
 
 class Select4DDatasetDialog(QDialog):

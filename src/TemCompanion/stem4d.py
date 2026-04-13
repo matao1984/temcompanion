@@ -5,6 +5,7 @@ from PyQt5.QtGui import QIcon
 import pyqtgraph as pg
 
 import numpy as np
+import dask.array as da
 import os
 import pickle
 from rsciio.usid import file_writer as usid_writer
@@ -326,7 +327,19 @@ class DiffractionCanvas(PlotCanvas):
             print(f"Save figure to {self.file_path} with format {self.file_type}")
             img_to_save = {}
             if self.selected_type == "Numpy Array Files (*.npy)":
-                np.save(self.file_path, self.img4d["data"])
+                data = self.img4d["data"]
+                if hasattr(data, "chunks") and hasattr(data, "compute"):
+                    out = np.lib.format.open_memmap(
+                        self.file_path,
+                        mode="w+",
+                        dtype=np.dtype(data.dtype),
+                        shape=tuple(data.shape),
+                    )
+                    da.store(data, out, lock=False)
+                    out.flush()
+                    del out
+                else:
+                    np.save(self.file_path, data)
             elif self.selected_type == "Pickle Dictionary Files (*.pkl)":
                 img_dict = self.img4d
                 for key in ["data", "axes", "metadata", "original_metadata"]:
@@ -764,7 +777,19 @@ class VirtualImageCanvas(PlotCanvas):
             print(f"Save figure to {self.file_path} with format {self.file_type}")
             img_to_save = {}
             if self.selected_type == "Numpy Array Files (*.npy)":
-                np.save(self.file_path, self.img4d["data"])
+                data = self.img4d["data"]
+                if hasattr(data, "chunks") and hasattr(data, "compute"):
+                    out = np.lib.format.open_memmap(
+                        self.file_path,
+                        mode="w+",
+                        dtype=np.dtype(data.dtype),
+                        shape=tuple(data.shape),
+                    )
+                    da.store(data, out, lock=False)
+                    out.flush()
+                    del out
+                else:
+                    np.save(self.file_path, data)
             elif self.selected_type == "Pickle Dictionary Files (*.pkl)":
                 img_dict = self.img4d
                 for key in ["data", "axes", "metadata", "original_metadata"]:

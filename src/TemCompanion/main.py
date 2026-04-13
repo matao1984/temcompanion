@@ -613,7 +613,9 @@ border: 2px solid #FF8C00;
             if self.file_type:
                 self.last_open_4dstem_filter = self.file_type
                 self.settings["last4DSTEMOpenFilter"] = self.last_open_4dstem_filter
-            self.preview_4dstem()
+
+            lazy = self.attribute.get("4dstem_lazy", True)
+            self.preview_4dstem(lazy=lazy)
         else:
             self.file = None
 

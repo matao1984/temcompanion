@@ -9,6 +9,7 @@
   "fft_pvmax": 99.9,
   "4dstem_pvmin": 0.1,
   "4dstem_pvmax": 99,
+  "4dstem_lazy": true,
   "gamma": 1.0,
   "scalebar": true,
   "color": "yellow",

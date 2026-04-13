@@ -777,6 +777,8 @@ border: 2px solid #FF8C00;
     # =============================== Open 4DSTEM dataset ======================================
     def preview_4dstem(self, lazy=True):
         f_name = getFileNameType(self.file)[0]
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
         try:
             f = load_4dstem(self.file, self.file_type, lazy=lazy)
             if f is None:
@@ -866,6 +868,7 @@ border: 2px solid #FF8C00;
             print(f"Opened unsuccessful: {f_name}. Error: {e}")
         finally:
             f = None
+            QApplication.restoreOverrideCursor()
 
 
 # ===================Redirect output to the main window===============================

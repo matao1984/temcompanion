@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QAction, QToolBar, QFileDialog, QDialog
+from PyQt5.QtWidgets import QAction, QToolBar, QFileDialog, QDialog, QApplication
 from PyQt5.QtCore import Qt, QRectF, QSize, QPointF, pyqtSignal
 from PyQt5.QtGui import QIcon
 
@@ -325,12 +325,71 @@ class DiffractionCanvas(PlotCanvas):
             self.f_name, self.file_type = getFileNameType(self.file_path)
             self.output_dir = getDirectory(self.file_path)
             print(f"Save figure to {self.file_path} with format {self.file_type}")
+
+            if self.selected_type in {
+                "Numpy Array Files (*.npy)",
+                "Pickle Dictionary Files (*.pkl)",
+                "USID (*.hdf5)",
+            }:
+                self.toggle_progress_bar("ON")
+                QApplication.processEvents()
+                self._save_worker = Worker(
+                    self._save_4dstem_dataset,
+                    self.file_path,
+                    self.selected_type,
+                    self.img4d,
+                )
+                self._save_worker.result.connect(self._on_save_4dstem_finished)
+                self._save_worker.finished.connect(self._save_worker.deleteLater)
+                self._save_worker.finished.connect(
+                    lambda: setattr(self, "_save_worker", None)
+                )
+                self._save_worker.start()
+                return
+
             img_to_save = {}
-            if self.selected_type == "Numpy Array Files (*.npy)":
-                data = self.img4d["data"]
+            # Save the current data only
+            current_img = self.get_img_dict_from_canvas()
+            for key in ["data", "axes", "metadata"]:
+                if key in current_img.keys():
+                    img_to_save[key] = current_img[key]
+
+            if self.selected_type == "16-bit TIFF Files (*.tiff)":
+                save_as_tif16(img_to_save, self.f_name, self.output_dir)
+            elif self.selected_type == "32-bit TIFF Files (*.tiff)":
+                save_as_tif16(
+                    img_to_save, self.f_name, self.output_dir, dtype="float32"
+                )
+
+            elif self.selected_type in [
+                "8-bit Grayscale TIFF Files (*.tiff)",
+                "Grayscale PNG Files (*.png)",
+                "Grayscale JPEG Files (*.jpg)",
+            ]:
+                save_with_pil(
+                    img_to_save,
+                    self.f_name,
+                    self.output_dir,
+                    self.file_type,
+                    scalebar=self.attribute["scalebar"],
+                )
+            else:
+                # Save with pyqtgraph export function
+                exporter = pg.exporters.ImageExporter(self.canvas.viewbox)
+                exporter.parameters()["width"] = self.img_size[
+                    1
+                ]  # Set export width to original image width
+                # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
+                exporter.export(self.file_path)
+
+    def _save_4dstem_dataset(self, file_path, selected_type, img4d):
+        try:
+            img_to_save = {}
+            if selected_type == "Numpy Array Files (*.npy)":
+                data = img4d["data"]
                 if hasattr(data, "chunks") and hasattr(data, "compute"):
                     out = np.lib.format.open_memmap(
-                        self.file_path,
+                        file_path,
                         mode="w+",
                         dtype=np.dtype(data.dtype),
                         shape=tuple(data.shape),
@@ -339,54 +398,26 @@ class DiffractionCanvas(PlotCanvas):
                     out.flush()
                     del out
                 else:
-                    np.save(self.file_path, data)
-            elif self.selected_type == "Pickle Dictionary Files (*.pkl)":
-                img_dict = self.img4d
+                    np.save(file_path, data)
+            elif selected_type == "Pickle Dictionary Files (*.pkl)":
                 for key in ["data", "axes", "metadata", "original_metadata"]:
-                    if key in img_dict.keys():
-                        img_to_save[key] = img_dict[key]
-                with open(self.file_path, "wb") as f:
+                    if key in img4d.keys():
+                        img_to_save[key] = img4d[key]
+                with open(file_path, "wb") as f:
                     pickle.dump(img_to_save, f)
-            elif self.selected_type == "USID (*.hdf5)":
-                img_dict = self.img4d
+            elif selected_type == "USID (*.hdf5)":
                 for key in ["data", "axes", "metadata"]:
-                    if key in img_dict.keys():
-                        img_to_save[key] = img_dict[key]
-                usid_writer(self.file_path, img_to_save)
-            else:
-                # Save the current data only
-                current_img = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata"]:
-                    if key in current_img.keys():
-                        img_to_save[key] = current_img[key]
+                    if key in img4d.keys():
+                        img_to_save[key] = img4d[key]
+                usid_writer(file_path, img_to_save)
+            return None
+        except Exception as exc:
+            return exc
 
-                if self.selected_type == "16-bit TIFF Files (*.tiff)":
-                    save_as_tif16(img_to_save, self.f_name, self.output_dir)
-                elif self.selected_type == "32-bit TIFF Files (*.tiff)":
-                    save_as_tif16(
-                        img_to_save, self.f_name, self.output_dir, dtype="float32"
-                    )
-
-                elif self.selected_type in [
-                    "8-bit Grayscale TIFF Files (*.tiff)",
-                    "Grayscale PNG Files (*.png)",
-                    "Grayscale JPEG Files (*.jpg)",
-                ]:
-                    save_with_pil(
-                        img_to_save,
-                        self.f_name,
-                        self.output_dir,
-                        self.file_type,
-                        scalebar=self.attribute["scalebar"],
-                    )
-                else:
-                    # Save with pyqtgraph export function
-                    exporter = pg.exporters.ImageExporter(self.canvas.viewbox)
-                    exporter.parameters()["width"] = self.img_size[
-                        1
-                    ]  # Set export width to original image width
-                    # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
-                    exporter.export(self.file_path)
+    def _on_save_4dstem_finished(self, result):
+        self.toggle_progress_bar("OFF")
+        if isinstance(result, Exception):
+            print(f"Save unsuccessful: {result}")
 
     def remove_nan(self):
         self.master_handle.remove_nan()  # Call the method to remove NaN values from the diffraction image
@@ -775,12 +806,71 @@ class VirtualImageCanvas(PlotCanvas):
             self.f_name, self.file_type = getFileNameType(self.file_path)
             self.output_dir = getDirectory(self.file_path)
             print(f"Save figure to {self.file_path} with format {self.file_type}")
+
+            if self.selected_type in {
+                "Numpy Array Files (*.npy)",
+                "Pickle Dictionary Files (*.pkl)",
+                "USID (*.hdf5)",
+            }:
+                self.toggle_progress_bar("ON")
+                QApplication.processEvents()
+                self._save_worker = Worker(
+                    self._save_4dstem_dataset,
+                    self.file_path,
+                    self.selected_type,
+                    self.img4d,
+                )
+                self._save_worker.result.connect(self._on_save_4dstem_finished)
+                self._save_worker.finished.connect(self._save_worker.deleteLater)
+                self._save_worker.finished.connect(
+                    lambda: setattr(self, "_save_worker", None)
+                )
+                self._save_worker.start()
+                return
+
             img_to_save = {}
-            if self.selected_type == "Numpy Array Files (*.npy)":
-                data = self.img4d["data"]
+            # Save the current data only
+            current_img = self.get_img_dict_from_canvas()
+            for key in ["data", "axes", "metadata"]:
+                if key in current_img.keys():
+                    img_to_save[key] = current_img[key]
+
+            if self.selected_type == "16-bit TIFF Files (*.tiff)":
+                save_as_tif16(img_to_save, self.f_name, self.output_dir)
+            elif self.selected_type == "32-bit TIFF Files (*.tiff)":
+                save_as_tif16(
+                    img_to_save, self.f_name, self.output_dir, dtype="float32"
+                )
+
+            elif self.selected_type in [
+                "8-bit Grayscale TIFF Files (*.tiff)",
+                "Grayscale PNG Files (*.png)",
+                "Grayscale JPEG Files (*.jpg)",
+            ]:
+                save_with_pil(
+                    img_to_save,
+                    self.f_name,
+                    self.output_dir,
+                    self.file_type,
+                    scalebar=self.attribute["scalebar"],
+                )
+            else:
+                # Save with pyqtgraph export function
+                exporter = pg.exporters.ImageExporter(self.canvas.viewbox)
+                exporter.parameters()["width"] = self.img_size[
+                    1
+                ]  # Set export width to original image width
+                # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
+                exporter.export(self.file_path)
+
+    def _save_4dstem_dataset(self, file_path, selected_type, img4d):
+        try:
+            img_to_save = {}
+            if selected_type == "Numpy Array Files (*.npy)":
+                data = img4d["data"]
                 if hasattr(data, "chunks") and hasattr(data, "compute"):
                     out = np.lib.format.open_memmap(
-                        self.file_path,
+                        file_path,
                         mode="w+",
                         dtype=np.dtype(data.dtype),
                         shape=tuple(data.shape),
@@ -789,58 +879,30 @@ class VirtualImageCanvas(PlotCanvas):
                     out.flush()
                     del out
                 else:
-                    np.save(self.file_path, data)
-            elif self.selected_type == "Pickle Dictionary Files (*.pkl)":
-                img_dict = self.img4d
+                    np.save(file_path, data)
+            elif selected_type == "Pickle Dictionary Files (*.pkl)":
                 for key in ["data", "axes", "metadata", "original_metadata"]:
-                    if key in img_dict.keys():
-                        img_to_save[key] = img_dict[key]
-                with open(self.file_path, "wb") as f:
+                    if key in img4d.keys():
+                        img_to_save[key] = img4d[key]
+                with open(file_path, "wb") as f:
                     pickle.dump(img_to_save, f)
-            elif self.selected_type == "USID (*.hdf5)":
-                img_dict = self.img4d
+            elif selected_type == "USID (*.hdf5)":
                 for key in ["data", "axes", "metadata", "original_metadata"]:
-                    if key in img_dict.keys():
-                        img_to_save[key] = img_dict[key]
-                if os.path.exists(self.file_path):
+                    if key in img4d.keys():
+                        img_to_save[key] = img4d[key]
+                if os.path.exists(file_path):
                     os.remove(
-                        self.file_path
+                        file_path
                     )  # Remove existing file to avoid appending to it
-                usid_writer(self.file_path, img_to_save)
-            else:
-                # Save the current data only
-                current_img = self.get_img_dict_from_canvas()
-                for key in ["data", "axes", "metadata"]:
-                    if key in current_img.keys():
-                        img_to_save[key] = current_img[key]
+                usid_writer(file_path, img_to_save)
+            return None
+        except Exception as exc:
+            return exc
 
-                if self.selected_type == "16-bit TIFF Files (*.tiff)":
-                    save_as_tif16(img_to_save, self.f_name, self.output_dir)
-                elif self.selected_type == "32-bit TIFF Files (*.tiff)":
-                    save_as_tif16(
-                        img_to_save, self.f_name, self.output_dir, dtype="float32"
-                    )
-
-                elif self.selected_type in [
-                    "8-bit Grayscale TIFF Files (*.tiff)",
-                    "Grayscale PNG Files (*.png)",
-                    "Grayscale JPEG Files (*.jpg)",
-                ]:
-                    save_with_pil(
-                        img_to_save,
-                        self.f_name,
-                        self.output_dir,
-                        self.file_type,
-                        scalebar=self.attribute["scalebar"],
-                    )
-                else:
-                    # Save with pyqtgraph export function
-                    exporter = pg.exporters.ImageExporter(self.canvas.viewbox)
-                    exporter.parameters()["width"] = self.img_size[
-                        1
-                    ]  # Set export width to original image width
-                    # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
-                    exporter.export(self.file_path)
+    def _on_save_4dstem_finished(self, result):
+        self.toggle_progress_bar("OFF")
+        if isinstance(result, Exception):
+            print(f"Save unsuccessful: {result}")
 
     def remove_nan(self):
         self.master_handle.remove_nan()  # Call the method to remove NaN values from the virtual image

@@ -1583,7 +1583,8 @@ def _save_4dstem_dataset(file_path, selected_type, img4d):
         elif selected_type == "Pickle Dictionary Files (*.pkl)":
             data = img4d["data"]
             if hasattr(data, "compute"):
-                img_to_save["data"] = data.compute()
+                data = data.compute()  # Compute the dask array if it's lazy-loaded
+            img_to_save["data"] = data
             for key in ["axes", "metadata", "original_metadata"]:
                 if key in img4d.keys():
                     img_to_save[key] = img4d[key]

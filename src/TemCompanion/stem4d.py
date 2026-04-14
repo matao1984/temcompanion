@@ -334,7 +334,7 @@ class DiffractionCanvas(PlotCanvas):
                 self.toggle_progress_bar("ON")
                 QApplication.processEvents()
                 self._save_worker = Worker(
-                    self._save_4dstem_dataset,
+                    _save_4dstem_dataset,
                     self.file_path,
                     self.selected_type,
                     self.img4d,
@@ -381,38 +381,6 @@ class DiffractionCanvas(PlotCanvas):
                 ]  # Set export width to original image width
                 # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
                 exporter.export(self.file_path)
-
-    def _save_4dstem_dataset(self, file_path, selected_type, img4d):
-        try:
-            img_to_save = {}
-            if selected_type == "Numpy Array Files (*.npy)":
-                data = img4d["data"]
-                if hasattr(data, "chunks") and hasattr(data, "compute"):
-                    out = np.lib.format.open_memmap(
-                        file_path,
-                        mode="w+",
-                        dtype=np.dtype(data.dtype),
-                        shape=tuple(data.shape),
-                    )
-                    da.store(data, out, lock=False)
-                    out.flush()
-                    del out
-                else:
-                    np.save(file_path, data)
-            elif selected_type == "Pickle Dictionary Files (*.pkl)":
-                for key in ["data", "axes", "metadata", "original_metadata"]:
-                    if key in img4d.keys():
-                        img_to_save[key] = img4d[key]
-                with open(file_path, "wb") as f:
-                    pickle.dump(img_to_save, f)
-            elif selected_type == "USID (*.hdf5)":
-                for key in ["data", "axes", "metadata"]:
-                    if key in img4d.keys():
-                        img_to_save[key] = img4d[key]
-                usid_writer(file_path, img_to_save)
-            return None
-        except Exception as exc:
-            return exc
 
     def _on_save_4dstem_finished(self, result):
         self.toggle_progress_bar("OFF")
@@ -815,7 +783,7 @@ class VirtualImageCanvas(PlotCanvas):
                 self.toggle_progress_bar("ON")
                 QApplication.processEvents()
                 self._save_worker = Worker(
-                    self._save_4dstem_dataset,
+                    _save_4dstem_dataset,
                     self.file_path,
                     self.selected_type,
                     self.img4d,
@@ -862,42 +830,6 @@ class VirtualImageCanvas(PlotCanvas):
                 ]  # Set export width to original image width
                 # exporter.parameters()['height'] = self.img_size[0]  # Set export height to original image height
                 exporter.export(self.file_path)
-
-    def _save_4dstem_dataset(self, file_path, selected_type, img4d):
-        try:
-            img_to_save = {}
-            if selected_type == "Numpy Array Files (*.npy)":
-                data = img4d["data"]
-                if hasattr(data, "chunks") and hasattr(data, "compute"):
-                    out = np.lib.format.open_memmap(
-                        file_path,
-                        mode="w+",
-                        dtype=np.dtype(data.dtype),
-                        shape=tuple(data.shape),
-                    )
-                    da.store(data, out, lock=False)
-                    out.flush()
-                    del out
-                else:
-                    np.save(file_path, data)
-            elif selected_type == "Pickle Dictionary Files (*.pkl)":
-                for key in ["data", "axes", "metadata", "original_metadata"]:
-                    if key in img4d.keys():
-                        img_to_save[key] = img4d[key]
-                with open(file_path, "wb") as f:
-                    pickle.dump(img_to_save, f)
-            elif selected_type == "USID (*.hdf5)":
-                for key in ["data", "axes", "metadata", "original_metadata"]:
-                    if key in img4d.keys():
-                        img_to_save[key] = img4d[key]
-                if os.path.exists(file_path):
-                    os.remove(
-                        file_path
-                    )  # Remove existing file to avoid appending to it
-                usid_writer(file_path, img_to_save)
-            return None
-        except Exception as exc:
-            return exc
 
     def _on_save_4dstem_finished(self, result):
         self.toggle_progress_bar("OFF")
@@ -1628,6 +1560,46 @@ class PlotCanvas4D:
         self.update_point_detector_virtualimg()
         # Update the process history
         self.Q_canvas.update_metadata("Reciprocal space flipped vertically")
+
+
+# ================= 4D-STEM dataset saving ============================
+def _save_4dstem_dataset(file_path, selected_type, img4d):
+    try:
+        img_to_save = {}
+        if selected_type == "Numpy Array Files (*.npy)":
+            data = img4d["data"]
+            if hasattr(data, "compute"):
+                out = np.lib.format.open_memmap(
+                    file_path,
+                    mode="w+",
+                    dtype=np.dtype(data.dtype),
+                    shape=tuple(data.shape),
+                )
+                da.store(data, out, lock=False)
+                out.flush()
+                del out
+            else:
+                np.save(file_path, data)
+        elif selected_type == "Pickle Dictionary Files (*.pkl)":
+            data = img4d["data"]
+            if hasattr(data, "compute"):
+                img_to_save["data"] = data.compute()
+            for key in ["axes", "metadata", "original_metadata"]:
+                if key in img4d.keys():
+                    img_to_save[key] = img4d[key]
+            with open(file_path, "wb") as f:
+                pickle.dump(img_to_save, f)
+            del img_to_save["data"]  # Remove the data from memory after saving
+        elif selected_type == "USID (*.hdf5)":
+            for key in ["data", "axes", "metadata", "original_metadata"]:
+                if key in img4d.keys():
+                    img_to_save[key] = img4d[key]
+            if os.path.exists(file_path):
+                os.remove(file_path)  # Remove existing file to avoid appending to it
+            usid_writer(file_path, img_to_save)
+        return None
+    except Exception as exc:
+        return exc
 
 
 # ================== Annular selector ROI ============================

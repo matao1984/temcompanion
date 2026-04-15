@@ -537,31 +537,37 @@ def load_file(file, file_type):
                 "Unsupported data dimensions in NPY file! Only 2D or 3D arrays are supported."
             )
             return
-        metadata = {
-            "General": {
-                "original_filename": os.path.basename(file),
-                "title": getFileNameType(file)[0],
-            },
-            "Signal": {"signal_type": "image"},
-        }
-        original_metadata = {}
-        axes = [None] * data.ndim
-        for i in range(data.ndim):
-            axes[i] = {
-                "size": data.shape[i],
-                "index_in_array": i,
-                "name": f"axis_{i}",
-                "scale": 1,
-                "offset": 0.0,
-                "units": None,
-                "navigate": False,
+        jfile_path = file.rsplit(".", 1)[0] + ".json"
+        if os.path.exists(jfile_path):
+            with open(jfile_path, "r") as jfile:
+                img_dict = json.load(jfile)
+        else:
+            axes = [None] * data.ndim
+            for i in range(data.ndim):
+                axes[i] = {
+                    "size": data.shape[i],
+                    "index_in_array": i,
+                    "name": f"axis_{i}",
+                    "scale": 1,
+                    "offset": 0.0,
+                    "units": None,
+                    "navigate": False,
+                }
+            metadata = {
+                "General": {
+                    "original_filename": os.path.basename(file),
+                    "title": getFileNameType(file)[0],
+                },
+                "Signal": {"signal_type": "image"},
             }
-        img_dict = {
-            "data": data,
-            "metadata": metadata,
-            "original_metadata": original_metadata,
-            "axes": axes,
-        }
+            original_metadata = {}
+            img_dict = {
+                "metadata": metadata,
+                "original_metadata": original_metadata,
+                "axes": axes,
+            }
+
+        img_dict["data"] = data
         f = [img_dict]
 
     # Load image series from a folder
@@ -739,54 +745,61 @@ def load_4dstem(file, file_type, lazy=False):
             raise ValueError(
                 "Invalid 4D-STEM data! The numpy array must be 4-dimensional."
             )
-        f = {
-            "data": data,
-            "axes": [
-                {
-                    "name": "scan_y",
-                    "size": data.shape[0],
-                    "index_in_array": 0,
-                    "scale": 1,
-                    "offset": 0.0,
-                    "units": None,
-                    "navigate": True,
+        # Check if json file with the same name exists for axes and metadata
+        json_path = file.rsplit(".", 1)[0] + ".json"
+        if os.path.exists(json_path):
+            with open(json_path, "r") as json_file:
+                f = json.load(json_file)
+        else:
+            f = {
+                "axes": [
+                    {
+                        "name": "scan_y",
+                        "size": data.shape[0],
+                        "index_in_array": 0,
+                        "scale": 1,
+                        "offset": 0.0,
+                        "units": None,
+                        "navigate": True,
+                    },
+                    {
+                        "name": "scan_x",
+                        "size": data.shape[1],
+                        "index_in_array": 1,
+                        "scale": 1,
+                        "offset": 0.0,
+                        "units": None,
+                        "navigate": True,
+                    },
+                    {
+                        "name": "height",
+                        "size": data.shape[2],
+                        "index_in_array": 2,
+                        "scale": 1,
+                        "offset": 0.0,
+                        "units": None,
+                        "navigate": False,
+                    },
+                    {
+                        "name": "width",
+                        "size": data.shape[3],
+                        "index_in_array": 3,
+                        "scale": 1,
+                        "offset": 0.0,
+                        "units": None,
+                        "navigate": False,
+                    },
+                ],
+                "metadata": {
+                    "General": {
+                        "original_filename": os.path.basename(file),
+                        "title": getFileNameType(file)[0],
+                    }
                 },
-                {
-                    "name": "scan_x",
-                    "size": data.shape[1],
-                    "index_in_array": 1,
-                    "scale": 1,
-                    "offset": 0.0,
-                    "units": None,
-                    "navigate": True,
-                },
-                {
-                    "name": "height",
-                    "size": data.shape[2],
-                    "index_in_array": 2,
-                    "scale": 1,
-                    "offset": 0.0,
-                    "units": None,
-                    "navigate": False,
-                },
-                {
-                    "name": "width",
-                    "size": data.shape[3],
-                    "index_in_array": 3,
-                    "scale": 1,
-                    "offset": 0.0,
-                    "units": None,
-                    "navigate": False,
-                },
-            ],
-            "metadata": {
-                "General": {
-                    "original_filename": os.path.basename(file),
-                    "title": getFileNameType(file)[0],
-                }
-            },
-            "original_metadata": {},
-        }
+                "original_metadata": {},
+            }
+
+        f["data"] = data
 
     # Validate the content of f
     f_valid = {}

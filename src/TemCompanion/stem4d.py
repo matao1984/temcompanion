@@ -8,6 +8,7 @@ import numpy as np
 import dask.array as da
 import os
 import pickle
+import json
 from rsciio.usid import file_writer as usid_writer
 
 from .canvas import PlotCanvas, Worker
@@ -1580,6 +1581,15 @@ def _save_4dstem_dataset(file_path, selected_type, img4d):
                 del out
             else:
                 np.save(file_path, data)
+            # Save metadata in a separate JSON file
+            metadata = {
+                key: img4d[key]
+                for key in ["axes", "metadata", "original_metadata"]
+                if key in img4d.keys()
+            }
+            metadata_path = file_path.rsplit(".", 1)[0] + ".json"
+            with open(metadata_path, "w") as jfile:
+                json.dump(metadata, jfile, indent=4)
         elif selected_type == "Pickle Dictionary Files (*.pkl)":
             data = img4d["data"]
             if hasattr(data, "compute"):

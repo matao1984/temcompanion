@@ -20,6 +20,7 @@ from PyQt5.QtGui import QIcon
 import os
 import numpy as np
 import copy
+import json
 
 
 import pickle
@@ -948,7 +949,10 @@ class PlotCanvas(QMainWindow):
 
             elif self.selected_type == "Numpy Array Files (*.npy)":
                 img_dict = self.get_original_img_dict()
-                np.save(self.file_path, img_dict["data"])
+                np.save(self.file_path, img_dict.pop("data"))
+                jfile_path = self.file_path.rsplit(".", 1)[0] + ".json"
+                with open(jfile_path, "w") as f:
+                    json.dump(img_dict, f, indent=4)
 
             else:
                 # Save the current data only

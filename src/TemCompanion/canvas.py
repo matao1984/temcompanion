@@ -4216,6 +4216,24 @@ class PlotCanvasSpectrum(QMainWindow):
         else:
             # Set 40% to 60% of x range
             measuring_data = self.x
+            # Add two indicators on the line of the parent image if in line profile mode
+            if self.source_img is not None:
+                source_canvas = find_img_by_title(
+                    self.parent().preview_dict, self.source_img
+                )
+                if (
+                    source_canvas is not None
+                    and source_canvas.mode_control["lineprofile"]
+                ):
+                    source_line = source_canvas.canvas.selector[0]
+                    start_point = source_line.addFreeHandle(pos=(0, 0.5), name="start")
+                    end_point = source_line.addFreeHandle(pos=(0, 0.5), name="end")
+                    self.selector.sigRegionChanged.connect(
+                        lambda: self.update_line_profile_indicators(
+                            self.selector, source_line, start_point, end_point
+                        )
+                    )
+
         x_span = max(measuring_data) - min(measuring_data)
         x_min = min(measuring_data) + x_span * 0.4
         x_max = min(measuring_data) + x_span * 0.6
@@ -4233,8 +4251,29 @@ class PlotCanvasSpectrum(QMainWindow):
                 f"Min: {min_val:.3f} | Max: {max_val:.3f} | Span: {span:.3f}"
             )
 
+    def update_line_profile_indicators(self, selector, line, start_point, end_point):
+        if selector is not None:
+            min_val, max_val = selector.getRegion()
+            line_width = line.size().y()
+            start_point.setPos(min_val, line_width / 2)
+            end_point.setPos(max_val, line_width / 2)
+
     def cleanup(self):
         if self.selector is not None:
+            if self.source_img is not None:
+                source_canvas = find_img_by_title(
+                    self.parent().preview_dict, self.source_img
+                )
+                if (
+                    source_canvas is not None
+                    and source_canvas.mode_control["lineprofile"]
+                ):
+                    source_line = source_canvas.canvas.selector[0]
+                    indicator_handles = [
+                        h for h in source_line.handles if h["name"] in ["start", "end"]
+                    ]
+                    for handle in indicator_handles:
+                        source_line.removeHandle(handle["item"])
             self.plot.removeItem(self.selector)
             self.selector = None
 

@@ -558,6 +558,7 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 <!-- CHANGELOG_SNIPPET_START -->
 
 ### 1.4.1[dev]
+- All 4D-STEM processing was changed to lazy operations with Dask arrays by default.
 - Added support for NanoMegas ASTAR block files (*.blo)
   - The centering and distortion calibration information in the file header is saved in the metadata, but not applied.
   - The diffraction calibration is in cm/pixel. To get the correct scale in 1/nm, use scale = R / (Lλ) where:
@@ -565,6 +566,7 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
     - L is the calibrated camera length in cm;
     - λ is the electron wave length in nm.
 - Fixed reading DigitalMicrograph files saved in GMS 3.6.2.
+- Added indicators on image when measuring peaks from line profile.
 
 ### 1.4.0
 - Added support for 4D-STEM data.

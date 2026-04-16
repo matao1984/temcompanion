@@ -937,10 +937,32 @@ class PlotCanvas4D:
         self.Q_canvas.show()
         self.Q_canvas.position_window("center right")
 
+    def _set_apply_action_enabled(self, enabled):
+        try:
+            action = self.Q_canvas.buttons.get("ok")
+        except Exception:
+            action = None
+        if action is not None:
+            try:
+                action.setEnabled(enabled)
+            except RuntimeError:
+                # QAction may already be deleted when a window is closing.
+                pass
+
     def _start_virtual_worker(self, func, *args, **kwargs):
+        # Avoid launching overlapping heavy jobs from repeated Apply clicks.
+        if self.worker is not None:
+            try:
+                if self.worker.isRunning():
+                    return
+            except RuntimeError:
+                self.worker = None
+
         self.worker = Worker(func, *args, **kwargs)
+        self._set_apply_action_enabled(False)
         self.R_canvas.toggle_progress_bar("ON")
         self.worker.finished.connect(lambda: self.R_canvas.toggle_progress_bar("OFF"))
+        self.worker.finished.connect(lambda: self._set_apply_action_enabled(True))
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.result.connect(self._on_com_result)
         self.worker.finished.connect(lambda: setattr(self, "worker", None))

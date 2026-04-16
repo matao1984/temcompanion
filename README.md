@@ -1,5 +1,5 @@
 # TemCompanion
-TemCompanion is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, and FEI TIA (*.ser) format. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). Various filter functions, including Wiener, averaging background subtraction (ABS), non-linear filter, Butterworth low-pass, and Gaussian filter, are made available for filtering high-resolution TEM images.
+TemCompanion is a cross-platform GUI package for TEM and 4D-STEM data processing, visualization, and conversion. Built on ``rsciio`` and NumPy/Dask workflows, it supports common microscopy formats (including Velox EMD, TIA SER, DigitalMicrograph DM3/DM4, TIFF, MRC, HDF5-based datasets, and NumPy arrays) and provides responsive viewing for both single images and large stacks/datasets. Beyond format conversion, TemCompanion includes practical analysis tools for daily microscopy work: interactive calibration and measurement, FFT/live FFT and mask-based iFFT, line profile and radial integration, filtering (Wiener, ABS, non-linear, Butterworth, Gaussian), stack processing/alignment, GPA, and DPC-family reconstruction. For 4D-STEM, it provides dual real/reciprocal-space navigation, detector-based virtual imaging, region-averaged diffraction, and CoM/iCoM/dCoM/iDPC/dDPC pipelines, with export options ranging from standard image formats to scientific data containers such as ``pkl``, ``npy``, and ``hdf5``.
 
 TemCompanion was written by Dr. Tao Ma. For questions, suggestions, bug reports, feature requests, etc, please send a message to matao1984@gmail.com.
 
@@ -22,79 +22,10 @@ pip install ./
 The ``pip`` should prepare all the dependencies and install the tool automatically.
 
 ## 2. Usage
-Simply type ``temcom`` in the Anaconda prompt console. A GUI will pop up. Load the data through the "Open Files" button, view the images with the "Preview" button. All the processing and analysis functions are available in the preview window. Each preview window can be individually saved and converted to the common image formats. The tool will still work for batch convertion as ``EMD Converter`` does.
-
-## 3. Formats
-### 3.1 Input formats
-Currently, TemCompanion is programmed to support:
-- FEI Velox format (*.emd)
-- FEI TIA format (*.ser)
-- Gatan DigitalMicrograph format (*.dm3, *.dm4)
-- TIFF format (*.tiff, *.tif)
-    - TemCompanion will try to read the pixel calibration if exists
-- MRC format (*.mrc)
-    - This should be a stack of 2d images, e.g., tomography data. If the txt metadata file exists, it will be loaded as well.
-- Common image formats (*.tiff, *.jpg, *.png, etc) ,
-    - TemCompanion will try to convert the image into RGB and ignore calibration.
-- Numpy Array Files (*.npy)
-    - A numpy array containing only the image data. No calibration and metadata will be stored and retrieved in this format.
-- Image series
-    - TemCompanion will search the given folder for the supported files with the same extention as the selected file. A dialog will then pop up that allows to reorder and delete files to be loaded. Then all files will be loaded as a 3D image stack.
-
-- New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html).
-
-### 3.2 List of available functions
-Currently available functions on image data include:
-* Preview any image type signals. If the input file contains multiple image frames, a slider bar is added on the image to navigate.
-* Rotate image: positive angles would rotate the image counterclockwise and vice versa. The image will expand upon rotation.
-* Crop image: crop to any size with a GUI rectangle selection.
-* Adjust vmin/vmax for display.
-* Apply a color map to images.
-* Add a scalebar and customize its color, location, etc.
-* View and set the pixel scale.
-* Measure distance and angle interactively by drawing a line on images.
-* Extract line profiles interactively.
-* Extract radial integration from a selectable center.
-* Simple math on two images or stacks: addition, subtraction, multiplication, division, and inversion.
-* Compute a fast Fourier transform directly or with a Hann window applied.
-* Compute live FFT from a selected area that can be adjusted interactively.
-* Apply masks on FFT and compute masked inverse FFT.
-* Measure d-spacing from FFT or diffraction patterns. The spot position is fitted with a center of mass function. The angle from horizontal direction is also measured.
-* Apply Wiener, ABS, non-linear, Butterworth, and Gaussian filters on HRTEM/HRSTEM images. The filter parameters can be adjusted.
-* View the image information and metadata of the TEM data file.
-* The processing history by TemCompanion is saved in the metadata tree under "process" entry.
-* Import image series from a folder.
-* Crop, rotate, flip, resampling, and export stack images.
-* Reorder and delete frames of a stack.
-* Align image stack with both phase cross-correlation (rigid) and optical flow (non rigid).
-* Copy displayed images directly and paste to power point, etc.
-* Run geometric phase analysis on HR(S)TEM images.
-* Reconstruct iDPC and dDPC images from quadrant detector images or stacks (either raw A, B, C, D images or A-C, B-D images). The rotation angle can be guessed by either minimum curl or maximum contrast algorithms.
-
-Currently available functions on 4D-STEM data:
-* View and navigate the 4D data in both real space and reciprocal space
-* Crop and flip data in both spaces
-* Calibrate both real space and reciprocal space
-* Generate virtual image from point, circle, or annular detectors with interactive and resizable ROIs
-* Average diffraction patterns from selected regions in real space
-* CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
+For the stand alone bundles, run the executable to start the GUI. For python installation, run ``temcom`` from your activated environment to launch the GUI. Use **Open Images** for conventional TEM image/stack workflows or **Open 4D-STEM** for diffraction datacubes, then perform processing and analysis from each preview window and export results in the desired format. For step-by-step instructions and detailed feature explanations, see the [User Guide](src/TemCompanion/docs/User%20Guide.md).
 
 
-
-
-### 3.3 Output formats
-When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ.
-
-All image data and operations are handled as python dictionaries, which can be saved with ``pickle`` as *.pkl files. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc.
-
-
-Other image formats including png and jpg, both gray scale and color, are lossy conversion, which means the original data are manipulated (e.g., data are normalized and rescaled to 8-bit gray scale). These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be burnt on if the "Scale bar" option is checked.
-
-
-## 4. About the emd format
-Velox saves all types of data, including simple images, image stacks, SI data, DPC, etc, into a single emd format. While these files share the same format, the data structures are quite different. TemCompanion has been tested for simple images, image stacks, DPC images, and EDS mapping data. For EDS mapping data, it will only read the image type signals, e.g., STEM images and quantification maps, and ignore the spectra data. For DPC data, it will read all the quadrant signals, computed signals (e.g., A-C, B-D, iDPC, dDPC, etc.). Now it also reads the complex DPC images and display it in a phase-magnitude color map. Users can also choose to display magnitude, real and imaginary part only, available in image settings.
-
-## 5. Citation
+## 3. Citation
 If TemCompanion helped your TEM image analysis in a publication, please cite:
 
 Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, _SoftwareX_, __2025__, 31, 102212. [doi:10.1016/j.softx.2025.102212](https://doi.org/10.1016/j.softx.2025.102212).
@@ -112,7 +43,7 @@ author = {Tao Ma}
 }
 ```
 
-## 6. Change history
+## 4. Change history
 
 <!-- CHANGELOG_SNIPPET_START -->
 

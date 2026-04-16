@@ -9,8 +9,8 @@
   - [3.1 Input formats](#31-input-formats)
   - [3.2 Output formats](#32-output-formats)
 - [4. Descriptions of functions](#4-descriptions-of-functions)
-  - [4.1 Basic processing functions](#41-basic-processing-functions)
-  - [4.2 Analyze functions](#42-analyze-functions)
+  - [4.1 Basic functions](#41-basic-functions)
+  - [4.2 Analysis functions](#42-analysis-functions)
   - [4.3 Fast Fourier transforms](#43-fast-fourier-transforms)
   - [4.4 Filter](#44-filter)
   - [4.5 Stack Operations](#45-stack-operations)
@@ -21,7 +21,11 @@
 - [8. Change history](#8-change-history)
 
 ## Overview
-[TemCompanion](https://github.com/matao1984/temcompanion) is a convenient and lightweight tool to view, edit, and convert TEM micrographs to the common image formats including tiff, png, and jpg. The data import is built on the ``rsciio`` module and TemCompanion is currently programmed to support FEI Velox (*.emd) format, Gatan DigitalMicrograph (*.dm3, *.dm4) format, FEI TIA (*.ser) format, MRC format, and common image formats including TIFF, PNG, and JPG. These formats cover most of the scenarios of TEM data acquisition. More formats may be added in later releases given enough interests. TemCompanion was orignally developed based on the [EMD converter](https://github.com/matao1984/emd-converter) that was explicitly used for data convertion. On top of it, a simple data viewer has been added, together with some useful functions including rotate, crop, measure, calibrate, and FFT. These would cover most of the TEM data processing and analysis needs. Also added is filtering functions, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). In addition, it supports the above operations on image stacks. A full list of available functions is as follows:
+[TemCompanion](https://github.com/matao1984/temcompanion) is a cross-platform GUI package for TEM and 4D-STEM data processing, visualization, and conversion. Built on ``rsciio`` and NumPy/Dask workflows, it supports common microscopy formats (including Velox EMD, TIA SER, DigitalMicrograph DM3/DM4, TIFF, MRC, HDF5-based datasets, and NumPy arrays) and provides responsive viewing for both single images and large stacks/datasets.
+
+TemCompanion was originally developed from the [EMD converter](https://github.com/matao1984/emd-converter), which was focused on data conversion. Beyond conversion, TemCompanion now includes practical analysis tools for daily microscopy work: interactive calibration and measurement, FFT/live FFT and mask-based iFFT, line profile and radial integration, filtering (Wiener, ABS, non-linear, Butterworth, Gaussian, etc., based on [hrtem_filter](https://github.com/matao1984/hrtem_filter)), stack processing/alignment, GPA, and DPC-family reconstruction. For 4D-STEM, it provides dual real/reciprocal-space navigation, detector-based virtual imaging, region-averaged diffraction, and CoM/iCoM/dCoM/iDPC/dDPC pipelines, with export options ranging from standard image formats to scientific data containers such as ``pkl``, ``npy``, and ``hdf5``.
+
+A full list of available functions is as follows:
 
 ## List of available functions
 * Preview any image type signals. If the input file contains multiple image frames, a slider bar is added on the image to navigate.
@@ -67,21 +71,21 @@ TemCompanion was written by Dr. Tao Ma. The source code is published at [TemComp
 __The stand alone Win64 and MacOS ARM bundles can be downloaded from here:__
 [https://github.com/matao1984/temcompanion/releases](https://github.com/matao1984/temcompanion/releases)
 
-Written in pure python, TemCompanion can also be installed through python 3 environment on any platform. For example, if using conda, run these lines:
+Written in pure Python, TemCompanion can also be installed in a Python 3 environment on any platform. For example, if using conda, run:
 ``conda create -n temcompanion python=3.12``
 
 ``conda activate temcompanion``
 
-``pip install git+https://matao1984/temcompanion``
+``pip install git+https://github.com/matao1984/temcompanion``
 
-The ``pip`` should prepare all the dependencies and install the tool automatically.
+``pip`` should install TemCompanion and its dependencies automatically.
 
 ## 2. Usage
-The standalone executables can be run directly. If installed through python, simply type ``temcom`` in the console to start the program. The main GUI will pop up. Load the image data through the "Open Images" button. Alternatively, TemCompanion also supports dragging and dropping supported image files onto the main window to open the data. TemCompanion will try to find all the image type signals in the loaded file and open them in a separate window. All the processing and analysis functions can be called in the preview window through the menu bar, with some frequently used functions available on the toolbar. Each preview window can be individually processed, saved, and converted to the common image formats.
+The standalone executables can be run directly. If installed through Python, type ``temcom`` in a terminal to start the program. Use **Open Images** for conventional image/stack workflows and **Open 4D-STEM** for diffraction datacubes. TemCompanion can also open supported image files via drag-and-drop onto the main window. Image-type signals are opened in separate preview windows, where processing and analysis functions are available through the menu bar and toolbar. Each preview window can be processed and saved independently.
 
-From version 2.0.0 TemCompanion supports 4D-STEM data. The 4D dataset can be loaded by clicking "Open 4D-STEM" button. Note that drag-and-drop function treats data as image type signals and does not work for the 4D datasets.
+From version 1.4.0 onward, TemCompanion supports 4D-STEM data. Load 4D datasets with **Open 4D-STEM**. Note that drag-and-drop treats files as image-type signals and is not intended for 4D-STEM loading.
 
-Also available is a batch converter, which can be called by clicking the "Batch Convert" button. A separate window will pop up which works as the old ``EMD Converter`` does. The batch converter also supports drag-and-drop actions and the loaded data and be a mix of different supported formats.
+TemCompanion also includes a **Batch Convert** module. Click **Batch Convert** to open it in a separate window (similar to the original ``EMD Converter`` workflow). The batch converter supports drag-and-drop, and the input set can include mixed supported formats.
 
 ## 3. Formats
 ### 3.1 Input formats
@@ -94,35 +98,46 @@ Currently, TemCompanion is programmed to support:
 - MRC format (*.mrc)
     - This should be a stack of 2d images, e.g., tomography data. If the txt metadata file exists, it will be loaded as well.
 - Common image formats (*.tiff, *.jpg, *.png, etc)
-    - TemCompanion will try to convert the image into RGB and ignore calibration.
+  - TemCompanion reads these as regular images and does not preserve original calibration.
 - Numpy Array Files (*.npy)
-    - A numpy array containing only the image data. No calibration and metadata will be stored and retrieved in this format.
+    - A numpy array containing only the image data. Calibration and metadata will be stored in a json file with the same file name and can be retrieved later upon loading.
 - Image series
-    - TemCompanion will search the given folder for the supported files with the same extention as the selected file. All the image files with the same extention and match the size of the selected image will be loaded into a 3D image stack.
+  - TemCompanion searches the folder for supported files with the same extension as the selected file. Files with matching image size are loaded into a 3D image stack.
 
 Supported 4D-STEM data type includes:
-  - EMPAD (*.xml + *.raw)
-  - USID (*.hdf5)
-  - Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
-  - py4DSTEM (*.h5, *. hdf5) (Experimental)
-  - Numpy Array Files (*.npy)
+- EMPAD (*.xml + *.raw)
+  - TemCompanion will try to read the scan size. The diffraction space calibration is not stored in the xml file and needs to be set manually.
+- USID (*.hdf5)
+- Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
+- py4DSTEM (*.h5, *.hdf5) (Experimental)
+- NanoMegas ASTAR (*.blo)
+  - The centering and distortion information is stored in metadata, but correction is not applied. The diffraction-space calibration is in cm/pixel, while inverse-space calibration must be calculated manually as: scale = R / (Lλ), where:
+  - R is the original calibration in cm/pixel;
+  - L is the calibrated camera length in cm;
+  - λ is the electron wavelength in nm.
+- Numpy Array Files (*.npy)
+  - TemCompanion can write 4D arrays to ``.npy`` and store axes/metadata in a ``.json`` file with the same base name. When loading ``.npy``, TemCompanion tries to load that ``.json`` file. If no ``.json`` is found, only raw data is loaded.
+- Pickle Files (*.pkl)
+  - The full data dictionary including axes and metadata can be saved into a pickle file, which can be loaded back later without any information loss. Note that pickle format **DOES NOT** support lazy operations, e.g., the full data array needs to be loaded into RAM. Saving pickle files also trigger the materialization of the lazy-loaded dask arrays!
+
+- __Lazy performance note__ Point-detector updates for virtual images/diffraction call ``dask.Array.compute()``. Besides disk I/O speed, backend format matters: EMPAD raw and NumPy ``.npy`` are often low-latency, while HDF5-based formats (USID/py4DSTEM) can be slower due to HDF5 tree access, decompression, and chunk overhead. If latency is critical, converting HDF5 datasets to ``.npy`` + ``.json`` before interactive processing can help.
 
 - New formats can be added, given enough interests and the format is supported by ``rsciio``. A complete list of supported formats can be found [here](https://hyperspy.org/rosettasciio/supported_formats/index.html).
 
 
 ### 3.2 Output formats
 - TIFF format
-When selecting '16-bit TIFF' format, TemCompanion tries to convert the images into 16-bit tif files containing the pixel resolution, which can be read directly by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain foat data, such as DPC images, EDS quantification maps, and filtered images. These images should be saved as 32-bit float by selecting '32-bit TIFF' to ensure that data is not changed. Note that 32-bit tiff files may not be handled correctly by the system picture viewers, but can be read with Gatan DigitalMicrograph and Fiji ImageJ.
+When selecting '16-bit TIFF', TemCompanion converts images to 16-bit TIFF and embeds pixel calibration when available, which can be read by Gatan DigitalMicrograph and Fiji ImageJ. Some images contain float data (for example DPC images, EDS quantification maps, and filtered images). These should be saved as '32-bit TIFF' to avoid changing data values. Note that 32-bit TIFF files may not display correctly in some system image viewers, but can be read by Gatan DigitalMicrograph and Fiji ImageJ.
 
 
 - 8-bit grayscale images (TIFF, PNG, JPG)
 The image data will be rescaled to 8-bit integers and saved as grayscale images. The conversion is done by pillow. The pixel calibration is not saved. A scale bar can be added if the "scale bar" option is checked in the image settings.
 
 - Color images (TIFF, PNG, JPG)
-If a color map is applied, the image should be saved in RGB format. This conversion is done by Matplotlib. The output image should look exactly the same as in the preview window. Note that some non squre images would appear with a padded white edge, which will be saved as well. It is difficult to program in the way that it fits all different aspect ratios of the input images. But by resizing the preview window it can sometimes readjust to remove the white borders.
+If a colormap is applied, the image is saved in RGB format. This conversion is done by Matplotlib. The output should match the preview window. For some non-square images, padded white edges may appear and will also be saved. Resizing the preview window can sometimes reduce or remove these borders.
 
 - Pickle format
-All image data and operations are handled internally as python dictionaries, which can be saved with ``pickle`` as *.pkl files. When selecting this format, the entire python dictionaries including all the data arrays, axes information, and metadata will be saved. This format is good for saving the in-processing data at any stages, as well as exchanging with other python-enabled programs, codes, notebooks, etc. This format is also available for saving 4D-STEM datasets.
+All image data and operations are handled internally as Python dictionaries, which can be saved with ``pickle`` as ``*.pkl`` files. This format stores full dictionaries including data arrays, axes, and metadata. It is useful for saving in-progress analysis states and exchanging data with Python scripts/notebooks. This format is also available for 4D-STEM datasets.
 
 - Universal Spectroscopy and Imaging Data (USID)
 [USID](https://pycroscopy.github.io/USID/about.html) is an open, community-driven, self-describing, and standardized schema for representing imaging and spectroscopy data of any size, dimensionality, precision, instrument of origin, or modality. TemCompanion can save 4D-STEM dataset in this format as *.hdf5 files, which include the 4D data array, all axes, and metadata.
@@ -139,11 +154,11 @@ Calls a window to save the **Current** display into supported formats. To save t
 
 - Copy image to clipboard:
 
-Take a snapshot of the **Current** display to the clipboard. The snapshot can be pasted system wide from the clipboard to PowerPoint, Word, etc. The resolution of the snapshot is determined by the **Current display resolution**.
+Take a snapshot of the **current** display to the clipboard. The snapshot can be pasted system-wide into PowerPoint, Word, etc. The output resolution follows the **current display resolution**.
 
 - Image settings:
 
-Adjust the display of image or stacks. Available options are: histogram streching, gamma correction, change color maps, add a colorbar, add a scalebar, change scalebar color and locations.
+Adjust display settings for images or stacks. Available options include histogram stretching, gamma correction, colormap selection, colorbar, scalebar, and scalebar style/location.
 
 - Crop:
 
@@ -167,7 +182,7 @@ Perform simple math on two opened images. Supported operations are: addition, su
 
 
 
-### 4.2 Analyze functions
+### 4.2 Analysis functions
 - Set scale:
 
 Redefine the pixel calibration. The acceptable units for real space images are: m, cm, mm, um, μm, nm, pm. The units for reciprocal space images are 1/(real space unit).
@@ -220,7 +235,7 @@ Defines the display range for the strain maps. These can be adjusted later in th
 
 Reference:
 
-[1] M.J. Hÿtch, E. Snoeck, R. Kilaas. Ultramicroscopy, 74 (3) (1998), 131-146, [10.1016/S0304-3991(98)00035-7](hppts://doi.org/10.1016/S0304-3991(98)00035-7)
+[1] M.J. Hÿtch, E. Snoeck, R. Kilaas. Ultramicroscopy, 74 (3) (1998), 131-146, [10.1016/S0304-3991(98)00035-7](https://doi.org/10.1016/S0304-3991(98)00035-7)
 
 [2] T.A. de Jong, T. Benschop, X. Chen, E.E. Krasovskii, M.J.A. de Dood, R.M. Tromp, et al.
 Nat Commun, 13 (1) (2022), 70, [10.1038/s41467-021-27646-1](https://doi.org/10.1038/s41467-021-27646-1)
@@ -231,7 +246,7 @@ Nat Commun, 13 (1) (2022), 70, [10.1038/s41467-021-27646-1](https://doi.org/10.1
 
 - Reconstruct DPC
 
-The differential phase contrast (DPC) STEM technique, utilizing a segmented detector, provides a quick and accurate method for retrieving the phase shift of the exit electron wave caused by a thin specimen. TemCompanion can reconstruct iDPC and dDPC images from either 4 quadrant images or 2 images of DPCx (A - C) and DPCy (B - D) using the method described by I. Lazić [1]. In practice, the DPC signals often have an offset from the image coordinates. This rotation angle is necessary to align the DPC components with the image coordinates for correct reconstruction. This parameter is usually pre-calibrated by the TEM maker. If the rotation angle is unknown, TemCompanion offers two functions to estimate it: minimizing curl or maximizing contrast. The minimum curl method identifies the rotation angle by minimizing the curl of the DPC vector field, under the assumption that the field is conservative and the curl is always zero. The maximum contrast method computes iDPC images over a range of rotation angles (0–360 °) and selects the angle that provides maximum contrast. Note that image contrast inverts if the DPC components are off by 180 °, so the maximum contrast function provides two possible rotation angle estimates. In addition, applying a high-pass filter on the reconstructed iDPC images is usually necessary to supress the unrealisic background variation. By default the high-pass cutoff is set to 0.02, meaning the 2% of the center portion in the Fourier space will be filtered out in the reconstructed iDPC images.
+The differential phase contrast (DPC) STEM technique, using a segmented detector, provides a practical way to retrieve the phase shift of the exit electron wave caused by a thin specimen. TemCompanion can reconstruct iDPC and dDPC images from either four quadrant images or two images of DPCx (A - C) and DPCy (B - D), using the method described by I. Lazic [1]. In practice, DPC signals often include a rotation offset relative to image coordinates. This rotation angle is needed to align DPC components correctly before reconstruction. The value is often pre-calibrated by the microscope vendor. If the angle is unknown, TemCompanion provides two estimation methods: minimum curl and maximum contrast. The minimum-curl method finds the angle that minimizes curl of the DPC vector field (assuming a conservative field). The maximum-contrast method computes iDPC images over 0-360 degrees and selects the angle that yields highest contrast. Because contrast also inverts at 180 degrees, this method generally returns two candidate angles. In addition, applying a high-pass filter to reconstructed iDPC is often useful to suppress unrealistic low-frequency background variation. By default, the high-pass cutoff is 0.02, meaning the central 2% portion in Fourier space is filtered.
 
 Reconstruct DPC function also accepts image stacks. In this case, the reconstruction is performed for each frame. An advanced use case is to combine it with the stack alignment and integration function. This allows for the creation of fast-scanned, drift-corrected iDPC and dDPC images, which is currently not available in Velox.
 
@@ -246,7 +261,7 @@ Reference
 
 Perform FFT on the current image and display in a separate window. If the image is non square, it is first padded to square with 0, from which the FFT is computed.
 
-- Windowed FFT"
+- Windowed FFT:
 
 Apply a Hann window before computing the FFT to remove the edge effect.
 
@@ -260,7 +275,7 @@ Apply one or a few pairs of circular masks on the FFT spots and compute inverse 
 
 ### 4.4 Filter
 
-Various filters for high-resolution (S)TEM images are implemented in TemCompanion, including Wiener filter, Average Background Substraction (ABS) filter, Non-Linear filter, Butterworth low-pass filter, and Gaussian filter, based on the [hrtem_filter](https://github.com/matao1984/hrtem_filter). The details are discussed in [1], [2], [3], and [4]. Users can apply these filters on any images with the parameters set in the "Filter settings" dialog. The parameters are explained as below:
+Various filters for high-resolution (S)TEM images are implemented in TemCompanion, including Wiener, Average Background Subtraction (ABS), Non-Linear, Butterworth low-pass, and Gaussian filters, based on [hrtem_filter](https://github.com/matao1984/hrtem_filter). Details are discussed in [1], [2], [3], and [4]. Users can apply these filters on images with parameters configured in the "Filter settings" dialog. Parameters are summarized below:
 
 _Delta_ for WF, ABSF, and NL: A threshold used to extract the average background from the FFT of input images. When the difference between the previous iteration and the current background is smaller than delta% the iteration will stop. A bigger delta would preserve more FFT spots and hence more crystalline information, but consumes more time. Default is 10%.
 
@@ -286,7 +301,7 @@ __Note__: When both the _High pass Gaussian cutoff_ and _Low pass Gaussian cutof
 
 ### 4.5 Stack Operations
 
-When an image stack is open, all frames will be loaded and the first frame will be displayed, together with a slider bar to switch the frames. Presing the space key can start/stop automatic playback of all the frames with a frame time of 100 ms (10 Hz). The "," and "." keys control the forward and rewind of the stack by 1 frame. In addition, the "Stack" menu is available for stack specific operations.
+When an image stack is open, all frames are loaded and the first frame is displayed with a slider for frame navigation. Press ``Space`` to start/stop playback (default frame time: 100 ms, 10 Hz). The `,` and `.` keys move one frame backward/forward. Additional stack-specific operations are available in the "Stack" menu.
 
 - Crop stack:
 
@@ -320,9 +335,9 @@ The images can be normalized before running the alignment. This can be set by ch
 
 The "Use phase correlation" option determines the normalization factor for the correlation calculation. If enabled, the correlation will be normalized by the magnitude of $FFT(ref) {\cdot}FFT(moving)^*$. Otherwise, no normalization is performed. Using phase correlation can help to reduce the impact of non-uniform contrast changes.
 
-- Align stack with optical flow iKL
+- Align stack with optical flow iLK
 
-The optical flow with an iterative Lucas-Kanade (iLK) solver is a commonly used non-rigid registration algorithm. TemCompanion uses the [``skimage.registration.optical_flow_ilk``](https://scikit-image.org/docs/0.23.x/api/skimage.registration.html#skimage.registration.optical_flow_ilk). To get better results with optical flow iKL, the stack must be aligned with rigid registration to some extents.
+Optical flow with an iterative Lucas-Kanade (iLK) solver is a commonly used non-rigid registration algorithm. TemCompanion uses [``skimage.registration.optical_flow_ilk``](https://scikit-image.org/docs/0.23.x/api/skimage.registration.html#skimage.registration.optical_flow_ilk). For best results, pre-align the stack with rigid registration first.
 
 Available parameters:
 
@@ -349,28 +364,35 @@ Export the current image stack as gif animation. The duration of each frame can 
 Save every frame of the entire stack into a folder. The supported image formats are described in 3.2.
 
 ### 4.6 Supported 4D-STEM functions
+Due to the large size of 4D-STEM datasets, TemCompanion uses lazy loading by default. Processing functions are also implemented lazily to avoid excess RAM consumption. These operations are usually smooth on modern SSD-based systems, but may feel laggy on slower HDD-based systems. If your RAM is sufficient for in-memory processing, lazy behavior can be disabled in ``default_config.json``:
+```
+"4dstem_lazy": false,
+```
+See [Section 6](#6-default-settings) for how to change default settings.
+
 The 4D-STEM data is displayed in two linked preview windows: a virtual image window and a diffraction window. The functions implemented are slightly different.
+
 
 #### 4.6.1 Virtual image window
 - File:
 
-This menu contains "Save as", "Copy Image to Clipoard", "New Image from Display", "Image Settings", "Close", and "Close All", which work in the same way as in the image windows. The "New Image from Display" will create a copy of the current image and open it as an image signal, which has all the processing and analysis functions available.
+This menu contains "Save as", "Copy Image to Clipboard", "New Image from Display", "Image Settings", "Close", and "Close All", which work the same way as in standard image windows. "New Image from Display" creates a copy of the current image and opens it as an image signal with full image-processing/analysis functions.
 
 - Process:
 
-  - Crop: Crop the data in real-space (scan positions) by an rectangle ROI. Also supports manual input.
+  - Crop: Crop data in real space (scan positions) using a rectangular ROI. Manual input is also supported.
   - Flip Horizontal/Vertical: Flip the real-space (scan positions) accordingly.
 
 - Analysis:
 
-This menu contains "Set Scale", "Measure", "Measure Angle", and "Line Profile" for the current virtual image. The "Set Scale" will set the real-space pixel calibration (scan size) for the dataset.
+This menu contains "Set Scale", "Measure", "Measure Angle", and "Line Profile" for the current virtual image. "Set Scale" updates real-space pixel calibration (scan size) for the dataset.
 
 - Detector:
 
   - Point: A draggable point ROI on the virtual image that specifies which scan position the diffraction window displays.
-  - Rectangle: A draggable and resizable rectangle that averages the diffraction patterns in the selection and display the averaged pattern in the diffraction window.
+  - Rectangle: A draggable and resizable rectangle that averages diffraction patterns in the selection and displays the averaged pattern in the diffraction window.
 
-  Note that the position of the detector ROI can be adjusted by the arrow keys. Both the detector ROI can be deleted by selecting the "Delete ROI" in the context menu by right-clicking on the detector ROI.
+  Note that detector ROI positions can also be adjusted with arrow keys. Detector ROIs can be deleted by selecting "Delete ROI" from the right-click context menu.
 
 - FFT:
 
@@ -382,13 +404,13 @@ This menu displays the image information as well as the metadata.
 
 #### 4.6.2 Diffraction window
 
-Most of the functions are the same as those in the virtual image window, expect in the "Detector" menu:
+Most functions are the same as those in the virtual image window, except for the "Detector" menu:
 
-- Point: A draggable point ROI on the diffraction pattern from which the virtual image is calculated. As the point detector is dragged, the virtual image is updated lively.
-- Circle: A draggable and resizable circular detector on the diffraction pattern from which a virtual bright/dark-field image is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked. It is possible to add more circle detectors from the context menu by right-clicking on the circle.
-- Annular: A draggable and resizable annular detector on the diffraction pattern from which an annular detector image, e.g., ADF, is calculated. The virtual image is not lively updated due to the intensive computation involved, until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked.
-- CoM: A draggable and resizable circular detector on the diffraction pattern from which the center of mass is calculated. If the CoM is selected, a complex image formed by $CoM_x + iCoM_y$ will be displayed in the virtual image window in the "phase-magnitude" mode, in which the color represents the angle of the CoM, and the brightness of the color represents the magnitude of the CoM. For iCoM or dCoM, the integrated or differentiated CoM image will be calculated. Due to the intensive computation, the virtual image is not updated until the "Apple" button on the toolbar is clicked, or "ENTER" key is clicked.
-- DPC: Same as CoM, expect that the calculation is performed from an annular detector.
+- Point: A draggable point ROI on the diffraction pattern from which the virtual image is calculated. As the point detector is dragged, the virtual image updates live.
+- Circle: A draggable, resizable circular detector on the diffraction pattern from which a virtual bright/dark-field image is calculated. Because this can be computationally heavy, the virtual image is updated when the "Apply" button on the toolbar is clicked, or when ``ENTER`` is pressed. Additional circle detectors can be added from the right-click context menu.
+- Annular: A draggable, resizable annular detector on the diffraction pattern from which an annular image (for example ADF) is calculated. As above, updates are applied when "Apply" is clicked or ``ENTER`` is pressed.
+- CoM: A draggable, resizable circular detector on the diffraction pattern for center-of-mass calculations. If CoM is selected, a complex image formed by $CoM_x + iCoM_y$ is displayed in the virtual image window in phase-magnitude mode: hue indicates CoM angle, and brightness indicates CoM magnitude. For iCoM or dCoM, integrated or differentiated CoM images are calculated. Due to computational cost, results are updated when "Apply" is clicked or ``ENTER`` is pressed.
+- DPC: Same as CoM, except the calculation uses an annular detector.
 
 
 ## 5. Batch Convert
@@ -397,7 +419,7 @@ The Batch Convert module can be used to convert multiple images into "tiff + png
 
 All other formats are lossy conversion, which convert the original data into unsigned 8-bit int. These formats are good for direct use, but not ideal for image analysis as some data are lost in the conversion. Also, the pixel size information is not kept in these formats. A scale bar can be added if the "Scale bar" option is checked.
 
-The image metadata can also be exported along with the conversion, if the "Export metadata" option is checked. The exported metadata is saved in json format that is very human-readable and can be open by most of the text editors.
+Image metadata can also be exported with conversion if "Export metadata" is checked. Metadata is saved in JSON format, which is human-readable and can be opened by most text editors.
 
 Optionally, one or multiple filters can be applied to the converted images. This can be configured by clicking the "Also apply filters" button.
 

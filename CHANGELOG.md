@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-### 1.4.1[dev]
+### 1.4.1
 - All 4D-STEM processing was changed to lazy operations with Dask arrays by default.
 - Added support for NanoMegas ASTAR block files (*.blo)
   - The centering and distortion calibration information in the file header is saved in the metadata, but not applied.
@@ -12,6 +12,7 @@ All notable changes to this project are documented in this file.
     - λ is the electron wave length in nm.
 - Fixed reading DigitalMicrograph files saved in GMS 3.6.2.
 - Added indicators on image when measuring peaks from line profile.
+- Save numpy files with metadata saved in json.
 
 
 ### 1.4.0

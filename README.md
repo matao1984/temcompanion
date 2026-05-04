@@ -24,6 +24,14 @@ The ``pip`` should prepare all the dependencies and install the tool automatical
 ## 2. Usage
 For the stand alone bundles, run the executable to start the GUI. For python installation, run ``temcom`` from your activated environment to launch the GUI. Use **Open Images** for conventional TEM image/stack workflows or **Open 4D-STEM** for diffraction datacubes, then perform processing and analysis from each preview window and export results in the desired format. For step-by-step instructions and detailed feature explanations, see the [User Guide](src/TemCompanion/docs/User%20Guide.md).
 
+**Important Note for lazy processing for 4D-STEM data**
+
+From v1.4.1, all processing for 4D-STEM data has changed to lazy operations by default using dask arrays. This is to accomodate loading large datasets and relax the requirement of available RAM. The data will not be loaded into RAM; Instead, it will be kept in the hard drive with a memory map. For devices with fast hard drive, e.g., SSDs, the overhead for data i/o is neglegeable. The live view of diffraction patterns and virtual image are almost instant. However, the latency can be significantly noticeable for devices with mechanical hard disks, limited by their reading speed. The lazy operation can be disabled by modifying the ``default_config.json``:
+```
+"4dstem_lazy": false,
+```
+See [Section 6](src/TemCompanion/docs/User%20Guide.md#6-default-settings) for how to change default settings.
+
 
 ## 3. Citation
 If TemCompanion helped your TEM image analysis in a publication, please cite:
@@ -47,7 +55,7 @@ author = {Tao Ma}
 
 <!-- CHANGELOG_SNIPPET_START -->
 
-### 1.4.1[dev]
+### 1.4.1
 - All 4D-STEM processing was changed to lazy operations with Dask arrays by default.
 - Added support for NanoMegas ASTAR block files (*.blo)
   - The centering and distortion calibration information in the file header is saved in the metadata, but not applied.
@@ -57,6 +65,7 @@ author = {Tao Ma}
     - λ is the electron wave length in nm.
 - Fixed reading DigitalMicrograph files saved in GMS 3.6.2.
 - Added indicators on image when measuring peaks from line profile.
+- Save numpy files with metadata saved in json.
 
 ### 1.4.0
 - Added support for 4D-STEM data.

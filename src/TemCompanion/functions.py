@@ -9,7 +9,6 @@ from rsciio.empad import file_reader as empad_reader
 from rsciio.usid import file_reader as usid_reader
 from rsciio.blockfile import file_reader as blo_reader
 from skimage.color import rgb2gray
-import h5py
 
 # from rsciio.image import file_writer as im_writer
 import math
@@ -702,7 +701,7 @@ def load_4dstem(file, file_type, lazy=False):
         f = usid_reader(file, lazy=lazy)[0]
 
     elif file_type == "py4DSTEM (*.h5 *.hdf5)":
-        f_list = load_py4dstem(file, lazy=lazy)
+        f_list = emd_reader(file, lazy=lazy)
         if len(f_list) > 1:
             dialog = Select4DDatasetDialog(f_list)
             if dialog.exec_() == QDialog.Accepted:
@@ -843,169 +842,169 @@ def load_4dstem(file, file_type, lazy=False):
         return
 
 
-# A very basic reader for py4DSTEM h5/hdf5 files
-def load_py4dstem(file_path, lazy=False):
-    """
-    Read HDF5 file saved by py4DSTEM with the schema:
-      <unknown_root>/datacube/data
-      <unknown_root>/datacube/dim0, dim1, dim2, dim3
-      <unknown_root>/metadatabundle/calibration (optional)
+# # A very basic reader for py4DSTEM h5/hdf5 files
+# def load_py4dstem(file_path, lazy=False):
+#     """
+#     Read HDF5 file saved by py4DSTEM with the schema:
+#       <unknown_root>/datacube/data
+#       <unknown_root>/datacube/dim0, dim1, dim2, dim3
+#       <unknown_root>/metadatabundle/calibration (optional)
 
-    Returns:
-      {
-        "data": np.ndarray,
-        "metadata": dict,
-        "axes": list[dict]
-      }
-    """
+#     Returns:
+#       {
+#         "data": np.ndarray,
+#         "metadata": dict,
+#         "axes": list[dict]
+#       }
+#     """
 
-    def decode_if_bytes(value):
-        if isinstance(value, (bytes, bytearray)):
-            return value.decode("utf-8", errors="replace")
-        return value
+#     def decode_if_bytes(value):
+#         if isinstance(value, (bytes, bytearray)):
+#             return value.decode("utf-8", errors="replace")
+#         return value
 
-    def to_python(obj, lazy=lazy):
-        if isinstance(obj, h5py.Dataset):
-            # Keep text/object datasets eager so byte decoding still works,
-            # and only wrap numeric datasets lazily as dask arrays.
-            if lazy and obj.dtype.kind not in {"S", "O", "U"}:
-                return da.from_array(
-                    obj,
-                    chunks={0: "auto", 1: "auto", 2: -1, 3: -1},
-                    name=False,
-                    asarray=False,
-                )
+#     def to_python(obj, lazy=lazy):
+#         if isinstance(obj, h5py.Dataset):
+#             # Keep text/object datasets eager so byte decoding still works,
+#             # and only wrap numeric datasets lazily as dask arrays.
+#             if lazy and obj.dtype.kind not in {"S", "O", "U"}:
+#                 return da.from_array(
+#                     obj,
+#                     chunks={0: "auto", 1: "auto", 2: -1, 3: -1},
+#                     name=False,
+#                     asarray=False,
+#                 )
 
-            value = obj[()]
-            if isinstance(value, np.ndarray):
-                if value.dtype.kind in {"S", "O", "U"}:
-                    return np.vectorize(decode_if_bytes)(value)
-                return value
-            if isinstance(value, np.generic):
-                return decode_if_bytes(value.item())
-            return decode_if_bytes(value)
+#             value = obj[()]
+#             if isinstance(value, np.ndarray):
+#                 if value.dtype.kind in {"S", "O", "U"}:
+#                     return np.vectorize(decode_if_bytes)(value)
+#                 return value
+#             if isinstance(value, np.generic):
+#                 return decode_if_bytes(value.item())
+#             return decode_if_bytes(value)
 
-        if isinstance(obj, h5py.Group):
-            out = {}
-            if obj.attrs:
-                out["_attrs"] = {k: decode_if_bytes(v) for k, v in obj.attrs.items()}
-            for k, v in obj.items():
-                out[k] = to_python(v, lazy=lazy)
-            return out
+#         if isinstance(obj, h5py.Group):
+#             out = {}
+#             if obj.attrs:
+#                 out["_attrs"] = {k: decode_if_bytes(v) for k, v in obj.attrs.items()}
+#             for k, v in obj.items():
+#                 out[k] = to_python(v, lazy=lazy)
+#             return out
 
-        return obj
+#         return obj
 
-    def scalar(value):
-        if isinstance(value, np.ndarray):
-            if value.size == 1:
-                return decode_if_bytes(
-                    value.reshape(-1)[0].item()
-                )  # Get the first element safely
-            return value.tolist()
-        if isinstance(value, np.generic):
-            return decode_if_bytes(value.item())
-        return decode_if_bytes(value)
+#     def scalar(value):
+#         if isinstance(value, np.ndarray):
+#             if value.size == 1:
+#                 return decode_if_bytes(
+#                     value.reshape(-1)[0].item()
+#                 )  # Get the first element safely
+#             return value.tolist()
+#         if isinstance(value, np.generic):
+#             return decode_if_bytes(value.item())
+#         return decode_if_bytes(value)
 
-    def find_root_group(h5_file):
-        # Find the root group in the HDF5 file
-        for obj in h5_file.values():
-            if isinstance(obj, h5py.Group):
-                return obj
-        raise KeyError("Could not find a root group in this file!")
+#     def find_root_group(h5_file):
+#         # Find the root group in the HDF5 file
+#         for obj in h5_file.values():
+#             if isinstance(obj, h5py.Group):
+#                 return obj
+#         raise KeyError("Could not find a root group in this file!")
 
-    def find_4D_data_group(root):
-        # Find the 4D data group that contains the 'data' dataset
-        datagroups = []
-        for group in root.values():
-            if isinstance(group, h5py.Group):
-                if (
-                    "data" in group
-                    and isinstance(group["data"], h5py.Dataset)
-                    and group["data"].ndim == 4
-                ):
-                    datagroups.append(group)
-        return datagroups
+#     def find_4D_data_group(root):
+#         # Find the 4D data group that contains the 'data' dataset
+#         datagroups = []
+#         for group in root.values():
+#             if isinstance(group, h5py.Group):
+#                 if (
+#                     "data" in group
+#                     and isinstance(group["data"], h5py.Dataset)
+#                     and group["data"].ndim == 4
+#                 ):
+#                     datagroups.append(group)
+#         return datagroups
 
-    def get_calibration(root):
-        # Try to get calibration of the 4D dataset if available, otherwise return default values
-        for group in root.values():
-            if isinstance(group, h5py.Group):
-                if "calibration" in group:
-                    calibration = to_python(group["calibration"])
-                    r_scale = scalar(calibration.get("R_pixel_size", 1))
-                    r_units = scalar(calibration.get("R_pixel_units", None))
-                    q_scale = scalar(calibration.get("Q_pixel_size", 1))
-                    q_units = scalar(calibration.get("Q_pixel_units", None))
+#     def get_calibration(root):
+#         # Try to get calibration of the 4D dataset if available, otherwise return default values
+#         for group in root.values():
+#             if isinstance(group, h5py.Group):
+#                 if "calibration" in group:
+#                     calibration = to_python(group["calibration"])
+#                     r_scale = scalar(calibration.get("R_pixel_size", 1))
+#                     r_units = scalar(calibration.get("R_pixel_units", None))
+#                     q_scale = scalar(calibration.get("Q_pixel_size", 1))
+#                     q_units = scalar(calibration.get("Q_pixel_units", None))
 
-                    return {
-                        "R_pixel_size": r_scale,
-                        "R_pixel_units": r_units,
-                        "Q_pixel_size": q_scale,
-                        "Q_pixel_units": q_units,
-                    }
-        return {
-            "R_pixel_size": 1,
-            "R_pixel_units": None,
-            "Q_pixel_size": 1,
-            "Q_pixel_units": None,
-        }
+#                     return {
+#                         "R_pixel_size": r_scale,
+#                         "R_pixel_units": r_units,
+#                         "Q_pixel_size": q_scale,
+#                         "Q_pixel_units": q_units,
+#                     }
+#         return {
+#             "R_pixel_size": 1,
+#             "R_pixel_units": None,
+#             "Q_pixel_size": 1,
+#             "Q_pixel_units": None,
+#         }
 
-    def get_4D_data(group):
-        data = to_python(group["data"], lazy=lazy)
-        return data
+#     def get_4D_data(group):
+#         data = to_python(group["data"], lazy=lazy)
+#         return data
 
-    # Read hdf5 file here
-    f = h5py.File(file_path, "r")
-    file_name = os.path.basename(file_path)
-    root = find_root_group(f)
-    calibration = get_calibration(root)
-    r_scale = calibration["R_pixel_size"]
-    r_units = calibration["R_pixel_units"]
-    q_scale = calibration["Q_pixel_size"]
-    q_units = calibration["Q_pixel_units"]
-    data_groups = find_4D_data_group(root)
-    data_dictionaries = []
-    if data_groups:
-        for group in data_groups:
-            try:
-                data = get_4D_data(group)
-                axis_names = ["scan_y", "scan_x", "height", "width"]
-                axis_scales = [r_scale, r_scale, q_scale, q_scale]
-                axis_units = [r_units, r_units, q_units, q_units]
-                navigation_flags = [True, True, False, False]
-                axes = [
-                    {
-                        "index_in_array": i,
-                        "name": axis_names[i],
-                        "navigate": navigation_flags[i],
-                        "offset": 0,
-                        "scale": axis_scales[i],
-                        "size": int(data.shape[i]),
-                        "units": axis_units[i],
-                    }
-                    for i in range(4)
-                ]
-                metadata = {
-                    "General": {
-                        "title": os.path.basename(group.name),
-                        "original_filename": file_name,
-                    },
-                    "Signal": {"signal_type": "electron_diffraction"},
-                }
+#     # Read hdf5 file here
+#     f = h5py.File(file_path, "r")
+#     file_name = os.path.basename(file_path)
+#     root = find_root_group(f)
+#     calibration = get_calibration(root)
+#     r_scale = calibration["R_pixel_size"]
+#     r_units = calibration["R_pixel_units"]
+#     q_scale = calibration["Q_pixel_size"]
+#     q_units = calibration["Q_pixel_units"]
+#     data_groups = find_4D_data_group(root)
+#     data_dictionaries = []
+#     if data_groups:
+#         for group in data_groups:
+#             try:
+#                 data = get_4D_data(group)
+#                 axis_names = ["scan_y", "scan_x", "height", "width"]
+#                 axis_scales = [r_scale, r_scale, q_scale, q_scale]
+#                 axis_units = [r_units, r_units, q_units, q_units]
+#                 navigation_flags = [True, True, False, False]
+#                 axes = [
+#                     {
+#                         "index_in_array": i,
+#                         "name": axis_names[i],
+#                         "navigate": navigation_flags[i],
+#                         "offset": 0,
+#                         "scale": axis_scales[i],
+#                         "size": int(data.shape[i]),
+#                         "units": axis_units[i],
+#                     }
+#                     for i in range(4)
+#                 ]
+#                 metadata = {
+#                     "General": {
+#                         "title": os.path.basename(group.name),
+#                         "original_filename": file_name,
+#                     },
+#                     "Signal": {"signal_type": "electron_diffraction"},
+#                 }
 
-                data_dict = {
-                    "data": data,
-                    "metadata": metadata,
-                    "axes": axes,
-                    "original_metadata": {},
-                }
-                data_dictionaries.append(data_dict)
+#                 data_dict = {
+#                     "data": data,
+#                     "metadata": metadata,
+#                     "axes": axes,
+#                     "original_metadata": {},
+#                 }
+#                 data_dictionaries.append(data_dict)
 
-            except Exception as e:
-                print(f"Error processing group {group.name}: {e}")
-                continue
+#             except Exception as e:
+#                 print(f"Error processing group {group.name}: {e}")
+#                 continue
 
-    return data_dictionaries
+#     return data_dictionaries
 
 
 class Select4DDatasetDialog(QDialog):

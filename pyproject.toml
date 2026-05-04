@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TemCompanion"
-version = "1.4.0"
+version = "1.4.1"
 description = "A GUI program for TEM data processing and analysis"
 authors = [{name = "Tao Ma", email = "matao1984@gmail.com"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8, <3.13"
 dependencies = [
-    'rosettasciio[all]>=0.12.0',
+    'rosettasciio[all]>=0.13.0',
     'pyqt5>=5.15',
     'pyqtgraph>=0.14.0',
     'scikit-image>=0.25',

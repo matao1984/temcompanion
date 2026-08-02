@@ -493,7 +493,8 @@ class MainFrameCanvas(QWidget):
     def create_wheel(self):
         # Create a wheel to show angle and magnitude
         scale = self.parent().scale
-        wheel_size = self.img_size[0] // 10
+        # Use spatial dimensions for wheel size. For stacks, img_size[0] is frame count.
+        wheel_size = max(2, min(self.img_size[-2], self.img_size[-1]) // 10)
         y, x = np.indices((wheel_size, wheel_size))
         center = wheel_size // 2, wheel_size // 2
         x = x - center[0]

@@ -148,7 +148,7 @@
 # Added support for complex images (e.g., DPC or CoM) with options for phase (default), magnitude, real, and imaginary.
 # Added dialog for exporting gif animation with customizable frame time and label.
 
-# 2026-04-01 v2.0.0
+# 2026-04-01 v1.4.1
 # Added support for 4D-STEM data
 # Available functions for 4D-STEM data include:
 # - View and navigate the 4D data in both real space and reciprocal space
@@ -157,6 +157,9 @@
 # - Generate virtual image from point, circle, or annular detectors with interactive and resizable ROIs
 # - Average diffraction patterns from selected regions in real space
 # - CoM, iCoM, dCoM, DPC, iDPC, and dDPC reconstruction from 4D-STEM data
+
+# 2026-08-02 v1.4.2
+# Fixed a bug in loading stack images with 3d arrays caused by the construction of color wheel.
 
 from PyQt5.QtWidgets import (
     QApplication,

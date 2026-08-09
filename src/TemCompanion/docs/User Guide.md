@@ -557,6 +557,10 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 
 <!-- CHANGELOG_SNIPPET_START -->
 
+### 1.4.2
+- Fixed a bug in loading stack images with 3d arrays caused by the construction of color wheel.
+- Fixed incorrect positions for stack reslicing.
+
 ### 1.4.1
 - All 4D-STEM processing was changed to lazy operations with Dask arrays by default.
 - Added support for NanoMegas ASTAR block files (*.blo)

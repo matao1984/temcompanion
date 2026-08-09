@@ -160,6 +160,7 @@
 
 # 2026-08-02 v1.4.2
 # Fixed a bug in loading stack images with 3d arrays caused by the construction of color wheel.
+# Fixed incorrect positions for stack reslicing.
 
 from PyQt5.QtWidgets import (
     QApplication,

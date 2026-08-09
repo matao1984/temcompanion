@@ -3122,15 +3122,29 @@ class PlotCanvas(QMainWindow):
         end_point = 0.625 * x_range, 0.5 * y_range
 
         selector = pg.LineSegmentROI(
-            [start_point, end_point],
-            pen=pg.mkPen("y", width=3),
+            (start_point, end_point),
+            pen=pg.mkPen("y", width=1),
             movable=True,
             rotatable=True,
             resizable=True,
         )
         self.canvas.selector.append(selector)
-        self._make_active_selector(selector)
         self.canvas.viewbox.addItem(selector)
+        self._make_active_selector(selector)
+
+        # # Change colors of the side handles
+        h0 = selector.getHandles()[0]
+        h1 = selector.getHandles()[1]
+
+        h0.pen = pg.mkPen("y", width=5)
+        h0.hoverPen = pg.mkPen("y", width=2)
+        h0.currentPen = h0.pen
+        h0.update()
+
+        h1.pen = pg.mkPen("b", width=5)
+        h1.hoverPen = pg.mkPen("b", width=2)
+        h1.currentPen = h1.pen
+        h1.update()
 
     def cancel_reslice(self):
         self.clean_up(selector=True, buttons=True, modes=True, status_bar=True)
@@ -3138,10 +3152,13 @@ class PlotCanvas(QMainWindow):
     def reslice_from_line(self):
         if self.canvas.selector:
             selector = self.canvas.selector[0]
-            start_point, end_point = (
+            start_point_line, end_point_line = (
                 selector.getHandles()[0].pos(),
                 selector.getHandles()[1].pos(),
             )
+
+            start_point = selector.mapToParent(start_point_line)
+            end_point = selector.mapToParent(end_point_line)
 
             p1 = (start_point.x() / self.scale, start_point.y() / self.scale)
             p2 = (end_point.x() / self.scale, end_point.y() / self.scale)
@@ -3165,8 +3182,11 @@ class PlotCanvas(QMainWindow):
 
             # plot
             title = self.canvas.canvas_name
-            preview_name = self.canvas.canvas_name + f"_Resliced from {p1}, {p2}"
-            metadata = f"Resliced {title} from {p1} to {p2}."
+            preview_name = (
+                self.canvas.canvas_name
+                + f"_Resliced from {p1[0]:.2f}, {p1[1]:.2f} to {p2[0]:.2f}, {p2[1]:.2f}"
+            )
+            metadata = f"Resliced {title} from {p1[0]:.2f}, {p1[1]:.2f} to {p2[0]:.2f}, {p2[1]:.2f}."
             self.plot_new_image(
                 img,
                 preview_name,

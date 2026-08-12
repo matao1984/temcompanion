@@ -457,8 +457,13 @@ class MainFrameCanvas(QWidget):
 
         if self.data_type in ["Image", "Image Stack", "FFT"]:
             # Calculate vmin and vmax with percentile
-            self.attribute["vmin"] = np.percentile(self.current_img, pvmin)
-            self.attribute["vmax"] = np.percentile(self.current_img, pvmax)
+            if self.data_type == "Image Stack":
+                # For stacks, calculate vmin and vmax based on the entire stack
+                self.attribute["vmin"] = np.percentile(self.img_data, pvmin)
+                self.attribute["vmax"] = np.percentile(self.img_data, pvmax)
+            else:
+                self.attribute["vmin"] = np.percentile(self.current_img, pvmin)
+                self.attribute["vmax"] = np.percentile(self.current_img, pvmax)
 
             # Create image item
             self.image_item = pg.ImageItem(

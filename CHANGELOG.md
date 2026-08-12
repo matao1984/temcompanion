@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ### 1.4.2
 - Fixed a bug in loading stack images with 3d arrays caused by the construction of color wheel.
 - Fixed incorrect positions for stack reslicing.
+- For image stacks, determine the contrast limits based on the entire stack data.
 
 ### 1.4.1
 - All 4D-STEM processing was changed to lazy operations with Dask arrays by default.

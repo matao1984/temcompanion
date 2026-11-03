@@ -635,8 +635,8 @@ class MainFrameCanvas(QWidget):
         if img is not None:
             vb = self.plot.getPlotItem().getViewBox()
             vb.setRange(
-                xRange=(0, img.shape[1] * scale),
-                yRange=(0, img.shape[0] * scale),
+                xRange=(0, (img.shape[1] - 1) * scale),
+                yRange=(0, (img.shape[0] - 1) * scale),
                 padding=0,
                 update=True,
             )

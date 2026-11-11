@@ -24,6 +24,8 @@ from PyQt5.QtWidgets import (
     QRadioButton,
     QListWidget,
     QListWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import (
@@ -31,6 +33,7 @@ from PyQt5.QtGui import (
     QPixmap,
     QIcon,
     QFont,
+    QBrush,
     QIntValidator,
     QDoubleValidator,
     QValidator,
@@ -3249,6 +3252,286 @@ class ListReorderDialog(QDialog):
             original_index = self.item_to_index[item_text]
             self.ordered_items_idx.append(original_index)
             self.accept()
+
+
+class HDF5LoaderDialog(QDialog):
+    """Choose one dataset to load and any number of metadata objects from an HDF5 file.
+
+    The file is parsed with hdf5_to_dict (a static method), so all entries are links to the file
+    (nothing is read until used). On each Load click `loadRequested` is emitted and these are set:
+      data_path      - HDF5 path of the chosen dataset (str)
+      data           - the h5py.Dataset for data_path
+      metadata_paths - list of HDF5 paths (groups or datasets) checked as metadata
+      metadata       - {path: object} for each metadata path (h5py.Dataset or dict)
+    """
+
+    PATH_ROLE = Qt.UserRole
+    # Emitted each time "Load" is clicked with a valid selection; the dialog stays open
+    loadRequested = pyqtSignal()
+
+    def __init__(self, file_path, parent=None, ndims=None):
+        super().__init__(parent)
+        self.ndims = ndims  # allowed dataset dimensionalities, None for any
+        self.setWindowTitle(f"Load HDF5 - {os.path.basename(file_path)}")
+        self.resize(900, 500)
+
+        self.tree_dict = self.hdf5_to_dict(file_path)
+        self._h5file = self._find_file(self.tree_dict)
+        self.data_path = None
+        self.data = None
+        self.metadata_paths = []
+        self.metadata = {}
+        self.reshape = None  # target shape of the chosen dataset, None to keep as is
+        self.keep_file_open = False  # set when lazy data still reads from the file
+
+        layout = QVBoxLayout(self)
+        trees = QHBoxLayout()
+
+        # Created before populating, since selectability depends on the reshape text
+        self.reshape_edit = QLineEdit()
+        self.reshape_edit.setPlaceholderText(
+            "e.g. 256, 256, 128, 128 or -1, 128, 128 (one -1 allowed)"
+        )
+
+        self.data_tree = QTreeWidget()
+        self.data_tree.setHeaderLabels(
+            ["Data (select one)", "Shape", "Type", "Attributes"]
+        )
+        self.data_tree.setSelectionMode(QTreeWidget.SingleSelection)
+        self.meta_tree = QTreeWidget()
+        self.meta_tree.setHeaderLabels(
+            ["Metadata (check any)", "Shape", "Type", "Attributes"]
+        )
+
+        self._populate(self.data_tree, self.tree_dict, None, checkable=False)
+        self._populate(self.meta_tree, self.tree_dict, None, checkable=True)
+        self.data_tree.expandAll()
+        self.meta_tree.expandAll()
+        for t in (self.data_tree, self.meta_tree):
+            t.setColumnWidth(0, 260)
+
+        trees.addWidget(self.data_tree)
+        trees.addWidget(self.meta_tree)
+        layout.addLayout(trees)
+
+        reshape_layout = QHBoxLayout()
+        reshape_layout.addWidget(QLabel("Reshape data to (optional):"))
+        reshape_layout.addWidget(self.reshape_edit)
+        self.reshape_edit.textChanged.connect(self._refresh_data_tree)
+        self.data_tree.itemSelectionChanged.connect(self._update_reshape_hint)
+        self.reshape_hint = QLabel("")
+        reshape_layout.addWidget(self.reshape_hint)
+        layout.addLayout(reshape_layout)
+
+        buttons = QDialogButtonBox()
+        load_button = buttons.addButton("Load", QDialogButtonBox.ActionRole)
+        load_button.clicked.connect(self.handle_load)
+        buttons.addButton(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def hdf5_to_dict(file_path):
+        """Map an HDF5 file's structure to a nested dict of links (no data copied).
+
+        Groups become dicts keyed by their HDF5 names; datasets are the live
+        h5py.Dataset objects, read from the file only when sliced. The file is
+        opened read-only and must stay open while they are used.
+        """
+        import h5py
+
+        def convert(group):
+            return {
+                key: convert(item) if isinstance(item, h5py.Group) else item
+                for key, item in group.items()
+            }
+
+        return convert(h5py.File(file_path, "r"))
+
+    @classmethod
+    def _find_file(cls, node):
+        for value in node.values():
+            if isinstance(value, dict):
+                f = cls._find_file(value)
+                if f is not None:
+                    return f
+            else:
+                return value.file
+        return None
+
+    def close_file(self):
+        """Close the HDF5 file; datasets obtained from this dialog become invalid."""
+        if self._h5file is not None:
+            self._h5file.close()
+            self._h5file = None
+
+    def _attrs_text(self, path, max_len=80):
+        """Return (one-line summary, full multi-line text) of the attributes at path."""
+        attrs = self._h5file[path].attrs
+        if len(attrs) == 0:
+            return "", ""
+        pairs = []
+        for k, v in attrs.items():
+            if isinstance(v, bytes):
+                v = v.decode("utf-8", errors="replace")
+            pairs.append(
+                f"{k} = {np.array2string(v, threshold=10) if isinstance(v, np.ndarray) else v}"
+            )
+        summary = "; ".join(pairs)
+        if len(summary) > max_len:
+            summary = summary[: max_len - 3] + "..."
+        return summary.replace("\n", " "), "\n".join(pairs)
+
+    def _parse_reshape(self):
+        """Return the typed shape as a tuple, None if empty, or False if malformed."""
+        text = self.reshape_edit.text().replace("(", "").replace(")", "").strip()
+        if not text:
+            return None
+        try:
+            shape = tuple(int(p) for p in text.replace(",", " ").split())
+        except ValueError:
+            return False
+        if (
+            not shape
+            or sum(s == -1 for s in shape) > 1
+            or any(s == 0 or s < -1 for s in shape)
+        ):
+            return False
+        return shape
+
+    @staticmethod
+    def resolve_shape(shape, size):
+        """Resolve a possible -1 in shape for `size` elements; None if it doesn't fit."""
+        known = int(np.prod([s for s in shape if s != -1]))
+        if -1 in shape:
+            if size % known:
+                return None
+            return tuple(size // known if s == -1 else s for s in shape)
+        return tuple(shape) if known == size else None
+
+    def _target_shape(self, ds):
+        """Shape the dataset would have after the requested reshape, or None if invalid."""
+        shape = self._parse_reshape()
+        if shape is None:
+            return tuple(ds.shape)
+        if shape is False:
+            return None
+        return self.resolve_shape(shape, int(np.prod(ds.shape)))
+
+    def _is_loadable(self, ds):
+        if ds.dtype.kind not in "uifb":
+            return False
+        target = self._target_shape(ds)
+        return target is not None and (self.ndims is None or len(target) in self.ndims)
+
+    def _refresh_data_tree(self):
+        """Re-evaluate which datasets are selectable after the reshape text changed."""
+        stack = [
+            self.data_tree.topLevelItem(i)
+            for i in range(self.data_tree.topLevelItemCount())
+        ]
+        while stack:
+            item = stack.pop()
+            stack += [item.child(i) for i in range(item.childCount())]
+            ds = self._lookup(item.data(0, self.PATH_ROLE))
+            if isinstance(ds, dict):
+                continue
+            ok = self._is_loadable(ds)
+            flags = item.flags()
+            item.setFlags(
+                flags | Qt.ItemIsSelectable if ok else flags & ~Qt.ItemIsSelectable
+            )
+            if not ok and item.isSelected():
+                item.setSelected(False)
+            for col in range(item.columnCount()):
+                item.setForeground(col, QBrush(Qt.black if ok else Qt.gray))
+        self._update_reshape_hint()
+
+    def _update_reshape_hint(self):
+        selected = self.data_tree.selectedItems()
+        if not selected:
+            self.reshape_hint.setText("")
+            return
+        ds = self._lookup(selected[0].data(0, self.PATH_ROLE))
+        target = self._target_shape(ds)
+        self.reshape_hint.setText(
+            f"-> {target}" if target is not None else "invalid shape"
+        )
+
+    def _populate(self, tree, node, parent_item, checkable, parent_path=""):
+        for key, value in node.items():
+            path = f"{parent_path}/{key}"
+            is_group = isinstance(value, dict)
+            if is_group:
+                cols = [key, "", "group"]
+            else:
+                cols = [key, str(value.shape), str(value.dtype)]
+            attr_text, attr_tip = self._attrs_text(path)
+            item = QTreeWidgetItem(cols + [attr_text])
+            if attr_tip:
+                item.setToolTip(3, attr_tip)
+            item.setData(0, self.PATH_ROLE, path)
+            if parent_item is None:
+                tree.addTopLevelItem(item)
+            else:
+                parent_item.addChild(item)
+            if checkable:
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsTristate)
+                item.setCheckState(0, Qt.Unchecked)
+            elif is_group or not self._is_loadable(value):
+                # Grayed out and unselectable, but still enabled so groups can be expanded
+                item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+                for col in range(item.columnCount()):
+                    item.setForeground(col, QBrush(Qt.gray))
+            if is_group:
+                self._populate(tree, value, item, checkable, path)
+
+    def _lookup(self, path):
+        obj = self.tree_dict
+        for part in path.strip("/").split("/"):
+            obj = obj[part]
+        return obj
+
+    def _checked_paths(self, item):
+        """Return the highest fully-checked items, or checked leaves under partial groups."""
+        state = item.checkState(0)
+        if state == Qt.Checked:
+            return [item.data(0, self.PATH_ROLE)]
+        paths = []
+        if state == Qt.PartiallyChecked:
+            for i in range(item.childCount()):
+                paths += self._checked_paths(item.child(i))
+        return paths
+
+    def done(self, result):
+        # Lazy datasets still need the file; otherwise release it on close
+        super().done(result)
+        if not self.keep_file_open:
+            self.close_file()
+
+    def handle_load(self):
+        selected = self.data_tree.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "No data", "Please select a dataset to load.")
+            return
+        self.data_path = selected[0].data(0, self.PATH_ROLE)
+        self.data = self._lookup(self.data_path)
+        target = self._target_shape(self.data)
+        if target is None:
+            QMessageBox.warning(
+                self,
+                "Invalid reshape",
+                f"Cannot reshape data of shape {self.data.shape} to "
+                f"'{self.reshape_edit.text()}'.",
+            )
+            return
+        self.reshape = target if target != tuple(self.data.shape) else None
+
+        self.metadata_paths = []
+        for i in range(self.meta_tree.topLevelItemCount()):
+            self.metadata_paths += self._checked_paths(self.meta_tree.topLevelItem(i))
+        self.metadata = {p: self._lookup(p) for p in self.metadata_paths}
+        self.loadRequested.emit()
 
 
 # =================Angle measurement ROI==========================

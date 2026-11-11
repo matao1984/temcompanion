@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 import copy
 import json
 import pickle
+import h5py
 
 from PyQt5.QtWidgets import (
     QApplication,
@@ -445,6 +446,92 @@ def save_file_as(input_file, f_name, output_dir, f_type, **kwargs):
         )
 
 
+def build_hdf5_image(dialog, file, ndims=(2, 3), lazy=False):
+    """Build an image dict from the current selection of an HDF5LoaderDialog.
+
+    ndims: accepted dataset dimensionalities.
+    lazy: if True, return a dask array backed by the open file instead of
+    reading the data into memory (the dialog then keeps the file open).
+
+    Returns a dict (data, axes, metadata, original_metadata), or None if the
+    selection is not supported.
+    """
+    ds = dialog.data
+    shape = dialog.reshape or tuple(ds.shape)
+    if len(shape) not in ndims:
+        print(
+            f"Unsupported dimensions {shape} for {dialog.data_path}! "
+            f"Only {' or '.join(f'{n}D' for n in ndims)} datasets are supported."
+        )
+        return None
+    if ds.dtype.kind not in "uifb":
+        print(f"Unsupported data type {ds.dtype} for {dialog.data_path}!")
+        return None
+
+    def read(obj):
+        if isinstance(obj, h5py.Dataset):
+            value = obj[()]
+            if isinstance(value, bytes):
+                value = value.decode("utf-8", errors="replace")
+            return value
+        return {k: read(v) for k, v in obj.items()}
+
+    original_metadata = {}
+    for path, obj in dialog.metadata.items():
+        h5obj = ds.file[path]
+        entry = {"value": read(obj)}
+        attrs = {
+            k: (v.decode("utf-8", errors="replace") if isinstance(v, bytes) else v)
+            for k, v in h5obj.attrs.items()
+        }
+        if attrs:
+            entry["attrs"] = attrs
+        original_metadata[path] = entry
+
+    if lazy:
+        # Keep each diffraction pattern/image whole; chunk only leading axes
+        chunks = {i: "auto" for i in range(ds.ndim - 2)}
+        chunks.update({ds.ndim - 2: -1, ds.ndim - 1: -1})
+        data = da.from_array(ds, chunks=chunks)
+        dialog.keep_file_open = True  # dask reads from the file on demand
+    else:
+        data = ds[()]
+    if dialog.reshape:
+        data = data.reshape(dialog.reshape)
+
+    names = (
+        ["scan_y", "scan_x", "height", "width"]
+        if data.ndim == 4
+        else [f"axis_{i}" for i in range(data.ndim)]
+    )
+    axes = [
+        {
+            "size": data.shape[i],
+            "index_in_array": i,
+            "name": names[i],
+            "scale": 1,
+            "offset": 0.0,
+            "units": None,
+            # Scan axes of 4D data, or the stack axis of 3D data
+            "navigate": (data.ndim == 4 and i < 2) or (data.ndim == 3 and i == 0),
+        }
+        for i in range(data.ndim)
+    ]
+    metadata = {
+        "General": {
+            "original_filename": os.path.basename(file),
+            "title": dialog.data_path.strip("/"),
+        },
+        "Signal": {"signal_type": "image"},
+    }
+    return {
+        "data": data,
+        "axes": axes,
+        "metadata": metadata,
+        "original_metadata": original_metadata,
+    }
+
+
 def load_file(file, file_type):
     # file: full path of the file
     # file_type: selected file type from the dialog
@@ -523,6 +610,12 @@ def load_file(file, file_type):
         with open(file, "rb") as file:
             f = []
             f.append(pickle.load(file))
+
+    # Generic HDF5 loader, works with any file type that is HDF5 underneath
+    elif file_type == "HDF5 Loader (*.*)":
+        # Interactive: handled by the main window through HDF5LoaderDialog
+        print("The HDF5 loader is only available when opening files interactively.")
+        return
 
     # USID
     elif file_type == "USID (*.h5 *.hdf5)":
@@ -696,6 +789,11 @@ def load_4dstem(file, file_type, lazy=False):
     elif file_type == "Pickle Dictionary Files (*.pkl)":
         with open(file, "rb") as file:
             f = pickle.load(file)
+
+    elif file_type == "HDF5 Loader (*.*)":
+        # Interactive: handled by the main window through HDF5LoaderDialog
+        print("The HDF5 loader is only available when opening files interactively.")
+        return
 
     elif file_type == "USID (*.h5 *.hdf5)":
         f = usid_reader(file, lazy=lazy)[0]

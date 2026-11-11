@@ -562,6 +562,8 @@ See [CHANGELOG.md](https://github.com/matao1984/temcompanion/blob/main/CHANGELOG
 - Fixed incorrect positions for stack reslicing.
 - For image stacks, determine the contrast limits based on the entire stack data.
 - Fixed auto range adds 1 blank pixel on the image.
+- Added HDF5Loader dialog to explore and open any dataset saved in hdf5 format.
+- Drag-and-drop behavior has been changed: images and 4D datasets can be dropped onto the Open Image/4D-STEM buttons.
 
 ### 1.4.1
 - All 4D-STEM processing was changed to lazy operations with Dask arrays by default.

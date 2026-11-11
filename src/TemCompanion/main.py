@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QDialog,
 )
 from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer, QUrl
-from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent, QDesktopServices
+from PyQt5.QtGui import QIcon, QDesktopServices
 
 
 import sys
@@ -26,14 +26,38 @@ import markdown
 
 # ===================Import internal modules==========================================
 
-from .functions import load_file, load_4dstem, getFileNameType
+from .functions import load_file, load_4dstem, getFileNameType, build_hdf5_image
 from .batch_convert import BatchConverter
 from .canvas import PlotCanvas
 from .stem4d import PlotCanvas4D
-from .UI_elements import Resize4DSTEMDialog
+from .UI_elements import Resize4DSTEMDialog, HDF5LoaderDialog
 
 
 # =====================Main Window UI ===============================================
+
+
+class DropButton(QPushButton):
+    """Push button that accepts a dropped file and emits its local path."""
+
+    filesDropped = pyqtSignal(str)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if any(url.isLocalFile() for url in event.mimeData().urls()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            if url.isLocalFile():
+                event.acceptProposedAction()
+                self.filesDropped.emit(url.toLocalFile())
+                return
+        event.ignore()
 
 
 class UI_TemCompanion(QMainWindow):
@@ -55,6 +79,7 @@ class UI_TemCompanion(QMainWindow):
             "MRC Files (*.mrc);;"
             "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp);;"
             "USID (*.h5 *.hdf5);;"
+            "HDF5 Loader (*.*);;"
             "Pickle Dictionary Files (*.pkl);;"
             "Numpy Array Files (*.npy);;"
             "Image Series (*.*)"
@@ -65,6 +90,7 @@ class UI_TemCompanion(QMainWindow):
             "DigitalMicrograph Files (*.dm3 *.dm4);;"
             "USID (*.h5 *.hdf5);;"
             "py4DSTEM (*.h5 *.hdf5);;"
+            "HDF5 Loader (*.*);;"
             "NanoMegas ASTAR Files (*.blo);;"
             "Pickle Dictionary Files (*.pkl);;"
             "Numpy Array Files (*.npy)"
@@ -93,6 +119,8 @@ class UI_TemCompanion(QMainWindow):
         self.last_open_filter = self.settings["lastOpenFilter"]
         self.last_open_4dstem_filter = self.settings["last4DSTEMOpenFilter"]
 
+        self.hdf5_dialogs = []  # open HDF5 loader dialogs, kept alive while shown
+
         self.attribute = config  # Remaining config items are default image settings
 
         self.setupUi()
@@ -113,45 +141,54 @@ class UI_TemCompanion(QMainWindow):
         sys.stdout = self.stdout_tee
         sys.stderr = self.stderr_tee
 
-        # Drag and drop file function
-        self.setAcceptDrops(True)
+        # Files are accepted only when dropped on the Open Images / Open 4D-STEM buttons
+        self.openfileButton.filesDropped.connect(self.drop_image_file)
+        self.open4DSTEMButton.filesDropped.connect(self.drop_4dstem_file)
 
         self.print_info()
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+    @staticmethod
+    def _filter_for_extension(ext, filters):
+        """Return the entry of `filters` matching a file extension, or None."""
+        by_ext = {
+            "emd": "Velox emd Files (*.emd)",
+            "dm3": "DigitalMicrograph Files (*.dm3 *.dm4)",
+            "dm4": "DigitalMicrograph Files (*.dm3 *.dm4)",
+            "ser": "TIA ser Files (*.ser)",
+            "tif": "Tiff Files (*.tif *.tiff)",
+            "tiff": "Tiff Files (*.tif *.tiff)",
+            "mrc": "MRC Files (*.mrc)",
+            "jpg": "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)",
+            "jpeg": "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)",
+            "png": "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)",
+            "bmp": "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)",
+            "pkl": "Pickle Dictionary Files (*.pkl)",
+            "npy": "Numpy Array Files (*.npy)",
+            "xml": "EMPAD Files (*.xml)",
+            "blo": "NanoMegas ASTAR Files (*.blo)",
+        }
+        if ext in ("h5", "hdf5"):
+            return UI_TemCompanion.HDF5_FILTER
+        file_type = by_ext.get(ext)
+        return file_type if file_type in filters.split(";;") else None
 
-    def dropEvent(self, event: QDropEvent):
-        file = event.mimeData().urls()[0].toLocalFile()
-        if file:
-            self.file = file
-            ext = getFileNameType(file)[1].lower()
-            if ext == "emd":
-                self.file_type = "Velox emd Files (*.emd)"
-            elif ext in ["dm3", "dm4"]:
-                self.file_type = "DigitalMicrograph Files (*.dm3 *.dm4)"
-            elif ext == "ser":
-                self.file_type = "TIA ser Files (*.ser)"
-            elif ext in ["tif", "tiff"]:
-                self.file_type = "Tiff Files (*.tif *.tiff)"
-            elif ext == "mrc":
-                self.file_type = "MRC Files (*.mrc)"
-            elif ext in ["jpg", "jpeg", "png", "bmp"]:
-                self.file_type = "Image Formats (*.tif *.tiff *.jpg *.jpeg *.png *.bmp)"
-            elif ext == "pkl":
-                self.file_type = "Pickle Dictionary Files (*.pkl)"
-            elif ext == "npy":
-                self.file_type = "Numpy Array Files (*.npy)"
-            elif ext in ["h5", "hdf5"]:
-                self.file_type = "USID (*.h5 *.hdf5)"
-            else:
-                QMessageBox.warning(self, "Open File", "Unsupported file formats!")
-                return
-            self.preview()
-            event.acceptProposedAction()
+    def drop_image_file(self, file):
+        ext = getFileNameType(file)[1].lower()
+        file_type = self._filter_for_extension(ext, self._filters)
+        if file_type is None:
+            QMessageBox.warning(self, "Open File", "Unsupported file formats!")
+            return
+        self.file, self.file_type = file, file_type
+        self.preview()
+
+    def drop_4dstem_file(self, file):
+        ext = getFileNameType(file)[1].lower()
+        file_type = self._filter_for_extension(ext, self._filters_4dstem)
+        if file_type is None:
+            QMessageBox.warning(self, "Open File", "Unsupported 4D-STEM file formats!")
+            return
+        self.file, self.file_type = file, file_type
+        self.preview_4dstem(lazy=self.attribute.get("4dstem_lazy", True))
 
     def append_text(self, text):
         # Append text to the QTextEdit
@@ -202,17 +239,19 @@ background-color: #D0D0D0;
 }
 """
 
-        self.openfileButton = QPushButton(self)
+        self.openfileButton = DropButton(self)
         self.openfileButton.setFixedSize(80, 60)
         self.openfileButton.setObjectName("OpenFile")
         self.openfileButton.setText("Open \nImages")
         self.openfileButton.setStyleSheet(common_style)
+        self.openfileButton.setToolTip("Click to open, or drop an image file here")
 
-        self.open4DSTEMButton = QPushButton(self)
+        self.open4DSTEMButton = DropButton(self)
         self.open4DSTEMButton.setFixedSize(80, 60)
         self.open4DSTEMButton.setObjectName("Open4DSTEM")
         self.open4DSTEMButton.setText("Open \n4D-STEM")
         self.open4DSTEMButton.setStyleSheet(common_style)
+        self.open4DSTEMButton.setToolTip("Click to open, or drop a 4D-STEM file here")
 
         self.convertButton = QPushButton(self)
         self.convertButton.setFixedSize(80, 60)
@@ -298,6 +337,7 @@ border: 2px solid #FF8C00;
         self.outputBox.setOpenExternalLinks(
             True
         )  # open http(s) links in default browser
+        self.outputBox.setAcceptDrops(False)
         self.outputBox.setOpenLinks(True)  # allow internal anchors (if any)
         self.outputBox.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.outputBox.resize(350, 220)
@@ -578,12 +618,59 @@ border: 2px solid #FF8C00;
         msg.exec()
 
     # ====================== Open file for preview ===============================
+    HDF5_FILTER = "HDF5 Loader (*.*)"
+
+    def open_hdf5_loader(self, file, ndims, lazy, handler):
+        """Show a persistent HDF5 loader dialog; each Load click calls handler(image_dict)."""
+        try:
+            dialog = HDF5LoaderDialog(file, parent=self, ndims=ndims)
+        except Exception as e:
+            print(f"Cannot open {file} as an HDF5 file. Error: {e}")
+            return
+
+        def on_load():
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                f = build_hdf5_image(dialog, file, ndims=ndims, lazy=lazy)
+            except Exception as e:
+                print(f"Cannot load {dialog.data_path}. Error: {e}")
+                return
+            finally:
+                QApplication.restoreOverrideCursor()
+            if f is not None:
+                handler(f, file)
+
+        dialog.loadRequested.connect(on_load)
+        dialog.finished.connect(lambda _: self.hdf5_dialogs.remove(dialog))
+        self.hdf5_dialogs.append(dialog)
+        dialog.show()
+
     def preview(self):
+        if self.file_type == self.HDF5_FILTER:
+            self.open_hdf5_loader(
+                self.file,
+                ndims=(2, 3),
+                lazy=False,
+                handler=lambda f, file: self._show_images([f], file),
+            )
+            return
         try:
             f = load_file(self.file, self.file_type)
             if f is None:
                 return
-            f_name = getFileNameType(self.file)[0]
+            self._show_images(f, self.file)
+        except Exception as e:
+            print(
+                f"Cannot open {self.file}, make sure it is not in use or corrupted! Error: {e}"
+            )
+            return
+
+        finally:
+            f = None
+
+    def _show_images(self, f, file):
+        try:
+            f_name = getFileNameType(file)[0]
 
             for i in range(len(f)):
                 img = f[i]
@@ -609,22 +696,40 @@ border: 2px solid #FF8C00;
                     print(f"Opened unsuccessful: {f_name + ': ' + title}. Error: {e}")
         except Exception as e:
             print(
-                f"Cannot open {self.file}, make sure it is not in use or corrupted! Error: {e}"
+                f"Cannot open {file}, make sure it is not in use or corrupted! Error: {e}"
             )
-            return
-
-        finally:
-            f = None
 
     # =============================== Open 4DSTEM dataset ======================================
     def preview_4dstem(self, lazy=True):
+        if self.file_type == self.HDF5_FILTER:
+            self.open_hdf5_loader(
+                self.file,
+                ndims=(4,),
+                lazy=lazy,
+                handler=lambda f, file: self._show_4dstem(
+                    f, file, label=f["metadata"]["General"]["title"]
+                ),
+            )
+            return
         f_name = getFileNameType(self.file)[0]
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
         try:
             f = load_4dstem(self.file, self.file_type, lazy=lazy)
-            if f is None:
-                return
+        except Exception as e:
+            print(f"Opened unsuccessful: {f_name}. Error: {e}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        if f is None:
+            return
+        self._show_4dstem(f, self.file)
+
+    def _show_4dstem(self, f, file, label="4D-STEM"):
+        f_name = getFileNameType(file)[0]
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
+        try:
             # Check if the data is 4D
             if f["data"].ndim != 4:
                 if f["data"].ndim == 3:
@@ -689,7 +794,7 @@ border: 2px solid #FF8C00;
                     )
                     return
 
-            preview_name = f_name + ": 4D-STEM"
+            preview_name = f_name + ": " + label
             preview_im = PlotCanvas4D(f, parent=self)
 
             preview_name_r = preview_name + "_r"

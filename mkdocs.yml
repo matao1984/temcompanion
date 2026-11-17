@@ -1,0 +1,12 @@
+site_name: TemCompanion
+site_url: https://matao1984.github.io/temcompanion/
+
+docs_dir: src/TemCompanion/docs
+
+theme:
+  name: material
+  features:
+    - toc.integrate
+
+nav:
+  - User Guide: User Guide.md

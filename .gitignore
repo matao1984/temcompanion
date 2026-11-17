@@ -59,3 +59,6 @@ bak
 bak/*.*
 Test data/
 Test data/*
+
+# Sites
+site/

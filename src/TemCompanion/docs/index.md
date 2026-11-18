@@ -7,10 +7,15 @@ TemCompanion is an open-source, light-weight, and multi-platform GUI program for
 
 [Open the User Guide](User%20Guide.md) for detailed descriptions of implemented functions.
 
-TemCompanion is free for everyone. Visit the [GitHub](https://github.com/matao1984/temcompanion) page for the source code. Have questions or suggestions? Want to contribute? Drop me an email: [matao1984@gmail.com](mailto:matao1984@gmail.com)
+TemCompanion is free for everyone. You can download the recent release from here:
+https://github.com/matao1984/temcompanion/releases
+
+Or you can [build from the source](User%20Guide.md#1-installation) code in Python.
+
+Visit the [GitHub](https://github.com/matao1984/temcompanion) page for the source code. Have questions or suggestions? Want to contribute? Drop me an email: [matao1984@gmail.com](mailto:matao1984@gmail.com)
 
 If TemCompanion helped your TEM image analysis in a publication, please cite:
 
-Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, SoftwareX, 2025, 31, 102212. [doi:10.1016/j.softx.2025.102212](https://doi.org/10.1016/j.softx.2025.102212)
+Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, __SoftwareX__, 2025, 31, 102212. [doi:10.1016/j.softx.2025.102212](https://doi.org/10.1016/j.softx.2025.102212)
 
 Your support is important! [Buy me a coffee](https://paypal.me/matao1984?country.x=US&locale.x=en_US) if you like it!

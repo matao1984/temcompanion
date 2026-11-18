@@ -8,7 +8,8 @@ TemCompanion is an open-source, light-weight, and multi-platform GUI program for
 [Open the User Guide](User%20Guide.md) for detailed descriptions of implemented functions.
 
 TemCompanion is free for everyone. You can download the recent release from here:
-https://github.com/matao1984/temcompanion/releases
+
+[TemCompanion Releases](https://github.com/matao1984/temcompanion/releases)
 
 Or you can [build from the source](User%20Guide.md#1-installation) code in Python.
 

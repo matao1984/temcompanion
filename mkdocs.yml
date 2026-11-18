@@ -5,6 +5,8 @@ docs_dir: src/TemCompanion/docs
 
 theme:
   name: material
+  logo: assets/icon.png
+  favicon: assets/icon.png
   features:
     - toc.integrate
 

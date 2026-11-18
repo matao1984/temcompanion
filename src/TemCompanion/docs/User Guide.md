@@ -90,35 +90,37 @@ TemCompanion also includes a **Batch Convert** module. Click **Batch Convert** t
 ## 3. Formats
 ### 3.1 Input formats
 Currently, TemCompanion is programmed to support:
-- FEI Velox format (*.emd)
-- FEI TIA format (*.ser)
-- Gatan DigitalMicrograph format (*.dm3, *.dm4)
-- TIFF format (*.tiff, *.tif)
+
+- FEI Velox format (`*.emd`)
+- FEI TIA format (`*.ser`)
+- Gatan DigitalMicrograph format (`*.dm3`, `*.dm4`)
+- TIFF format (`*.tiff`, `*.tif`)
     - TemCompanion will try to read the pixel calibration if exists
-- MRC format (*.mrc)
+- MRC format (`*.mrc`)
     - This should be a stack of 2d images, e.g., tomography data. If the txt metadata file exists, it will be loaded as well.
-- Common image formats (*.tiff, *.jpg, *.png, etc)
-  - TemCompanion reads these as regular images and does not preserve original calibration.
-- Numpy Array Files (*.npy)
+- Common image formats (`*.tiff`, `*.jpg`, `*.png`, etc)
+    - TemCompanion reads these as regular images and does not preserve original calibration.
+- Numpy Array Files (`*.npy`)
     - A numpy array containing only the image data. Calibration and metadata will be stored in a json file with the same file name and can be retrieved later upon loading.
 - Image series
-  - TemCompanion searches the folder for supported files with the same extension as the selected file. Files with matching image size are loaded into a 3D image stack.
+    - TemCompanion searches the folder for supported files with the same extension as the selected file. Files with matching image size are loaded into a 3D image stack.
 
 Supported 4D-STEM data type includes:
-- EMPAD (*.xml + *.raw)
-  - TemCompanion will try to read the scan size. The diffraction space calibration is not stored in the xml file and needs to be set manually.
-- USID (*.hdf5)
-- Gatan DigitalMicrograph (*.dm3, *.dm4) (Experimental)
-- py4DSTEM (*.h5, *.hdf5) (Experimental)
-- NanoMegas ASTAR (*.blo)
-  - The centering and distortion information is stored in metadata, but correction is not applied. The diffraction-space calibration is in cm/pixel, while inverse-space calibration must be calculated manually as: scale = R / (Lλ), where:
-  - R is the original calibration in cm/pixel;
-  - L is the calibrated camera length in cm;
-  - λ is the electron wavelength in nm.
-- Numpy Array Files (*.npy)
-  - TemCompanion can write 4D arrays to ``.npy`` and store axes/metadata in a ``.json`` file with the same base name. When loading ``.npy``, TemCompanion tries to load that ``.json`` file. If no ``.json`` is found, only raw data is loaded.
-- Pickle Files (*.pkl)
-  - The full data dictionary including axes and metadata can be saved into a pickle file, which can be loaded back later without any information loss. Note that pickle format **DOES NOT** support lazy operations, e.g., the full data array needs to be loaded into RAM. Saving pickle files also trigger the materialization of the lazy-loaded dask arrays!
+
+- EMPAD (`*.xml` + `*.raw`)
+    - TemCompanion will try to read the scan size. The diffraction space calibration is not stored in the xml file and needs to be set manually.
+- USID (`*.hdf5`)
+- Gatan DigitalMicrograph (`*.dm3`, `*.dm4`) (Experimental)
+- py4DSTEM (`*.h5`, `*.hdf5`) (Experimental)
+- NanoMegas ASTAR (`*.blo`)
+    - The centering and distortion information is stored in metadata, but correction is not applied. The diffraction-space calibration is in cm/pixel, while inverse-space calibration must be calculated manually as: scale = R / (Lλ), where:
+    - R is the original calibration in cm/pixel;
+    - L is the calibrated camera length in cm;
+    - λ is the electron wavelength in nm.
+- Numpy Array Files (`*.npy`)
+    - TemCompanion can write 4D arrays to ``.npy`` and store axes/metadata in a ``.json`` file with the same base name. When loading ``.npy``, TemCompanion tries to load that ``.json`` file. If no ``.json`` is found, only raw data is loaded.
+- Pickle Files (`*.pkl`)
+    - The full data dictionary including axes and metadata can be saved into a pickle file, which can be loaded back later without any information loss. Note that pickle format **DOES NOT** support lazy operations, e.g., the full data array needs to be loaded into RAM. Saving pickle files also trigger the materialization of the lazy-loaded dask arrays!
 
 - __Lazy performance note__ Point-detector updates for virtual images/diffraction call ``dask.Array.compute()``. Besides disk I/O speed, backend format matters: EMPAD raw and NumPy ``.npy`` are often low-latency, while HDF5-based formats (USID/py4DSTEM) can be slower due to HDF5 tree access, decompression, and chunk overhead. If latency is critical, converting HDF5 datasets to ``.npy`` + ``.json`` before interactive processing can help.
 

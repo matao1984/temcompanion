@@ -293,7 +293,7 @@ border: 2px solid #FF8C00;
         self.donateButton.setToolTip(
             "☕ Support TemCompanion's development!\n"
             "Even a small donation helps keep this project alive.\n"
-            "Click to buy me a lunch! 💛"
+            "Click to buy me a COFFEE! 💛"
         )
 
         buttonlayout.addWidget(self.openfileButton)

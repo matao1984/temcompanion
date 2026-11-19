@@ -1,14 +1,14 @@
 site_name: TemCompanion
 site_url: https://matao1984.github.io/temcompanion/
 
+
 docs_dir: src/TemCompanion/docs
 
-theme:
-  name: material
-  logo: assets/icon.png
-  favicon: assets/icon.png
-  features:
-    - toc.integrate
-
 nav:
+  - Home: index.md
   - User Guide: User Guide.md
+  - About: about.md
+theme: mkdocs
+
+extra_css:
+  - css/extra.css

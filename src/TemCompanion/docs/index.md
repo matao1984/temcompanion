@@ -1,22 +1,78 @@
 # Welcome to TemCompanion
 
-<img src="assets/icon.png" alt="TemCompanion logo" width="144">
+<img src="img/favicon.ico" alt="TemCompanion logo" width="144">
 
-TemCompanion is an open-source, light-weight, and multi-platform GUI program for TEM image processing and analysis. TemCompanion supports various file formats for major TEM brands, such as Thermo Fisher Scientific Velox emd, Gatan dm3/dm4, EMPAD raw/xml, NanoMegas ASTAR blo, general HDF5, as well as common image formats such as tiff, jpg, png, etc. TemCompanion provides interactive tools for essential image processing tasks such as cropping, rotating, measuring, filtering, Fourier transforming, rigid/non-rigid stack alignment, geometric phase analysis (GPA), and differential phase contrast (DPC) reconstruction. For 4D-STEM datasets, TemCompanion can visualize, calibrate, and transpose the datasets, as well as generating virtual images, DPC/iCOM, PACBED, etc. More functions will be implemented in the future releases.
+---
+TemCompanion is an __open-source__, __light-weight__, and __multi-platform__ GUI program for TEM image processing and analysis.
 
+<div class="text-center">
+  <a href="User%20Guide/" class="btn btn-primary" target="_blank" rel="noopener noreferrer">User Guide</a>
+  <a href="https://github.com/matao1984/temcompanion/releases"
+     class="btn btn-secondary" target="_blank" rel="noopener noreferrer">Download</a>
+</div>
 
-[Open the User Guide](User%20Guide.md) for detailed descriptions of implemented functions.
+# Features
 
-TemCompanion is free for everyone. You can download the recent release from here:
+<div class="row">
+  <div class="col-sm-6 d-flex mb-4">
+    <div class="card w-100">
+      <div class="card-body">
+        <h3 class="card-title">Supported Formats</h3>
+        <ul>
+          <li>Thermo Fisher Scientific Velox emd</li>
+          <li>Gatan dm3/dm4</li>
+          <li>EMPAD raw/xml</li>
+          <li>Common image formats (tiff, jpg, png)</li>
+          <li>General HDF5</li>
+          <li>And more...</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
-[TemCompanion Releases](https://github.com/matao1984/temcompanion/releases)
+  <div class="col-sm-6 d-flex mb-4">
+    <div class="card w-100">
+      <div class="card-body">
+        <h3 class="card-title">Image Processing and Analysis</h3>
+        <ul>
+          <li>Cropping, rotating, transposing, calibrating, FFT, etc.</li>
+          <li><a href="https://github.com/matao1984/hrtem_filter" target="_blank" rel="noopener noreferrer">HRTEM filters</a></li>
+          <li>Rigid/Non-rigid image registration</li>
+          <li>Geometric phase analysis</li>
+          <li>Differential phase contrast and iDPC/dDPC reconstruction</li>
+          <li>And more...</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
 
-Or you can [build from the source](User%20Guide.md#1-installation) code in Python.
-
-Visit the [GitHub](https://github.com/matao1984/temcompanion) page for the source code. Have questions or suggestions? Want to contribute? Drop me an email: [matao1984@gmail.com](mailto:matao1984@gmail.com)
-
-If TemCompanion helped your TEM image analysis in a publication, please cite:
-
-Tao Ma, TemCompanion: An open-source multi-platform GUI program for TEM image processing and analysis, __SoftwareX__, 2025, 31, 102212. [doi:10.1016/j.softx.2025.102212](https://doi.org/10.1016/j.softx.2025.102212)
-
-Your support is important! [Buy me a coffee](https://paypal.me/matao1984?country.x=US&locale.x=en_US) if you like it!
+<div class="row">
+  <div class="col-sm-6 d-flex mb-4">
+    <div class="card w-100">
+      <div class="card-body">
+        <h3 class="card-title">4D-STEM (developing)</h3>
+        <ul>
+          <li>Cropping, rotating, transposing, calibrating, etc.</li>
+          <li>Virtual BF/DF images</li>
+          <li>Position averaged CBED</li>
+          <li>CoM/iCoM/dCoM/DPC/iDPC/dDPC reconstruction</li>
+          <li>And more under development</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 d-flex mb-4">
+    <div class="card w-100">
+      <div class="card-body">
+        <h3 class="card-title">Download and User Guide</h3>
+        <ul>
+          <li>Download the prebuild Win64 and MacOS ARM bundles <a href="https://github.com/matao1984/temcompanion/releases" target="_blank" rel="noopener noreferrer">here</a></li>
+          <li><a href="User%20Guide/#1-installation" target="_blank" rel="noopener noreferrer">Build from source code</a></li>
+          <li><a href="User%20Guide/" target="_blank" rel="noopener noreferrer">Check the User Guide</a> for detailed descriptions of implemented functions</li>
+          <li>Questions or suggestions? Want to contribute? <a href="mailto:matao1984@gmail.com">matao1984@gmail.com</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

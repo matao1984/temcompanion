@@ -1,0 +1,7 @@
+body.homepage .col-md-3 {
+  display: none;
+}
+
+body.homepage .col-md-9[role="main"] {
+  width: 100%;
+}

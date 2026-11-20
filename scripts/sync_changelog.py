@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync latest changelog entries into README and User Guide sections."""
+"""Sync changelog entries into the README, User Guide, and About page."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CHANGELOG = ROOT / "CHANGELOG.md"
 README = ROOT / "README.md"
 USER_GUIDE = ROOT / "src" / "TemCompanion" / "docs" / "User Guide.md"
+ABOUT = ROOT / "src" / "TemCompanion" / "docs" / "about.md"
 
 START_MARKER = "<!-- CHANGELOG_SNIPPET_START -->"
 END_MARKER = "<!-- CHANGELOG_SNIPPET_END -->"
@@ -44,14 +45,13 @@ def replace_between_markers(text: str, replacement: str) -> str:
 
 def main() -> int:
     changelog_text = CHANGELOG.read_text(encoding="utf-8")
-    latest = extract_latest_versions(changelog_text, max_versions=1000)
-
-    for target in (README, USER_GUIDE):
+    for target, max_versions in ((README, 1000), (USER_GUIDE, 1000), (ABOUT, 3)):
+        latest = extract_latest_versions(changelog_text, max_versions=max_versions)
         original = target.read_text(encoding="utf-8")
         updated = replace_between_markers(original, latest)
         target.write_text(updated, encoding="utf-8")
 
-    print("Synced latest changelog entries into README and User Guide.")
+    print("Synced changelog entries into README, User Guide, and About page.")
     return 0
 
 

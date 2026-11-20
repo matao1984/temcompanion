@@ -7,8 +7,12 @@ docs_dir: src/TemCompanion/docs
 nav:
   - Home: index.md
   - User Guide: User Guide.md
+  - Cite TemCompanion: cite.md
   - About: about.md
 theme: mkdocs
 
 extra_css:
   - css/extra.css
+
+extra_javascript:
+  - js/latest-release.js

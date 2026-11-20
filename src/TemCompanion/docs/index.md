@@ -1,15 +1,21 @@
 # Welcome to TemCompanion
 
 <img src="img/favicon.ico" alt="TemCompanion logo" width="144">
+<div class="text-left">
+    <a href="https://github.com/matao1984/temcompanion/releases"
+     class="btn btn-primary" target="_blank" rel="noopener noreferrer">Download</a>
+    <a href="User%20Guide/" class="btn btn-primary" target="_blank" rel="noopener noreferrer">User Guide</a>
+    <a href="https://github.com/matao1984/temcompanion" target="_blank" rel="noopener noreferrer" class="btn btn-primary" >Source Code</a>
+    <a href="cite/" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Cite TemCompanion</a>
+    <a href="https://paypal.me/matao1984?country.x=US&amp;locale.x=en_US" target="_blank" rel="noopener noreferrer" class="btn btn-primary" >Support</a>
+</div>
+
 
 ---
 TemCompanion is an __open-source__, __light-weight__, and __multi-platform__ GUI program for TEM image processing and analysis.
 
-<div class="text-center">
-  <a href="User%20Guide/" class="btn btn-primary" target="_blank" rel="noopener noreferrer">User Guide</a>
-  <a href="https://github.com/matao1984/temcompanion/releases"
-     class="btn btn-secondary" target="_blank" rel="noopener noreferrer">Download</a>
-</div>
+<p>Latest stable version: <span id="latest-release-version" aria-live="polite">Checking GitHub&hellip;</span>.</p>
+
 
 # Features
 
